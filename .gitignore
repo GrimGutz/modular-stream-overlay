@@ -1,0 +1,54 @@
+# Foundry-managed user uploads are not source code.
+/storage/
+
+# Existing and future user assets stay local. Explicitly allow shipped module artwork.
+/assets/*
+!/assets/basic-background.svg
+!/assets/demo-mage.svg
+!/assets/demo-warrior.svg
+
+# Local diagnostics, screenshots, logs, caches and generated packages.
+/work/
+/node_modules/
+/coverage/
+/dist/
+/build/
+/.cache/
+/.tmp/
+*.log
+*.tmp
+*.bak
+*.zip
+*.tgz
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local tool configuration, credentials and private Foundry data must not be published.
+/.codex/
+/.agents/
+/.aws/
+/.ssh/
+/.idea/
+/.vscode/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+credentials*.json
+secrets*.json
+/worlds/
+/systems/
+/Config/
+/Logs/
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm

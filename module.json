@@ -1,0 +1,13 @@
+{
+  "id": "modular-stream-overlay",
+  "title": "Modular Stream Overlay",
+  "description": "Visual stream overlays and reusable live character widget designs with permission-aware Foundry VTT v14 Actor bindings and authenticated OBS output.",
+  "version": "0.5.5",
+  "socket": true,
+  "persistentStorage": true,
+  "authors": [{ "name": "Lev" }],
+  "compatibility": { "minimum": "14", "maximum": "14" },
+  "esmodules": ["scripts/main.js"],
+  "styles": ["styles/renderer.css", "styles/editor.css", "styles/layer-canvas.css"],
+  "media": []
+}

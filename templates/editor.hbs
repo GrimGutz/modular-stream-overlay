@@ -1,0 +1,123 @@
+<div class="mso-layout">
+  <aside class="mso-sidebar">
+    <header class="mso-section-heading">
+      <h2>{{#if widgetMode}}Widget designs{{else}}Overlays{{/if}}</h2>
+      <button type="button" data-action="createOverlay" class="mso-icon-button" aria-label="Create overlay" title="Create overlay"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+    </header>
+    <nav class="mso-overlay-list" aria-label="Overlay configurations">
+      {{#each overlays}}
+      <button type="button" data-action="editOverlay" data-overlay-id="{{id}}" class="mso-overlay-item {{#if selected}}selected{{/if}}" {{#if selected}}aria-current="true"{{/if}}>
+        <span>{{name}}</span>{{#if active}}<small class="mso-live-badge">LIVE</small>{{/if}}
+      </button>
+      {{else}}
+      <p class="mso-muted mso-empty">{{#if widgetMode}}Create a widget design to begin.{{else}}Create an overlay to begin.{{/if}}</p>
+      {{/each}}
+    </nav>
+    {{#unless widgetMode}}<div class="mso-sidebar-footer">
+      <label for="mso-active-overlay">Active on stream</label>
+      <select id="mso-active-overlay" name="activeOverlayId">
+        <option value="">None — transparent</option>
+        {{#each overlays}}<option value="{{id}}" {{#if active}}selected{{/if}}>{{name}}</option>{{/each}}
+      </select>
+      <p class="mso-help">Selection broadcasts the saved configuration immediately.</p>
+    </div>{{/unless}}
+    {{#unless widgetMode}}<button type="button" data-action="manageWidgets">Widget Preset Manager</button>{{/unless}}
+    {{#unless widgetMode}}<button type="button" data-action="liveControls"><i class="fa-solid fa-play" aria-hidden="true"></i> Live Controls</button>{{/unless}}
+    {{#unless widgetMode}}<button type="button" data-action="installDemo">{{#if demoInstalled}}Open Demo Overlay{{else}}Install Demo Overlay{{/if}}</button>{{#if demoInstalled}}<button type="button" data-action="resetDemo" class="mso-danger">Reset Demo Overlay</button>{{/if}}{{/unless}}
+  </aside>
+
+  <main class="mso-main">
+    {{#if draft}}
+    <header class="mso-document-heading">
+      <div><p class="mso-eyebrow">{{#if widgetMode}}SHARED WIDGET DESIGN{{else}}OVERLAY CONFIGURATION{{/if}}</p><h2>{{draft.name}}</h2></div>
+      <div class="mso-actions">
+        <button type="button" data-action="renameOverlay" title="Rename overlay">Rename</button>
+        <button type="button" data-action="deleteOverlay" class="mso-danger" title="Delete overlay"><i class="fa-solid fa-trash" aria-hidden="true"></i><span class="mso-sr-only">Delete overlay</span></button>
+      </div>
+    </header>
+    {{#if conflict}}
+    <div class="mso-conflict" role="alert">Saved settings changed in another session. Your draft is preserved. Reload to use the saved version before editing again.<button type="button" data-action="reloadOverlay">Reload saved version</button></div>
+    {{/if}}
+    <div class="mso-workspace">
+      {{#if widgetMode}}<section class="mso-panel mso-widget-pages"><h3>Information pages</h3><div data-widget-pages></div></section>{{/if}}
+      <div class="mso-visual-editor">
+        <aside class="mso-tools mso-panel" aria-label="Layer tools">
+          <h3>Tools</h3>
+          <button type="button" data-action="selectTool" title="Select and move layers"><i class="fa-solid fa-arrow-pointer" aria-hidden="true"></i><span>Select</span></button>
+          <button type="button" data-action="addImage"><i class="fa-solid fa-image" aria-hidden="true"></i><span>Add image</span></button>
+          <button type="button" data-action="addText"><i class="fa-solid fa-font" aria-hidden="true"></i><span>Add text</span></button>
+          {{#if widgetMode}}
+          {{#each componentDefinitions}}<button type="button" data-action="addComponent" data-component-type="{{type}}">{{label}}</button>{{/each}}
+          {{else}}<button type="button" data-action="addWidget"><i class="fa-solid fa-id-card" aria-hidden="true"></i><span>Add widget</span></button>{{/if}}
+          <input type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" data-image-upload hidden aria-label="Choose a PNG, JPEG, or WebP layer image">
+        </aside>
+        <section class="mso-preview-section" aria-label="Overlay canvas">
+          <div class="mso-section-heading"><h3>Canvas</h3><label class="mso-zoom-control">Zoom<select data-canvas-zoom aria-label="Canvas zoom">{{#each zoomOptions}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}</select></label></div>
+          <div class="mso-preview" data-preview tabindex="0" aria-label="Interactive overlay canvas"></div>
+          <div class="mso-canvas-caption"><span class="mso-resolution" data-resolution>{{draft.canvas.width}} × {{draft.canvas.height}}</span><span class="mso-help">Drag to move · Handles resize</span></div>
+          <p class="mso-preview-error" data-preview-error hidden role="status"></p>
+          <p class="mso-help">Checkerboard indicates transparency. Canvas changes stay private until you save.</p>
+          {{#if widgetMode}}<div class="mso-widget-preview-actor"><button type="button" data-action="choosePreviewActor">Preview with character</button><button type="button" data-action="chooseDemoPreviewActor">Preview DEMO DATA</button><span class="mso-help" data-preview-actor>{{previewActorLabel}}</span></div><p class="mso-help">The preview character is temporary. Saving updates the reusable design. Configure each linked instance's character list and combined playback in Carousel Settings.</p>{{/if}}
+        </section>
+        <aside class="mso-inspector mso-panel" aria-label="Layers and properties">
+          <section aria-label="Layer list"><div class="mso-section-heading"><h3>Layers</h3><span class="mso-muted" data-layer-count>0</span></div><div class="mso-layer-list" data-layer-list></div><p class="mso-help">Top layer is in front. The background stays behind all layers.</p></section>
+          <section class="mso-properties-section" aria-label="Selected layer properties"><h3>Properties</h3><div data-layer-properties></div></section>
+        </aside>
+      </div>
+      {{#if widgetMode}}<section class="mso-panel mso-shared-animations"><h3>Whole widget animations &amp; triggers</h3><p class="mso-help">These settings apply to the grouped card and are reused by linked instances. Use the selected layer's properties for individual component effects.</p><div data-widget-animations></div></section>{{/if}}
+      {{#unless widgetMode}}<section class="mso-panel mso-animation-tests"><h3>Animation Test Controls</h3><div data-animation-tests></div></section>{{/unless}}
+      <div class="mso-settings-grid">
+        <section class="mso-panel">
+          <h3>Canvas</h3>
+          <div class="mso-dimensions">
+            <label>Width <span>px</span><input type="number" min="64" max="7680" step="1" required value="{{draft.canvas.width}}" data-draft-field="canvas.width" aria-label="Canvas width in pixels"></label>
+            <span class="mso-times" aria-hidden="true">×</span>
+            <label>Height <span>px</span><input type="number" min="64" max="7680" step="1" required value="{{draft.canvas.height}}" data-draft-field="canvas.height" aria-label="Canvas height in pixels"></label>
+          </div>
+          <p class="mso-help">{{#if widgetMode}}Local widget design dimensions. Instances scale together inside an overlay.{{else}}Match these dimensions in your OBS Browser Source.{{/if}}</p>
+        </section>
+        <section class="mso-panel">
+          <h3>Background</h3>
+          <input type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" data-background-upload hidden aria-label="Choose a PNG, JPEG, or WebP background image">
+          <div class="mso-background-actions">
+            <button type="button" data-action="uploadBackground"><i class="fa-solid fa-upload" aria-hidden="true"></i> Upload Background</button>
+            <button type="button" data-action="browseBackground"><i class="fa-solid fa-folder-open" aria-hidden="true"></i> Browse Existing</button>
+            <button type="button" data-action="removeBackground"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Remove Background</button>
+          </div>
+          <p class="mso-upload-status" data-upload-status role="status" {{#unless uploading}}hidden{{/unless}}>{{#if uploading}}Uploading background…{{/if}}</p>
+          <div class="mso-background-current">
+            <div class="mso-background-thumbnail"><img data-background-thumbnail alt="Current background image" hidden><span data-background-thumbnail-status>No background image</span></div>
+            <div><span class="mso-muted">Current image</span><p class="mso-background-path" data-background-path>{{#if draft.background.src}}{{draft.background.src}}{{else}}No image selected{{/if}}</p></div>
+          </div>
+          <label class="mso-field">Asset path (advanced)
+            <input type="text" value="{{draft.background.src}}" data-draft-field="background.src" placeholder="Foundry asset path; blank is transparent" aria-label="Background image path">
+          </label>
+          <div class="mso-background-options">
+            <label>Scaling<select data-draft-field="background.fit">{{#each fitOptions}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}</select></label>
+            <label>Opacity <output data-opacity-output>{{opacityPercent}}%</output><input type="range" min="0" max="1" step="0.01" value="{{draft.background.opacity}}" data-draft-field="background.opacity" aria-label="Background opacity"></label>
+          </div>
+          <p class="mso-help">Upload a PNG, JPEG, or WebP, or browse Foundry’s existing images. Changes stay in the preview until you save.</p>
+        </section>
+      </div>
+    </div>
+    <footer class="mso-save-bar"><span class="mso-save-status" data-save-status role="status">{{#if dirty}}Unsaved changes{{else}}All changes saved{{/if}}</span><div class="mso-actions"><button type="button" data-action="reloadOverlay">Reload saved</button><button type="button" class="mso-primary" data-action="saveOverlay" {{#unless dirty}}disabled{{/unless}}><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> {{#if widgetMode}}Save widget design{{else}}Save overlay{{/if}}</button></div></footer>
+    {{else}}
+    <div class="mso-start"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><h2>{{#if widgetMode}}Create a reusable character design{{else}}Your stream starts here{{/if}}</h2><p>{{#if widgetMode}}Add a portrait, name, and supported resource fields, then save this design for any character.{{else}}Create a configuration, choose a background, then add its URL to OBS.{{/if}}</p><button type="button" class="mso-primary" data-action="createOverlay">{{#if widgetMode}}Create first widget preset{{else}}Create first overlay{{/if}}</button></div>
+    {{/if}}
+
+    {{#unless widgetMode}}<section class="mso-presets mso-panel">
+      <div class="mso-section-heading"><h3>Presets</h3>{{#if draft}}<button type="button" data-action="savePreset">Save preview as preset</button>{{/if}}</div>
+      <div class="mso-preset-row"><select name="presetId" aria-label="Choose preset">{{#each presets}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}{{#if builtin}} · built-in{{/if}}</option>{{/each}}</select><button type="button" data-action="loadPreset" {{#unless hasPreset}}disabled{{/unless}}>Load &amp; save</button><button type="button" data-action="duplicatePreset" {{#unless hasPreset}}disabled{{/unless}}>Duplicate</button><button type="button" data-action="renamePreset" {{#unless customPreset}}disabled{{/unless}}>Rename</button><button type="button" data-action="deletePreset" class="mso-danger" aria-label="Delete custom preset" title="Delete custom preset" {{#unless customPreset}}disabled{{/unless}}><i class="fa-solid fa-trash" aria-hidden="true"></i></button></div>
+      <p class="mso-help">Loading saves the preset into the selected overlay. Built-in presets can be duplicated.</p>
+    </section>{{/unless}}
+
+    {{#unless widgetMode}}<section class="mso-obs mso-panel">
+      <div class="mso-section-heading"><h3>OBS Browser Source</h3><span class="mso-muted">Dedicated Player session</span></div>
+      <label class="mso-field">Viewer account<div class="mso-input-row"><select name="viewerUserId"><option value="">Choose a dedicated Player user</option>{{#each viewerUsers}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}</select><button type="button" data-action="saveViewer">Save viewer</button></div></label>
+      <p class="mso-help">Create a dedicated Player account; no assigned character is needed. Give it Observer access only to Actors used by your widgets. Owner or GM permissions are not needed. Select that account here before connecting OBS.</p>
+      <label class="mso-field">Browser Source URL<div class="mso-input-row"><input name="obsURL" type="text" readonly value="{{obsURL}}" aria-label="OBS Browser Source URL"><button type="button" data-action="copyURL" aria-label="Copy Browser Source URL" title="Copy URL"><i class="fa-solid fa-copy" aria-hidden="true"></i></button></div></label>
+      <p class="mso-help">In OBS, add a Browser Source with this URL and the canvas dimensions above. Use <strong>Interact</strong> to sign in as the selected viewer. If a sign-in page does not appear, use the join URL below first, then restore the Browser Source URL. Save changes here to update the stream automatically. Keep the viewer session connected.</p>
+      {{#if joinURL}}<label class="mso-field">Sign-in URL<input type="text" readonly value="{{joinURL}}" aria-label="Foundry sign-in URL"></label>{{/if}}
+    </section>{{/unless}}
+  </main>
+</div>

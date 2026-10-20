@@ -1,0 +1,174 @@
+.mso-editor { --mso-bg: #181b22; --mso-panel: #222630; --mso-line: #39404f; --mso-text: #e8ebf1; --mso-muted: #aab4c7; --mso-accent: #94b7ff; color: var(--mso-text); }
+.mso-editor .window-content { padding: 0; overflow: hidden; background: var(--mso-bg); color: var(--mso-text); }
+.mso-editor .mso-layout { display: grid; grid-template-columns: 225px minmax(0, 1fr); height: 100%; min-height: 0; font-family: var(--font-body, sans-serif); }
+.mso-editor h2, .mso-editor h3, .mso-editor p { margin: 0; color: inherit; border: 0; }
+.mso-editor h2 { font-size: 1.18rem; font-weight: 650; overflow-wrap: anywhere; }
+.mso-editor h3 { font-size: .95rem; font-weight: 650; }
+.mso-editor button { color: var(--mso-text); background: #2b303d; border: 1px solid #434c5f; border-radius: 5px; min-height: 30px; padding: 4px 10px; line-height: 1.4; white-space: nowrap; box-shadow: none; }
+.mso-editor button:hover { border-color: var(--mso-accent); background: #343c4e; }
+.mso-editor button:focus-visible, .mso-editor input:focus-visible, .mso-editor select:focus-visible { outline: 2px solid var(--mso-accent); outline-offset: 2px; }
+.mso-editor button:disabled { opacity: .4; cursor: default; }
+.mso-editor .mso-primary { background: #405e9f; border-color: #7193d9; font-weight: 650; }
+.mso-editor .mso-danger { color: #ffb6ba; }
+.mso-editor input, .mso-editor select { width: 100%; color: var(--mso-text); border: 1px solid #434c5f; border-radius: 4px; background: #171b23; min-height: 32px; padding: 4px 8px; }
+.mso-editor select option { color: var(--mso-text); background: #222630; }
+.mso-editor input[readonly] { color: #bec9dc; font-size: .8rem; }
+.mso-editor input[type=range] { border: 0; padding: 0; accent-color: var(--mso-accent); }
+.mso-editor label { display: block; font-size: .82rem; color: #c8d1e2; line-height: 1.5; }
+.mso-editor .mso-sidebar { background: #11151c; padding: 18px 13px 14px; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--mso-line); }
+.mso-editor .mso-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.mso-editor .mso-icon-button { width: 30px; padding: 3px; }
+.mso-editor .mso-overlay-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.mso-editor .mso-overlay-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; text-align: left; background: transparent; border-color: transparent; }
+.mso-editor .mso-overlay-item > span { white-space: normal; overflow-wrap: anywhere; }
+.mso-editor .mso-overlay-item.selected { background: #26344d; border-color: #536d9d; }
+.mso-editor .mso-live-badge { font-size: .57rem; letter-spacing: .08em; color: #b6e9d2; background: #244438; border: 1px solid #3c6a56; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
+.mso-editor .mso-sidebar-footer { border-top: 1px solid var(--mso-line); margin-top: 16px; padding-top: 14px; }
+.mso-editor .mso-sidebar-footer select { margin-top: 5px; }
+.mso-editor .mso-main { min-width: 0; overflow-y: auto; padding: 20px; }
+.mso-editor .mso-document-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.mso-editor .mso-eyebrow { color: var(--mso-muted); letter-spacing: .13em; font-size: .58rem; margin-bottom: 4px; }
+.mso-editor .mso-actions, .mso-editor .mso-input-row { display: flex; gap: 7px; align-items: center; }
+.mso-editor .mso-input-row input, .mso-editor .mso-input-row select { flex: 1; min-width: 0; }
+.mso-editor .mso-input-row button { flex: 0 0 auto; }
+.mso-editor .mso-muted, .mso-editor .mso-help { color: var(--mso-muted); }
+.mso-editor .mso-help { font-size: .73rem; line-height: 1.5; margin-top: 8px; }
+.mso-editor .mso-muted { font-size: .72rem; }
+.mso-editor .mso-preview-section { margin-bottom: 16px; }
+.mso-editor .mso-preview-section .mso-section-heading { margin-bottom: 8px; }
+.mso-editor .mso-resolution { color: var(--mso-muted); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.mso-editor .mso-preview { width: 100%; height: 260px; position: relative; overflow: hidden; border: 1px solid #4b5364; border-radius: 5px; background-color: #333842; background-image: linear-gradient(45deg,#454b56 25%,transparent 25%),linear-gradient(-45deg,#454b56 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#454b56 75%),linear-gradient(-45deg,transparent 75%,#454b56 75%); background-size: 24px 24px; background-position: 0 0,0 12px,12px -12px,-12px 0; }
+.mso-editor .mso-settings-grid { display: grid; grid-template-columns: 1fr 1.8fr; gap: 12px; }
+.mso-editor .mso-panel { background: var(--mso-panel); border: 1px solid var(--mso-line); padding: 14px; border-radius: 6px; }
+.mso-editor .mso-panel > h3 { margin-bottom: 10px; }
+.mso-editor .mso-dimensions { display: flex; align-items: flex-end; gap: 8px; }
+.mso-editor .mso-dimensions label { flex: 1; min-width: 0; }
+.mso-editor .mso-dimensions label > span { color: var(--mso-muted); font-size: .65rem; }
+.mso-editor .mso-times { align-self: center; color: var(--mso-muted); padding-top: 19px; }
+.mso-editor .mso-background-options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+.mso-editor .mso-background-options output { float: right; color: var(--mso-muted); font-size: .72rem; }
+.mso-editor .mso-background-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.mso-editor .mso-background-actions button { font-size: .74rem; padding: 4px 7px; }
+.mso-editor .mso-background-current { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px; align-items: center; margin: 12px 0; }
+.mso-editor .mso-background-thumbnail { height: 60px; display: grid; place-items: center; overflow: hidden; border: 1px solid #434c5f; border-radius: 4px; background: #171b23; }
+.mso-editor .mso-background-thumbnail img { width: 100%; height: 100%; object-fit: contain; border: 0; }
+.mso-editor .mso-background-thumbnail [hidden] { display: none; }
+.mso-editor .mso-background-thumbnail span { color: var(--mso-muted); font-size: .63rem; padding: 5px; text-align: center; }
+.mso-editor .mso-background-path { color: #c8d1e2; font-size: .72rem; line-height: 1.4; overflow-wrap: anywhere; margin-top: 3px; }
+.mso-editor .mso-upload-status { color: var(--mso-accent); font-size: .75rem; margin-top: 8px; }
+.mso-editor .mso-save-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 18px; }
+.mso-editor .mso-save-status { color: var(--mso-muted); font-size: .75rem; }
+.mso-editor .mso-presets, .mso-editor .mso-obs { margin-top: 14px; }
+.mso-editor .mso-preset-row { display: flex; gap: 7px; }
+.mso-editor .mso-preset-row select { flex: 1; min-width: 90px; }
+.mso-editor .mso-field + .mso-field { margin-top: 12px; }
+.mso-editor .mso-field .mso-input-row { margin-top: 4px; }
+.mso-editor .mso-obs .mso-help + .mso-field { margin-top: 12px; }
+.mso-editor .mso-start { text-align: center; padding: 50px 20px; color: var(--mso-muted); }
+.mso-editor .mso-start > i { font-size: 2rem; color: var(--mso-accent); margin-bottom: 16px; }
+.mso-editor .mso-start h2 { color: var(--mso-text); margin-bottom: 8px; }
+.mso-editor .mso-start p { font-size: .85rem; margin-bottom: 18px; }
+.mso-editor .mso-empty { padding: 12px 4px; line-height: 1.6; }
+.mso-editor .mso-conflict, .mso-editor .mso-preview-error { padding: 10px; border: 1px solid #a77f43; background: #403524; color: #ffdda2; border-radius: 4px; font-size: .78rem; line-height: 1.5; margin-bottom: 12px; }
+.mso-editor .mso-conflict button { margin: 8px 0 0; display: block; }
+.mso-editor .mso-preview-error { margin-top: 8px; }
+.mso-editor .mso-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.mso-editor[aria-busy=true] [data-action] { pointer-events: none; opacity: .65; }
+.mso-editor .mso-visual-editor { display: grid; grid-template-columns: 88px minmax(230px, 1fr) 290px; align-items: start; gap: 12px; margin-bottom: 16px; }
+.mso-editor .mso-tools { display: flex; flex-direction: column; gap: 8px; padding: 10px 7px; }
+.mso-editor .mso-tools h3 { margin-bottom: 3px; text-align: center; }
+.mso-editor .mso-tools button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 9px 3px; white-space: normal; font-size: .7rem; line-height: 1.25; min-height: 55px; }
+.mso-editor .mso-tools button i { font-size: 1rem; }
+.mso-editor .mso-tools [hidden] { display: none; }
+.mso-editor .mso-visual-editor .mso-preview-section { margin: 0; min-width: 0; }
+.mso-editor .mso-visual-editor .mso-preview { height: 430px; min-width: 0; border-radius: 5px; }
+.mso-editor .mso-zoom-control { display: flex; align-items: center; gap: 6px; font-size: .72rem; }
+.mso-editor .mso-zoom-control select { min-width: 70px; width: auto; font-size: .73rem; }
+.mso-editor .mso-canvas-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; }
+.mso-editor .mso-canvas-caption .mso-help { margin: 0; text-align: right; }
+.mso-editor .mso-inspector { min-width: 0; max-height: 650px; overflow-y: auto; padding: 12px; }
+.mso-editor .mso-inspector .mso-section-heading { margin-bottom: 7px; }
+.mso-editor .mso-layer-list { display: flex; flex-direction: column; gap: 5px; max-height: 210px; overflow-y: auto; }
+.mso-editor .mso-layer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 3px; border: 1px solid transparent; border-radius: 4px; padding: 2px; }
+.mso-editor .mso-layer-row.selected { background: #26344d; border-color: #7193d9; }
+.mso-editor .mso-layer-select { display: flex; align-items: center; gap: 6px; text-align: left; padding: 3px; border-color: transparent; min-width: 0; background: transparent; }
+.mso-editor .mso-layer-select [data-layer-name] { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .73rem; }
+.mso-editor .mso-layer-type { display: inline-block; width: 15px; color: var(--mso-accent); text-align: center; font-size: .85rem; flex-shrink: 0; }
+.mso-editor .mso-layer-toggle { font-size: .6rem; padding: 3px 4px; min-height: 26px; }
+.mso-editor .mso-layer-toggle[aria-pressed=false] { color: var(--mso-muted); }
+.mso-editor .mso-properties-section { border-top: 1px solid var(--mso-line); margin-top: 13px; padding-top: 12px; }
+.mso-editor .mso-properties-section > h3 { margin-bottom: 9px; }
+.mso-editor .mso-layer-field { margin-top: 8px; font-size: .75rem; min-width: 0; }
+.mso-editor .mso-layer-field:first-child { margin-top: 0; }
+.mso-editor .mso-layer-field input, .mso-editor .mso-layer-field select, .mso-editor .mso-layer-field textarea { font-size: .76rem; margin-top: 3px; }
+.mso-editor .mso-layer-field textarea { width: 100%; min-height: 82px; resize: vertical; color: var(--mso-text); border: 1px solid #434c5f; border-radius: 4px; background: #171b23; padding: 6px; font-family: inherit; }
+.mso-editor .mso-property-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 10px; margin-top: 8px; }
+.mso-editor .mso-property-grid > .mso-layer-field { margin: 0 0 7px; }
+.mso-editor .mso-checkbox-field { display: flex; align-items: center; gap: 6px; }
+.mso-editor .mso-checkbox-field input { width: 15px; min-height: 15px; height: 15px; margin: 0; accent-color: var(--mso-accent); }
+.mso-editor .mso-image-actions, .mso-editor .mso-layer-commands { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.mso-editor .mso-image-actions button, .mso-editor .mso-layer-commands button { font-size: .68rem; min-height: 28px; padding: 3px 6px; }
+.mso-editor .mso-layer-commands { border-top: 1px solid var(--mso-line); padding-top: 10px; }
+.mso-editor .mso-layer-field input:invalid, .mso-editor .mso-layer-field textarea:invalid { border-color: #e59d78; }
+@media (max-width: 1250px) { .mso-editor .mso-layout { grid-template-columns: 165px minmax(0, 1fr); } .mso-editor .mso-main { padding: 14px; } .mso-editor .mso-visual-editor { grid-template-columns: 73px minmax(200px, 1fr) 260px; gap: 9px; } .mso-editor .mso-visual-editor .mso-preview { height: 390px; } .mso-editor .mso-inspector { padding: 9px; } }
+@media (max-width: 1000px) { .mso-editor .mso-visual-editor { grid-template-columns: 70px minmax(220px, 1fr); } .mso-editor .mso-inspector { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 14px; max-height: none; } .mso-editor .mso-properties-section { border-top: 0; border-left: 1px solid var(--mso-line); margin: 0; padding: 0 0 0 12px; } }
+@media (max-width: 900px) { .mso-editor .mso-layout { grid-template-columns: 175px minmax(0, 1fr); } .mso-editor .mso-settings-grid { grid-template-columns: 1fr; } .mso-editor .mso-preset-row { flex-wrap: wrap; } .mso-editor .mso-preset-row select { flex-basis: 100%; } .mso-editor .mso-main { padding: 14px; } }
+.mso-editor .mso-widget-preview-actor { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.mso-editor .mso-binding-warning { color: #ffdda2; border-left: 2px solid #a77f43; padding-left: 8px; }
+.mso-widget-manager .mso-main { height: 100%; }
+.mso-editor .mso-widget-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 18px; }
+.mso-editor .mso-widget-card { min-width: 0; }
+.mso-editor .mso-widget-card .mso-actions { flex-wrap: wrap; margin-top: 10px; }
+.mso-editor .mso-widget-card button { font-size: .75rem; }
+.mso-editor .mso-widget-library-preview { position: relative; height: 180px; overflow: hidden; background: #171b23; border: 1px solid #434c5f; border-radius: 4px; }
+.mso-actor-picker { display: grid; gap: 10px; }
+.mso-actor-picker .mso-actor-list { display: grid; gap: 5px; max-height: 260px; overflow-y: auto; }
+.mso-actor-picker .mso-actor-choice { display: flex; align-items: center; gap: 10px; text-align: left; }
+.mso-actor-picker .mso-actor-choice img { width: 38px; height: 38px; object-fit: cover; border: 0; border-radius: 4px; }
+.mso-editor .mso-animation-controls { min-width: 0; }
+.mso-editor .mso-animation-tests { margin-top: 14px; }
+.mso-editor .mso-test-selection { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.mso-editor .mso-animation-test-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.mso-editor .mso-animation-test-actions button { font-size: .73rem; padding: 5px 8px; }
+.mso-editor .mso-animation-diagnostics { max-height: 250px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .7rem; padding: 10px; background: #121720; border: 1px solid var(--mso-line); }
+.mso-editor .mso-animation-section { margin-top: 13px; border-top: 1px solid var(--mso-line); padding-top: 10px; }
+.mso-editor .mso-animation-section > summary { cursor: pointer; font-size: .86rem; font-weight: 600; }
+.mso-editor .mso-animation-group { margin-top: 9px; padding: 8px; border: 1px solid var(--mso-line); border-radius: 4px; }
+.mso-editor .mso-animation-group > summary { cursor: pointer; font-size: .78rem; color: var(--mso-text); }
+.mso-editor .mso-animation-examples { display: flex; flex-wrap: wrap; align-items: end; gap: 7px; margin: 9px 0; }
+.mso-editor .mso-animation-examples label { flex: 1; }
+.mso-editor .mso-animation-examples button { font-size: .72rem; }
+.mso-editor .mso-animation-error { color: #ffbd9b; font-size: .75rem; margin: 9px 0; }
+.mso-editor .mso-trigger-rule { min-width: 0; margin: 12px 0; padding: 10px; border: 1px solid var(--mso-line); border-radius: 4px; }
+.mso-editor .mso-trigger-rule legend { max-width: 100%; overflow-wrap: anywhere; font-size: .78rem; }
+.mso-editor [data-animation-control]:invalid { border-color: #e59d78; }
+.mso-editor .mso-shared-animations { margin-top: 14px; }
+.mso-editor .mso-widget-pages { margin-bottom: 14px; }
+.mso-editor .mso-widget-pages h4 { margin: 14px 0 7px; font-size: .84rem; }
+.mso-editor .mso-page-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0; }
+.mso-editor .mso-page-actions button { font-size: .73rem; padding: 5px 8px; }
+.mso-editor .mso-cycling-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; align-items: center; }
+.mso-editor .mso-cycling-grid > .mso-layer-field { margin: 0; }
+.mso-editor .mso-carousel-preview { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--mso-line); }
+.mso-editor .mso-carousel-playing .mso-canvas-controls { visibility: hidden; }
+.mso-editor .mso-instance-carousel { border-top: 1px solid var(--mso-line); padding-top: 10px; margin-top: 14px; }
+.mso-editor .mso-instance-carousel h4 { margin: 0 0 10px; font-size: .85rem; }
+.mso-editor .mso-instance-carousel h5 { margin: 14px 0 6px; font-size: .77rem; }
+.mso-editor .mso-carousel-assigned { min-height: 60px; border: 1px dashed #65738a; padding: 8px; border-radius: 4px; }
+.mso-editor .mso-carousel-order-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.mso-editor .mso-carousel-order-row > span { flex-basis: 100%; overflow-wrap: anywhere; font-size: .75rem; }
+.mso-editor .mso-carousel-order-row button, .mso-editor .mso-carousel-assigned > button { font-size: .65rem; min-height: 26px; padding: 3px 5px; }
+.mso-editor .mso-carousel-page-row { margin: 8px 0; padding: 8px; border: 1px solid var(--mso-line); border-radius: 4px; font-size: .75rem; }
+.mso-editor .mso-carousel-page-row .mso-page-actions { margin: 6px 0; }
+.mso-editor .mso-carousel-sequence { max-height: 240px; overflow-y: auto; margin: 8px 0; padding-left: 24px; font-size: .73rem; line-height: 1.65; }
+.mso-editor .mso-carousel-sequence [aria-current=step] { color: var(--mso-accent); font-weight: 600; }
+.mso-editor .mso-shared-animations .mso-animation-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; }
+.mso-live-controls .mso-live-content { overflow-y: auto; padding: 14px; }
+.mso-live-controls .mso-live-list { display: grid; gap: 10px; margin-top: 15px; }
+.mso-live-controls .mso-live-layer { padding: 12px; }
+.mso-live-controls .mso-live-layer strong { overflow-wrap: anywhere; }
+.mso-live-controls .mso-actions { flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.mso-live-controls .mso-actions button, .mso-live-controls .mso-live-rules button { font-size: .74rem; padding: 5px 8px; }
+.mso-live-controls .mso-live-rules { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.mso-live-controls .mso-live-rules > span { flex-basis: 100%; }
+@media (max-width: 1000px) { .mso-editor .mso-shared-animations .mso-animation-controls { grid-template-columns: 1fr; } }

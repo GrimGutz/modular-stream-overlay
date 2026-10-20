@@ -1,0 +1,3 @@
+# Preserve this existing installation byte-for-byte, including mixed line endings.
+# A future normalization should be an explicit, separately reviewed change.
+* -text

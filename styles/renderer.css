@@ -1,0 +1,19 @@
+.mso-viewport { position: relative; width: 100%; height: 100%; overflow: hidden; isolation: isolate; }
+.mso-stage { position: absolute; left: 0; top: 0; overflow: hidden; transform-origin: top left; background: transparent; }
+.mso-stage *, .mso-stage *::before, .mso-stage *::after { box-sizing: border-box; }
+.mso-background { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+.mso-layer, .mso-widget { position: absolute; overflow: hidden; }
+.mso-carousel-page { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+.mso-actor-presentation { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+.mso-layer > img { display: block; width: 100%; height: 100%; border: 0; }
+.mso-text-content { width: 100%; height: 100%; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.2; padding: 0; margin: 0; }
+.mso-character-portrait { display: block; border: 0; }
+.mso-resource-track { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.mso-resource-fill { height: 100%; }
+.mso-resource-label { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; }
+.mso-widget-placeholder { display: grid; place-items: center; border: 1px dashed #94b7ff; color: #c8d1e2; font: 18px sans-serif; }
+html.mso-broadcast, html.mso-broadcast body { margin: 0 !important; padding: 0 !important; width: 100% !important; height: 100% !important; overflow: hidden !important; background: transparent !important; background-image: none !important; }
+html.mso-broadcast body > :not(#mso-output) { display: none !important; }
+html.mso-broadcast::before, html.mso-broadcast::after, html.mso-broadcast body::before, html.mso-broadcast body::after { display: none !important; }
+#mso-output { position: fixed; inset: 0; width: 100vw; height: 100vh; margin: 0; padding: 0; background: transparent; z-index: 2147483647; }
+#mso-output .mso-message { position: absolute; top: 16px; left: 16px; max-width: 600px; padding: 14px 18px; font: 16px/1.5 sans-serif; color: #fff; background: #17232e; border: 1px solid #6b8595; border-radius: 6px; }

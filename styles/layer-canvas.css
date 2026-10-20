@@ -1,0 +1,20 @@
+.mso-editor .mso-design-viewport { position: relative; overflow: auto; touch-action: none; outline: none; }
+.mso-design-surface { position: relative; min-width: 100%; min-height: 100%; overflow: hidden; }
+.mso-canvas-controls { position: absolute; transform-origin: top left; z-index: 1; }
+.mso-layer-hit { position: absolute; transform-origin: center center; cursor: move; user-select: none; border: 0; box-sizing: border-box; }
+.mso-layer-hit.selected { outline: var(--mso-outline-size) solid #a8caff; outline-offset: 0; }
+.mso-layer-hit.locked { cursor: default; }
+.mso-layer-hit.selected.locked { outline-style: dashed; outline-color: #b6bdc9; }
+.mso-layer-selection { position: absolute; transform-origin: center center; outline: var(--mso-outline-size) solid #a8caff; pointer-events: none; }
+.mso-layer-selection.locked { outline-style: dashed; outline-color: #b6bdc9; }
+.mso-layer-selection .mso-resize-handle { pointer-events: auto; }
+.mso-resize-handle { position: absolute; display: block; width: var(--mso-handle-size); height: var(--mso-handle-size); background: #fff; border: var(--mso-outline-size) solid #476fa6; box-sizing: border-box; transform: translate(-50%, -50%); }
+.mso-handle-nw { left: 0; top: 0; cursor: nwse-resize; }
+.mso-handle-n { left: 50%; top: 0; cursor: ns-resize; }
+.mso-handle-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.mso-handle-e { left: 100%; top: 50%; cursor: ew-resize; }
+.mso-handle-se { left: 100%; top: 100%; cursor: nwse-resize; }
+.mso-handle-s { left: 50%; top: 100%; cursor: ns-resize; }
+.mso-handle-sw { left: 0; top: 100%; cursor: nesw-resize; }
+.mso-handle-w { left: 0; top: 50%; cursor: ew-resize; }
+.mso-manipulating, .mso-manipulating * { user-select: none !important; }

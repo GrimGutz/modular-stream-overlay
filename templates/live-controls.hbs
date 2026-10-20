@@ -1,0 +1,24 @@
+<div class="mso-live-content">
+  <p class="mso-help">These controls affect the saved live overlay and OBS immediately. Editor drafts stay private.</p>
+  <label class="mso-field">Active overlay<select data-live-overlay aria-label="Live overlay"><option value="">None — transparent</option>{{#each overlays}}<option value="{{id}}" {{#if active}}selected{{/if}}>{{name}}</option>{{/each}}</select></label>
+  {{#if hasActive}}
+  <div class="mso-live-list">
+    {{#each layers}}
+    <section class="mso-panel mso-live-layer">
+      <div class="mso-section-heading"><strong>{{name}}</strong><span class="mso-muted">{{#if visible}}Visible{{else}}Hidden{{/if}}</span></div>
+      <div class="mso-actions">
+        <button type="button" data-live-command="{{#if visible}}hide{{else}}show{{/if}}" data-layer-id="{{id}}">{{#if visible}}Hide{{else}}Show{{/if}}</button>
+        <button type="button" data-live-command="play" data-layer-id="{{id}}">Play emphasis</button>
+        <button type="button" data-live-command="reset" data-layer-id="{{id}}">Reset effects</button>
+      </div>
+      {{#if rules}}<div class="mso-live-rules"><span class="mso-muted">Manual triggers</span>{{#each rules}}<button type="button" data-live-command="play" data-layer-id="{{../id}}" data-rule-id="{{id}}">{{name}}</button>{{/each}}</div>{{/if}}
+      {{#if hasCarousel}}<div class="mso-live-rules"><span class="mso-muted">Character and page sequence</span>
+        {{#if hasCharacterChoice}}<select data-live-character data-layer-id="{{id}}" aria-label="Select live character"><option value="">Switch to character…</option>{{#each characters}}<option value="{{uuid}}">{{name}}</option>{{/each}}</select>{{/if}}
+        {{#if pages}}<select data-live-page data-layer-id="{{id}}" aria-label="Select live information page"><option value="">Switch to page…</option>{{#each pages}}<option value="{{id}}">{{name}}</option>{{/each}}</select>{{/if}}
+        <div class="mso-actions"><button type="button" data-live-command="previous" data-layer-id="{{id}}">Previous step</button><button type="button" data-live-command="next" data-layer-id="{{id}}">Next step</button><button type="button" data-live-command="pause" data-layer-id="{{id}}">Pause sequence</button><button type="button" data-live-command="resume" data-layer-id="{{id}}">Resume sequence</button><button type="button" data-live-command="reset-sequence" data-layer-id="{{id}}">Reset sequence</button></div>
+      </div>{{/if}}
+    </section>
+    {{else}}<p class="mso-help">The active overlay has no layers yet.</p>{{/each}}
+  </div>
+  {{else}}<p class="mso-help">Select a saved overlay to control its layers.</p>{{/if}}
+</div>
