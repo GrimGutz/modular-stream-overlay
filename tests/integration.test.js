@@ -14,14 +14,15 @@ test("normal game, login, and default stream view are left intact", () => {
   assert.equal(isOverlayRequest(new URL("https://a/foundry/stream?mso=1")), true);
 });
 
-test("viewer must be explicitly selected and use lowest Player role", () => {
+test("viewer must be explicitly selected and may have any role", () => {
   const player = { id: "stream", role: 1, isGM: false };
   assert.equal(isViewerAllowed(player, "stream"), true);
   assert.equal(isViewerAllowed(player, "other"), false);
   assert.equal(isViewerAllowed(player, ""), false);
   assert.equal(isViewerAllowed(undefined, "stream"), false);
-  for (const role of [0, 2, 3, 4]) assert.equal(isViewerAllowed({ ...player, role }, "stream"), false);
-  assert.equal(isViewerAllowed({ ...player, isGM: true }, "stream"), false);
+  // Foundry's own permissions for the account decide what it reads; an Assistant GM observes every Actor.
+  for (const role of [2, 3, 4]) assert.equal(isViewerAllowed({ ...player, role, isGM: role >= 3 }, "stream"), true);
+  assert.match(viewerAccessMessage({ ...player, id: "other" }, "stream"), /selected viewer account/);
   assert.equal(viewerAccessMessage(player, "stream"), "");
   assert.match(viewerAccessMessage(player, ""), /disabled/);
 });

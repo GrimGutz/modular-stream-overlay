@@ -110,9 +110,9 @@ This module uses Foundry's existing authenticated **`/stream`** view and public 
 
 ### One-time account setup
 
-1. In Foundry, create a dedicated user such as **OBS Overlay** with the **Player** role. Give it a password. No assigned character or document ownership is needed. For live widgets, grant this account **Observer** access only to the world Actors intended for the stream.
-2. Leave permissions such as modifying world settings and uploading files disabled for that account. Its role and document access are enforced by Foundry; hiding interface elements does not replace Foundry's permissions.
-3. In the overlay editor, select that user under **Viewer account** and click **Save viewer**. Only the selected lowest-role Player account is accepted by the renderer. GM and Assistant GM accounts cannot render it.
+1. In Foundry, create a dedicated user such as **OBS Overlay** and give it a password. Any role works; Foundry's permissions for that account decide which characters the overlay can read. An **Assistant GM** already observes every Actor, so no per-Actor access is needed. A **Player** or **Trusted Player** needs **Observer** access to the world Actors intended for the stream. No assigned character is needed.
+2. Use this account only for OBS, not the account you play or run the game with. The OBS session can do everything its role allows in Foundry, so keep its password private; with a Player role, leave permissions such as modifying world settings and uploading files disabled. Hiding interface elements does not replace Foundry's permissions.
+3. In the overlay editor, select that user under **Viewer account** and click **Save viewer**. Only the selected account renders the overlay; other users opening `/stream?mso=1` see a message instead.
 
 ### Connect OBS
 
@@ -135,7 +135,7 @@ The renderer uses the configured logical canvas and fits it into the Browser Sou
 
 The GM browser need not stay open after saving. Foundry's server/world and OBS's dedicated session must stay available. On a socket disconnect the scene is cleared; on reconnection the page reloads to fetch authoritative settings. Disabling the viewer clears output and displays setup guidance. An active selection of None produces pure transparency. No assets, settings, or private documents are exported into an unauthenticated endpoint.
 
-If Live Controls times out after updating from 0.5.2, restart Foundry, reopen the world, and refresh both the GM client and the OBS Browser Source. Confirm that the source uses `/stream?mso=1` and is logged in as the selected Player viewer. A viewer logged into an ordinary game tab does not receive temporary stream controls. Automatic cycling and saved overlay updates remain independent of manual commands.
+If Live Controls times out after updating from 0.5.2, restart Foundry, reopen the world, and refresh both the GM client and the OBS Browser Source. Confirm that the source uses `/stream?mso=1` and is logged in as the selected viewer account. A viewer logged into an ordinary game tab does not receive temporary stream controls. Automatic cycling and saved overlay updates remain independent of manual commands.
 
 ### Integration evidence and tradeoffs
 
@@ -148,7 +148,7 @@ The integration was selected after inspecting the installed v14.368 public clien
 - [Foundry issue #14375](https://github.com/foundryvtt/foundryvtt/issues/14375) explains that module HTML is intentionally served as plain text in v14. A standalone `modules/.../overlay.html` is therefore not the integration method.
 - [`ApplicationV2`](https://foundryvtt.com/api/v14/classes/foundry.applications.api.ApplicationV2.html) and [`FilePicker`](https://foundryvtt.com/api/v14/classes/foundry.applications.apps.FilePicker.html) provide the editor and managed image selection/upload.
 
-The tradeoff is a separate authenticated Player session in OBS. It receives whatever data Foundry normally permits that account to access. The module does not turn a Player account into a public, data-free transport; keep its document permissions minimal. Configurations and presets are shared world settings and must contain only stream-safe configuration, never passwords or private notes. Installed extension modules are trusted code and can access the Foundry client themselves.
+The tradeoff is a separate authenticated Foundry session in OBS. It receives whatever data Foundry normally permits that account to access, and an Assistant GM viewer can access everything an Assistant GM can. The module does not turn the viewer account into a public, data-free transport; widgets show only the fields you place on them. Configurations and presets are shared world settings and must contain only stream-safe configuration, never passwords or private notes. Installed extension modules are trusted code and can access the Foundry client themselves.
 
 ## Structure
 

@@ -82,15 +82,16 @@ test("server sender identity is required and payload identities cannot impersona
   assert.equal(f.played.length, 1);
 });
 
-test("only selected opted-in Player streams receive commands, while ordinary game tabs stay silent", async () => {
+test("only the selected viewer's opted-in stream receives commands, while ordinary game tabs stay silent", async () => {
   const f = fixture();
   const normal = f.client(f.viewer), other = f.client(f.outsider, { receiver: true }), stream = f.client(f.viewer, { receiver: true });
   const packet = () => ({ type: "command", viewerId: f.viewer.id, command: f.command() });
   normal.deliver(packet(), f.gm.id); other.deliver(packet(), f.gm.id);
   stream.deliver({ ...packet(), viewerId: f.outsider.id }, f.gm.id);
-  f.viewer.role = 2; stream.deliver(packet(), f.gm.id); f.viewer.role = 1;
   await flush(); assert.equal(f.played.length, 0);
   stream.deliver(packet(), f.gm.id); await flush(); assert.equal(f.played.length, 1);
+  // An Assistant GM viewer is accepted like any other selected account.
+  Object.assign(f.viewer, { role: 3, isGM: true }); stream.deliver(packet(), f.gm.id); await flush(); assert.equal(f.played.length, 2);
 });
 
 test("unknown GM tabs cannot race a command acknowledgment away from the issuing tab", async () => {
@@ -210,7 +211,7 @@ test("pending and in-flight limits bound memory even without acknowledgments", a
 test("authorization, offline state and unavailable sockets fail before emitting", async () => {
   const f = fixture(), player = f.client(f.viewer), game = f.client(f.gm);
   await assert.rejects(player.transport.send(f.command()), /Game Master/);
-  f.viewer.role = 2; await assert.rejects(game.transport.send(f.command()), /Configure a Player/); f.viewer.role = 1;
+  f.viewer.id = ""; await assert.rejects(game.transport.send(f.command()), /Configure an overlay viewer/); f.viewer.id = "viewer";
   f.viewer.active = false; await assert.rejects(game.transport.send(f.command()), /offline/); f.viewer.active = true;
   game.socket.connected = false; await assert.rejects(game.transport.send(f.command()), /unavailable/);
   assert.equal(f.packets.length, 0);

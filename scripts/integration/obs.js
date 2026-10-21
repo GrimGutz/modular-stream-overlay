@@ -9,13 +9,17 @@ export function overlayURL({ origin, getRoute }) {
   return url.href;
 }
 
-/** Only an explicitly selected, lowest-role account can render stream output. */
+/**
+ * Only the explicitly selected account renders stream output. Any role is accepted:
+ * Foundry's own permissions for that account decide which Actors it can read, so an
+ * Assistant GM sees every character without per-Actor grants.
+ */
 export function isViewerAllowed(user, viewerUserId) {
-  return Boolean(viewerUserId && user?.id === viewerUserId && user.role === 1 && !user.isGM);
+  return Boolean(viewerUserId && user?.id === viewerUserId);
 }
 
 export function viewerAccessMessage(user, viewerUserId) {
-  if (!viewerUserId) return "Overlay output is disabled. A GM must select a Player account in the overlay editor.";
-  if (!isViewerAllowed(user, viewerUserId)) return "Overlay output requires the selected Player account. Use OBS Interact to log in through Foundry's Join page.";
+  if (!viewerUserId) return "Overlay output is disabled. A GM must select a viewer account in the overlay editor.";
+  if (!isViewerAllowed(user, viewerUserId)) return "Overlay output requires the selected viewer account. Use OBS Interact to log in through Foundry's Join page.";
   return "";
 }

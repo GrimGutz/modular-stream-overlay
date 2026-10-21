@@ -48,7 +48,7 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 | `getAdapterPreferences()`, `setAdapterPreferences(map)` | Read/set explicit system providers; mutation is GM-only |
 | `installCainPresets()` | GM-only, idempotent installation of Actor-free CAIN examples without activating output |
 | `getFieldMappings()`, `setFieldMappings(value)` | Validated explicit system-field mappings; mutation is GM-only |
-| `getViewerUserId()`, `setViewerUserId(id)` | Read/set selected Player account; mutation is GM-only; empty string disables |
+| `getViewerUserId()`, `setViewerUserId(id)` | Read/set the selected viewer account (any role); mutation is GM-only; empty string disables |
 | `getOBSUrl()`, `getJoinUrl()` | Origin and route-prefix-aware URLs without credentials |
 
 Registration IDs accept printable ASCII letters/digits and `-`, `_`, `.`, `:` (maximum 96 characters, starting with a letter/digit). Namespace your IDs to avoid collisions. Duplicate registrations throw instead of replacing another extension silently.

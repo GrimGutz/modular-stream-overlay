@@ -81,7 +81,7 @@ Unavailable or unauthorized Actors are omitted safely. Empty Actor lists, zero e
 
 Open **Live Controls** from the overlay editor or module settings. A saved widget provides page/character targets, Previous, Next, Pause, Resume, and Reset Sequence. These selectors choose a command target; they do not report the remote widget's current pair or pause state.
 
-Commands use the module's expiring socket transport, compatible with the native stream view in v0.5.3. The receiver verifies Foundry's server-supplied sender identity is a GM and that it is the selected Player account. Unavailable viewers produce an error; old commands are never queued for reconnect. Configuration saves remain separate from temporary playback, and normal sequence steps remain local to OBS. Acknowledgment means the command was accepted, not that a long transition has finished. New requests cancel superseded transitions.
+Commands use the module's expiring socket transport, compatible with the native stream view in v0.5.3. The receiver verifies Foundry's server-supplied sender identity is a GM and that it is the selected viewer account. Unavailable viewers produce an error; old commands are never queued for reconnect. Configuration saves remain separate from temporary playback, and normal sequence steps remain local to OBS. Acknowledgment means the command was accepted, not that a long transition has finished. New requests cancel superseded transitions.
 
 For a GM macro:
 

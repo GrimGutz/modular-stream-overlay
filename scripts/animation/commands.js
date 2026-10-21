@@ -104,7 +104,7 @@ export class AnimationCommands {
     const state = validateState(this.getState());
     this._source(this._target(state.activeOverlayId, layerId), layerId, options);
     const viewer = this.getViewer();
-    if (!isViewerAllowed(viewer, viewer?.id)) throw new Error("Configure a Player overlay viewer account before using live animation controls.");
+    if (!isViewerAllowed(viewer, viewer?.id)) throw new Error("Configure an overlay viewer account before using live animation controls.");
     if (!viewer.active) throw new Error("The overlay viewer is offline. Open or reconnect the OBS browser source, then try again.");
     if (typeof this.send !== "function") throw new Error("The live overlay command transport is unavailable.");
     const createdAt = this.now();

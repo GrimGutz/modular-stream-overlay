@@ -4,7 +4,7 @@
 
 ## Настройка
 
-1. В настройках оверлея выберите отдельный Player для OBS и дайте ему Observer доступ к нужным Characters.
+1. В настройках оверлея выберите отдельную учётную запись для OBS. Подходит любая роль: помощник ведущего уже видит всех персонажей, игроку нужен доступ наблюдателя (Observer) к нужным Characters.
 2. Откройте **Widget Preset Manager → Install CAIN examples**. Будут добавлены два редактируемых дизайна и неактивный пример оверлея. Установка не создаёт Actors, не назначает их автоматически и не переключает эфир.
 3. Откройте **CAIN — Character Examples**, назначьте world Character экземпляру **CAIN — Exorcist Card**. Для нескольких персонажей добавьте UUID в Carousel Settings и выберите Combined.
 4. Основной дизайн содержит четыре страницы: Condition, Resources, Skills, Progression. Портрет, имя, CAT/Psyche и XID остаются общими. **CAIN — Compact Status** показывает короткую карточку со Stress и Psyche Bursts.

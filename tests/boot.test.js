@@ -174,12 +174,10 @@ test("GM live API sends a temporary command through the stream transport and acc
 test("viewer changes, disconnects and corrupt state clear the previous stage", async t => {
   t.mock.method(console, "error", () => {});
   const { output, player, socket, state, values } = await boot();
-  player.role = 2;
-  Hooks.callAll("updateUser", player);
+  await game.settings.set("modular-stream-overlay", "viewerUserId", "another-account");
   await setImmediate();
   assert.equal(output.children[0].className, "mso-message");
-  player.role = 1;
-  Hooks.callAll("updateUser", player);
+  await game.settings.set("modular-stream-overlay", "viewerUserId", player.id);
   await setImmediate();
   assert.equal(output.children[0].className, "mso-stage");
   const saved = structuredClone(values.get("state"));
@@ -205,7 +203,7 @@ test("normal game boot registers settings and API without replacing the interfac
   assert.equal(api.getOBSUrl(), "https://example.invalid/prefix/stream?mso=1");
   await assert.rejects(api.setViewerUserId("viewer"), /Only a GM/);
   game.user = { id: "gm", role: 4, isGM: true };
-  await assert.rejects(api.setViewerUserId("gm"), /dedicated account/);
+  await assert.rejects(api.setViewerUserId("missing-account"), /existing user account/);
   await api.setViewerUserId("");
   assert.equal(api.getViewerUserId(), "");
 });

@@ -95,10 +95,12 @@ test("own unrelated mutations advance a current draft baseline exactly once", as
   assert.equal(editor._conflict, true);
 });
 
-test("viewer choices include only non-GM accounts with exactly the Player role", async () => {
+test("viewer choices include every account that can log in, labelled with its role", async () => {
   const { editor } = fixture();
+  game.users.push({ id: "no-role", name: "Disabled", role: 0, isGM: false });
   const context = await editor._prepareContext({});
-  assert.deepEqual(context.viewerUsers.map(user => user.id), ["viewer", "other-player"]);
+  assert.deepEqual(context.viewerUsers.map(user => user.id), ["viewer", "other-player", "trusted", "assistant", "gm", "bad-role"]);
+  assert(context.viewerUsers.every(user => typeof user.role === "string" && user.role));
   assert.equal(context.viewerUsers[0].selected, true);
   assert.equal(context.viewerUsers[1].selected, false);
 });

@@ -106,7 +106,7 @@ export class StreamCommandTransport {
   send(input) {
     const user = this.getUser(), viewer = this.getViewer();
     if (!user?.isGM) return Promise.reject(new Error("Only a Game Master can control stream animations."));
-    if (!isViewerAllowed(viewer, viewer?.id)) return Promise.reject(new Error("Configure a Player overlay viewer account before using live animation controls."));
+    if (!isViewerAllowed(viewer, viewer?.id)) return Promise.reject(new Error("Configure an overlay viewer account before using live animation controls."));
     if (!viewer.active) return Promise.reject(new Error(`The overlay viewer is offline. ${OPEN_SOURCE}`));
     if (!this.started || this.socket?.connected === false) return Promise.reject(new Error(`The Foundry stream connection is unavailable. ${OPEN_SOURCE}`));
     let command;

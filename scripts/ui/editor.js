@@ -15,6 +15,7 @@ const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applicat
 let services = {};
 const editors = new Set();
 const L = (key, params = {}) => ({ key, params });
+const VIEWER_ROLES = { 1: "Template.RolePlayer", 2: "Template.RoleTrusted", 3: "Template.RoleAssistant", 4: "Template.RoleGamemaster" };
 const BOX_KEYS = ["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"];
 const TEXT_KEYS = ["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize", "accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"];
 const DOT_KEYS = ["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth"];
@@ -233,8 +234,9 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         value, label: uiText(value[0].toUpperCase() + value.slice(1)), selected: value === this._draft?.background.fit
       })),
       opacityPercent: Math.round((this._draft?.background.opacity ?? 1) * 100),
-      viewerUsers: [...game.users].filter(user => !user.isGM && user.role === 1).map(user => ({
-        id: user.id, name: user.name, selected: user.id === viewerId
+      // Any account that can log in may be the viewer; its role decides what it can read.
+      viewerUsers: [...game.users].filter(user => user.role >= 1).map(user => ({
+        id: user.id, name: user.name, role: t(VIEWER_ROLES[user.role] ?? "Template.RolePlayer"), selected: user.id === viewerId
       })),
       viewerConfigured: !!viewerId,
       demoInstalled: state.overlays.some(overlay => overlay.id === "demo-animated-character-showcase"),

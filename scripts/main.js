@@ -281,7 +281,7 @@ Hooks.once("init", () => {
     getViewerUserId,
     async setViewerUserId(id) {
       if (!game.user?.isGM) throw Error("Only a GM can configure the overlay viewer.");
-      if (id !== "" && !isViewerAllowed(game.users.get(id), id)) throw Error("Choose a dedicated account with the Player role.");
+      if (id !== "" && !isViewerAllowed(game.users.get(id), id)) throw Error("Choose an existing user account.");
       return game.settings.set(MODULE_ID, "viewerUserId", id);
     },
     getOBSUrl: () => overlayURL({ origin: window.location.origin, getRoute: foundry.utils.getRoute }),

@@ -44,7 +44,7 @@ test("Players cannot publish and an embedded sender cannot impersonate Foundry's
   assert.equal(f.played.length, 1);
 });
 
-test("only the configured Player's active overlay receiver accepts commands", async () => {
+test("only the configured viewer's active overlay receiver accepts commands", async () => {
   const f = fixture();
   f.setUser(f.gm);
   assert.equal((await f.commands.receive(f.command(), { user: f.gm })).accepted, false);
@@ -52,9 +52,11 @@ test("only the configured Player's active overlay receiver accepts commands", as
   assert.equal((await f.commands.receive(f.command(), { user: f.gm })).accepted, false);
   f.setUser(f.viewer); f.setReceiver(false);
   assert.equal((await f.commands.receive(f.command(), { user: f.gm })).accepted, false);
-  f.setReceiver(true); f.viewer.role = 2;
+  f.setReceiver(true); f.viewer.id = "";
   assert.equal((await f.commands.receive(f.command(), { user: f.gm })).accepted, false);
   assert.equal(f.played.length, 0);
+  Object.assign(f.viewer, { id: "viewer", role: 3, isGM: true });
+  assert.equal((await f.commands.receive(f.command(), { user: f.gm })).accepted, true, "An Assistant GM viewer receives commands");
 });
 
 test("offline and unavailable receivers produce clear errors without queuing or retrying commands", async () => {
