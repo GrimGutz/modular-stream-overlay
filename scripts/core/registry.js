@@ -121,6 +121,10 @@ export class AdapterRegistry extends Registry {
       }));
     }
     const fields = new Map((result.fields ?? []).map(field => [field.id, field]));
+    if (definition.accentField !== undefined) {
+      if (fields.get(definition.accentField)?.type !== "string") throw new TypeError("Adapter accentField must name one of its text fields.");
+      result.accentField = definition.accentField;
+    }
     // A legacy adapter may pair with a mapping or another catalog field. Validate unresolved
     // targets against the complete selected catalog, while rejecting known wrong types here.
     for (const field of fields.values()) if (field.maxField !== undefined

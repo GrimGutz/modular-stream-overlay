@@ -169,12 +169,31 @@ export function unresolvedActorSlots(bundle) {
     .map(slot).filter(value => value !== null))];
 }
 
-/** Preflight the whole batch; existing stores remain the only writers. Active output is preserved. */
-export async function installOverlayBundle(source, { api = globalThis.game?.modules?.get(MODULE_ID)?.api, actors = {}, dryRun = false } = {}) {
+/** Records of a bundle that already exist in the world: designs that would be replaced and overlays that are kept. */
+export function existingBundleRecords(source, api = globalThis.game?.modules?.get(MODULE_ID)?.api) {
+  const bundle = validateOverlayBundle(source);
+  const overlays = new Set(api.store.getState().overlays.map(item => item.id)), presets = new Set(api.widgetPresets.getState().presets.map(item => item.id));
+  return { widgetPresets: bundle.widgetPresets.filter(item => presets.has(item.id)), overlays: bundle.overlays.filter(item => overlays.has(item.id)) };
+}
+
+/**
+ * Preflight the whole batch; existing stores remain the only writers. Active output is preserved.
+ * `updateExisting` explicitly replaces widget designs that share an ID with the bundle and keeps
+ * same-ID overlays untouched, so their layers, text and Actor assignments survive a design update.
+ */
+export async function installOverlayBundle(source, { api = globalThis.game?.modules?.get(MODULE_ID)?.api, actors = {}, dryRun = false, updateExisting = false } = {}) {
   if (!globalThis.game?.user?.isGM) throw new Error("Install overlay bundles as a GM in Foundry.");
   if (typeof dryRun !== "boolean") fail("dryRun must be true or false.");
+  if (typeof updateExisting !== "boolean") fail("updateExisting must be true or false.");
   if (api?.schemaVersion !== SCHEMA_VERSION || !api.store?.saveOverlay || !api.widgetPresets?.save) throw new Error("The compatible overlay module API is not ready.");
   const bundle = validateOverlayBundle(source);
+  const existing = existingBundleRecords(bundle, api);
+  const keptOverlayIds = updateExisting ? existing.overlays.map(item => item.id) : [];
+  const replacedPresetIds = updateExisting ? existing.widgetPresets.map(item => item.id) : [];
+  if (updateExisting) {
+    bundle.overlays = bundle.overlays.filter(item => !keptOverlayIds.includes(item.id));
+    bundle.actorBindings = bundle.actorBindings.filter(binding => !keptOverlayIds.includes(binding.overlayId));
+  }
   actors = clone(object(actors, "Actor choices"));
   const needed = unresolvedActorSlots(bundle);
   for (const key of Object.keys(actors)) if (!bundle.actorSlots.includes(key)) fail(`Unknown Actor choice: ${key}`);
@@ -192,9 +211,9 @@ export async function installOverlayBundle(source, { api = globalThis.game?.modu
   bundle.overlays = bundle.overlays.map(validateOverlay);
   const state = api.store.getState(), presets = api.widgetPresets.getState();
   for (const overlay of bundle.overlays) if (state.overlays.some(item => item.id === overlay.id)) fail(`Overlay ID already exists: ${overlay.id}. Choose a new ID; nothing was installed.`);
-  for (const preset of bundle.widgetPresets) if (presets.presets.some(item => item.id === preset.id)) fail(`Widget preset ID already exists: ${preset.id}. Choose a new ID; nothing was installed.`);
+  for (const preset of bundle.widgetPresets) if (!replacedPresetIds.includes(preset.id) && presets.presets.some(item => item.id === preset.id)) fail(`Widget preset ID already exists: ${preset.id}. Choose a new ID; nothing was installed.`);
   validateState({ ...state, overlays: [...state.overlays, ...bundle.overlays] });
-  validateWidgetPresetState({ ...presets, presets: [...presets.presets, ...bundle.widgetPresets] });
+  validateWidgetPresetState({ ...presets, presets: [...presets.presets.filter(item => !replacedPresetIds.includes(item.id)), ...bundle.widgetPresets] });
   const designs = new Map([...presets.presets, ...bundle.widgetPresets].map(item => [item.id, item]));
   const uuids = new Set();
   for (const overlay of bundle.overlays) for (const layer of overlay.layers) if (layer.type === "character-widget") {
@@ -206,7 +225,7 @@ export async function installOverlayBundle(source, { api = globalThis.game?.modu
     await api.characterData.resolveActor(uuid);
   }
   const summary = { overlayIds: bundle.overlays.map(item => item.id), widgetPresetIds: bundle.widgetPresets.map(item => item.id),
-    actorSlotsResolved: needed, activeOverlayId: state.activeOverlayId, dryRun };
+    replacedWidgetPresetIds: replacedPresetIds, keptOverlayIds, actorSlotsResolved: needed, activeOverlayId: state.activeOverlayId, dryRun };
   if (dryRun) return summary;
   let presetRevision = presets.revision, overlayRevision = state.revision, added = 0;
   try {
@@ -222,32 +241,38 @@ export async function installOverlayBundle(source, { api = globalThis.game?.modu
 export async function importOverlayBundle({ bundle: source, actors = {}, api = globalThis.game?.modules?.get(MODULE_ID)?.api } = {}) {
   if (!globalThis.game?.user?.isGM) throw new Error(t("Authoring.GMOnly"));
   const bundle = validateOverlayBundle(source), content = document.createElement("div");
+  // A newer version of an installed bundle updates its designs; nothing is replaced without this dialog.
+  const existing = existingBundleRecords(bundle, api);
+  const update = existing.widgetPresets.length > 0 || existing.overlays.length > 0;
+  const replaced = new Set(existing.widgetPresets.map(item => item.id)), kept = new Set(existing.overlays.map(item => item.id));
   const summary = document.createElement("p");
-  setText(summary, "Authoring.ImportSummary", { overlays: bundle.overlays.length, presets: bundle.widgetPresets.length });
+  if (update) setText(summary, "Authoring.UpdateSummary", { presets: replaced.size });
+  else setText(summary, "Authoring.ImportSummary", { overlays: bundle.overlays.length, presets: bundle.widgetPresets.length });
   content.append(summary);
   const records = document.createElement("ul");
-  for (const [key, entries] of [["Authoring.OverlayRecord", bundle.overlays], ["Authoring.WidgetRecord", bundle.widgetPresets]]) for (const entry of entries) {
-    const item = document.createElement("li"); setText(item, key, { name: entry.name, id: entry.id }); records.append(item);
+  for (const [entries, key] of [[bundle.overlays, entry => kept.has(entry.id) ? "Authoring.KeepRecord" : "Authoring.OverlayRecord"],
+    [bundle.widgetPresets, entry => replaced.has(entry.id) ? "Authoring.ReplaceRecord" : "Authoring.WidgetRecord"]]) for (const entry of entries) {
+    const item = document.createElement("li"); setText(item, key(entry), { name: entry.name, id: entry.id }); records.append(item);
   }
   content.append(records);
-  const names = unresolvedActorSlots(bundle);
+  const names = unresolvedActorSlots({ ...bundle, actorBindings: bundle.actorBindings.filter(binding => !kept.has(binding.overlayId)) });
   for (const [index, name] of names.entries()) {
     const label = document.createElement("label"), caption = document.createElement("span"); setText(caption, "Authoring.ActorSlot", { name }); label.append(caption);
     const input = document.createElement("input"); input.name = `actor${index}`; input.type = "text"; input.required = true;
     setAttr(input, "placeholder", "Authoring.ActorPlaceholder"); input.defaultValue = actors[name] ?? ""; label.append(input); content.append(label);
   }
   const result = await globalThis.foundry.applications.api.DialogV2.input({ window: { title: t("Authoring.ImportTitle") },
-    content, modal: true, rejectClose: false, ok: { label: t("Authoring.Install") }, render: (_event, dialog) => {
+    content, modal: true, rejectClose: false, ok: { label: t(update ? "Authoring.Update" : "Authoring.Install") }, render: (_event, dialog) => {
       const root = dialog.element, title = root?.querySelector(".window-title");
       if (title) setText(title, "Authoring.ImportTitle");
-      const install = root?.querySelector('[data-action="ok"]'); if (install) setText(install, "Authoring.Install");
+      const install = root?.querySelector('[data-action="ok"]'); if (install) setText(install, update ? "Authoring.Update" : "Authoring.Install");
       localizeDOM(root);
     } });
   if (!result) return { cancelled: true };
   const choices = { ...actors, ...Object.fromEntries(names.map((name, index) => [name, result[`actor${index}`]?.trim()])) };
   let installed;
-  try { installed = await installOverlayBundle(bundle, { api, actors: choices }); }
+  try { installed = await installOverlayBundle(bundle, { api, actors: choices, updateExisting: update }); }
   catch (error) { globalThis.ui?.notifications?.error(errorText(error)); throw error; }
-  globalThis.ui?.notifications?.info(t("Authoring.Installed"));
+  globalThis.ui?.notifications?.info(t(update ? "Authoring.Updated" : "Authoring.Installed"));
   return installed;
 }

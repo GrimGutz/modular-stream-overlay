@@ -585,7 +585,7 @@
       "BoxStyleHelp": "Leave a field empty to keep the default. Colors are hexadecimal, e.g. #111111 or #00000059 with transparency.",
       "CharacterProfiles": "Character profiles…",
       "ProfilesTitle": "Character profiles",
-      "ProfilesHelp": "Values the game system does not store. Each character's profile is shared by every overlay and widget showing that character. Widgets read them as Character profile fields.",
+      "ProfilesHelp": "Values the game system does not store. Each character's profile is shared by every overlay and widget showing that character. Leave the accent empty to use the system's character color (CAIN: the blasphemy color). A full name replaces the name written in parentheses in the Actor name.",
       "ProfileAccent": "Accent color",
       "ProfileFullName": "Full name",
       "ProfileArt": "Full-body art",
@@ -1242,7 +1242,11 @@
       "SecondaryResourceLabel": "Secondary resource label",
       "TertiaryResource": "Tertiary resource",
       "TertiaryResourceMaximum": "Tertiary resource maximum",
-      "TertiaryResourceLabel": "Tertiary resource label"
+      "TertiaryResourceLabel": "Tertiary resource label",
+      "BlasphemyColor": "Blasphemy color",
+      "Callsign": "Callsign (name before parentheses)",
+      "RealName": "Name in parentheses",
+      "CharacterProfileGroup": "Character profile"
     },
     "Widgets": {
       "DesignerTitle": "Character Widget Designer",
@@ -1378,7 +1382,12 @@
       "WidgetRecord": "Widget: {name} ({id})",
       "ActorSlot": "{name} — world Actor UUID (viewer needs Observer)",
       "ActorPlaceholder": "Actor.abc123",
-      "Installed": "Overlay bundle installed. Choose it in the overlay editor; active output was preserved."
+      "Installed": "Overlay bundle installed. Choose it in the overlay editor; active output was preserved.",
+      "UpdateSummary": "This bundle is already installed. Replace {presets} widget designs with this bundle's versions; any edits made to them in the designer are replaced. Existing overlays keep their layers, text and character assignments. The active overlay stays unchanged.",
+      "ReplaceRecord": "Replace widget: {name} ({id})",
+      "KeepRecord": "Keep overlay unchanged: {name} ({id})",
+      "Update": "Update",
+      "Updated": "Widget designs updated. Existing overlays and the active output were kept."
     }
   }
 }

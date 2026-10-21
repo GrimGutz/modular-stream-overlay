@@ -59,7 +59,8 @@ const collectionDefinitions = [
   ["agendaTasks.summary", "Current agenda tasks"],
   ["sinMarks.summary", "Current sin marks"],
   ["agenda.label", "Current agenda name"],
-  ["blasphemy.label", "Current blasphemy names"]
+  ["blasphemy.label", "Current blasphemy names"],
+  ["blasphemy.color", "Blasphemy color"]
 ];
 for (const [group, label] of [["powers", "Power"], ["agendaAbilities", "Agenda ability"]]) {
   for (let index = 1; index <= 3; index++) {
@@ -179,6 +180,28 @@ function summary(items, nameKey, descriptionKey, category) {
   return text.length > MAX_SUMMARY ? `${text.slice(0, MAX_SUMMARY - 1).trimEnd()}…` : text;
 }
 
+const HEX = /^#([\da-f]{6})$/i;
+// Bright sheet yellows (Smother, Vector, Track, Gate) are unreadable on light stream panels.
+export const CAIN_READABLE_YELLOW = "#e8a000";
+const channels = color => [1, 3, 5].map(index => parseInt(color.slice(index, index + 2), 16));
+function brightYellow(color) {
+  const [red, green, blue] = channels(color), max = Math.max(red, green, blue), delta = max - Math.min(red, green, blue);
+  if (max < 200 || delta < 120) return false;
+  const hue = max === red ? 60 * (((green - blue) / delta) % 6) : max === green ? 60 * ((blue - red) / delta + 2) : 60 * ((red - green) / delta + 4);
+  return hue >= 40 && hue <= 70;
+}
+/**
+ * A blasphemy's signature color from its sheet colors. Most catalog entries keep it in
+ * accentColor; some (Smother, Vector) use a black or grey accent with a colored text.
+ * Bright yellows become a darker yellow-orange so captions stay readable.
+ */
+export function cainBlasphemyColor(system = {}) {
+  const candidates = ["accentColor", "textColor", "primaryColor"].map(key => HEX.exec(system?.[key] ?? "")?.[0]?.toLowerCase()).filter(Boolean);
+  const saturated = candidates.find(color => Math.max(...channels(color)) - Math.min(...channels(color)) >= 40);
+  const color = saturated ?? candidates[0] ?? "";
+  return color && brightYellow(color) ? CAIN_READABLE_YELLOW : color;
+}
+
 /** Called only for known selected fields after CAIN version/type and Actor permission checks. */
 export function normalizeCainCollection(actor, field, { user, worldItems = globalThis.game?.items } = {}) {
   if (!SUPPORTED.has(field) || !permittedActor(actor, user)) return null;
@@ -220,6 +243,10 @@ export function normalizeCainCollection(actor, field, { user, worldItems = globa
       return summary(selectedItems([id], actor, user, "agenda", worldItems, { worldOnly: true }), null);
     }
     case "character.cain.blasphemy.label": return summary(items(actor.system.currentBlasphemies, "blasphemy"), "blasphemyName");
+    case "character.cain.blasphemy.color": {
+      const selected = items(actor.system.currentBlasphemies, "blasphemy");
+      return selected ? selected.length ? cainBlasphemyColor(selected[0].system) : "" : null;
+    }
     default: return null;
   }
 }

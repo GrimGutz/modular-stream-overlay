@@ -2,11 +2,20 @@ import { validateAssetPath } from "../core/schema.js";
 
 export const GENERIC_FIELDS = Object.freeze([
   { id: "character.name", label: "Character name", type: "string" },
+  { id: "character.callsign", label: "Callsign (name before parentheses)", type: "string" },
+  { id: "character.realName", label: "Name in parentheses", type: "string" },
   { id: "character.portrait", label: "Profile portrait", type: "image" },
   { id: "character.tokenPortrait", label: "Prototype token artwork", type: "image" },
   { id: "character.uuid", label: "Actor UUID", type: "string" },
   { id: "character.type", label: "Actor type", type: "string" }
 ].map(Object.freeze));
+
+/** "Змей (Хикару Флекс)" → callsign "Змей", real name "Хикару Флекс". Other names are all callsign. */
+export function splitCharacterName(name) {
+  if (typeof name !== "string") return { callsign: null, realName: null };
+  const value = name.slice(0, 10000).trim(), match = /^(.*\S)\s*\(([^()]*)\)$/.exec(value);
+  return match ? { callsign: match[1].trim(), realName: match[2].trim() } : { callsign: value, realName: "" };
+}
 
 export function permittedActor(actor, user) {
   return Boolean(actor && user && typeof actor.testUserPermission === "function" && actor.testUserPermission(user, "OBSERVER"));
@@ -39,6 +48,8 @@ export const genericAdapter = {
     for (const field of fields) {
       switch (field) {
         case "character.name": values[field] = typeof actor.name === "string" ? actor.name.slice(0, 10000) : null; break;
+        case "character.callsign": values[field] = splitCharacterName(actor.name).callsign; break;
+        case "character.realName": values[field] = splitCharacterName(actor.name).realName; break;
         case "character.uuid": values[field] = typeof actor.uuid === "string" ? actor.uuid.slice(0, 128) : null; break;
         case "character.type": values[field] = typeof actor.type === "string" ? actor.type.slice(0, 128) : null; break;
         case "character.portrait": values[field] = (portraitSource === "token" ? safePortrait(actor.prototypeToken?.texture?.src) : null) ?? safePortrait(actor.img); break;

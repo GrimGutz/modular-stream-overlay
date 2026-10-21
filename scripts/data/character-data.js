@@ -8,7 +8,9 @@ import { PROFILE_FIELDS, profileValue, validateCharacterProfiles } from "./profi
 
 const WORLD_ACTOR = /^Actor\.[A-Za-z0-9_-]{1,64}$/;
 const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/;
-const IDENTITY_FIELDS = new Set(["character.name", "character.portrait", "character.tokenPortrait", "character.uuid", "character.type"]);
+const IDENTITY_FIELDS = new Set(["character.name", "character.callsign", "character.realName", "character.portrait", "character.tokenPortrait", "character.uuid", "character.type"]);
+const ACCENT = "character.profile.accent", REAL_NAME = "character.realName";
+const COLOR = /^#(?:[\da-f]{6}|[\da-f]{8})$/i;
 const FORBIDDEN = new Set(["__proto__", "prototype", "constructor"]);
 const RESOLUTION_ERRORS = new Set([
   "Configure an overlay viewer account before assigning a character.",
@@ -241,7 +243,10 @@ export class CharacterDataService {
       const selected = supported.filter(field => fieldStatus[field] === "available");
       const deriveHealthPercent = selected.includes("character.hp.percent") && definitions.get("character.hp.percent")?.providerId !== "mapping"
         && definitions.get("character.hp.current")?.type === "number" && definitions.get("character.hp.max")?.type === "number";
-      const readFields = deriveHealthPercent ? [...new Set([...selected, "character.hp.current", "character.hp.max"])] : selected;
+      // An unset profile accent uses the system adapter's character color, read but not returned.
+      const accentSource = selected.includes(ACCENT) ? selection.selected?.accentField : undefined;
+      const accentReadable = accentSource && definitions.get(accentSource)?.providerId === selection.selected.id && definitions.get(accentSource)?.status === "available";
+      const readFields = [...new Set([...selected, ...(deriveHealthPercent ? ["character.hp.current", "character.hp.max"] : []), ...(accentReadable ? [accentSource] : [])])];
       const resolved = {};
       let failed = false;
       for (const adapter of [selection.generic, selection.selected].filter(Boolean)) {
@@ -259,11 +264,15 @@ export class CharacterDataService {
         catch { resolved[mapping.id] = null; failed = true; }
       }
       const profileFields = readFields.filter(field => definitions.get(field)?.providerId === "profile");
-      if (profileFields.length) {
+      if (profileFields.length || selected.includes(REAL_NAME)) {
         const profiles = this._profiles();
         for (const field of profileFields) resolved[field] = safeScalar(profileValue(profiles, actor.uuid, field), definitions.get(field).type)
           // Without separate art, a full-body slot shows the Actor's own portrait.
           ?? (field === "character.profile.art" ? safePortrait(actor.img) : null) ?? "";
+        if (resolved[ACCENT] === "" && accentReadable) resolved[ACCENT] = COLOR.test(resolved[accentSource] ?? "") ? resolved[accentSource] : "";
+        // A profile full name replaces the name written in parentheses.
+        const fullName = profileValue(profiles, actor.uuid, "character.profile.fullName");
+        if (fullName && selected.includes(REAL_NAME) && definitions.get(REAL_NAME)?.status === "available") resolved[REAL_NAME] = fullName;
       }
       if (deriveHealthPercent) {
         const current = resolved["character.hp.current"], max = resolved["character.hp.max"];

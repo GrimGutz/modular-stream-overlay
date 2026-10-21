@@ -13,6 +13,8 @@ export const cainAdapter = {
   id: "cain", label: "CAIN character resources", systemId: "cain",
   interfaceVersion: 1, testedSystemVersions: [CAIN_SYSTEM_VERSION],
   fields: CAIN_FIELDS, resources: CAIN_RESOURCES,
+  // Characters take their stream accent from their blasphemy unless a profile sets one.
+  accentField: "character.cain.blasphemy.color",
   affectsChange: cainCollectionAffected,
   normalize(actor, { user, fields = [], systemVersion, worldItems } = {}) {
     if (!Array.isArray(fields) || !permittedActor(actor, user)) return null;

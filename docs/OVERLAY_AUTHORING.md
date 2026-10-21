@@ -94,7 +94,9 @@ Colors are hexadecimal; 8-digit colors such as `#00000059` carry transparency. A
 
 ### Character profiles
 
-`character.profile.accent`, `character.profile.fullName` and `character.profile.art` come from the module's **Character profiles** world setting, not from the game system. A GM edits them from a widget instance (**Character profiles…**); one profile per world Actor is shared by every overlay. Unset values are empty text, and `character.profile.art` falls back to the Actor portrait. Layers with `accent: true` request the accent automatically and keep their own color when it is unset.
+`character.profile.accent`, `character.profile.fullName` and `character.profile.art` come from the module's **Character profiles** world setting, not from the game system. A GM edits them from a widget instance (**Character profiles…**); one profile per world Actor is shared by every overlay. An unset accent uses the system adapter's character color (CAIN: the blasphemy color); without either it is empty and layers with `accent: true` keep their own color. `character.profile.art` falls back to the Actor portrait.
+
+Actor names written as `Callsign (First Last)` provide `character.callsign` (the part before the parentheses) and `character.realName` (the part inside). A name without parentheses is entirely the callsign, with an empty real name. A profile full name replaces `character.realName`.
 
 Use flat properties such as `fontSize: 28` and `rotation: 12`; there are no `style`, `position`, `transform`, `resourceId`, `actorName` or arbitrary CSS properties. Font weights are strings `"400"`, `"600"`, `"700"`; fonts are Arial, Verdana, Georgia, Times New Roman, Courier New or Trebuchet MS. Text alignment is left/center/right. Image fitting is cover/contain/stretch; portraits accept cover/contain. Portrait artwork selects `profile` or `token` (prototype-token artwork).
 
@@ -160,6 +162,8 @@ await installOverlayBundle(bundle, { actors: { hero: "Actor.ACTUAL_ID" }, dryRun
 // After reviewing the validation result:
 await installOverlayBundle(bundle, { actors: { hero: "Actor.ACTUAL_ID" } });
 ```
+
+To update designs from a newer bundle, run the same import again. When widget presets or overlays with the bundle's IDs already exist, the dialog lists the designs it will replace and the overlays it keeps, and its button becomes **Update**. Replaced presets lose edits made to them in the designer; kept overlays retain their layers, text and Actor assignments, and need no Actor choices. Programmatically this is `installOverlayBundle(bundle, { updateExisting: true })`; without it, existing IDs are still rejected.
 
 `dryRun` validates without installing. Generation/CLI validation cannot confirm the target world's existing IDs, referenced presets, Actors or permissions; runtime validation performs those checks. Existing overlay/preset ID collisions are rejected. Use fresh IDs in the source and regenerate rather than overwriting another design. Installation uses the existing stores, adds the bundle records and leaves the active overlay unchanged. Multiple store writes are not one atomic transaction: if a write fails, inspect which new records were saved before retrying. Select the new overlay for preview and, when ready, choose it in **Active on stream** separately.
 

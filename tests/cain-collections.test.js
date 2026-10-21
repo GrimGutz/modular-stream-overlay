@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cainAdapter } from "../scripts/adapters/cain.js";
-import { cainPlainText, cainCatText, CAIN_COLLECTION_FIELDS } from "../scripts/adapters/cain-collections.js";
+import { cainPlainText, cainCatText, cainBlasphemyColor, CAIN_COLLECTION_FIELDS } from "../scripts/adapters/cain-collections.js";
 import { AdapterRegistry } from "../scripts/core/registry.js";
 import { genericAdapter } from "../scripts/adapters/generic.js";
 import { CharacterDataService } from "../scripts/data/character-data.js";
@@ -24,7 +24,8 @@ function fixture() {
     item("ability", "agendaAbility", "Ability", { abilityName: "Care", abilityDescription: "Protect an ally" }),
     item("ordinary", "agendaTask", "Ordinary", { task: "Put people first" }), item("bold", "agendaTask", "Bold", { task: "Do no harm" }),
     item("mark", "sinMark", "Marked hand", { bodyPartName: "Hand" }), item("agenda", "agenda", "Agenda", { agendaName: "Temperance" }),
-    item("blasphemy", "blasphemy", "Blasphemy", { blasphemyName: "Suppression" })]) world.set(record.id, record);
+    // Catalog Smother colors: a grey accent with the signature color in its text color.
+    item("blasphemy", "blasphemy", "Blasphemy", { blasphemyName: "Suppression", primaryColor: "#000000", accentColor: "#8f8f8f", textColor: "#ffe100" })]) world.set(record.id, record);
   const normalize = (requested = fields, options = {}) => cainAdapter.normalize(actor, { user: viewer, fields: requested, systemVersion: "1.3.26", worldItems: world, ...options });
   return { actor, world, normalize };
 }
@@ -37,7 +38,7 @@ test("CAIN selected collections resolve embedded edits before world Items into b
     [id("agendaAbilities.summary")]: "Care\nProtect an ally",
     [id("agendaTasks.summary")]: "▸ Put people first\n◆ Do no harm",
     [id("sinMarks.summary")]: "Marked hand",
-    [id("agenda.label")]: "Agenda", [id("blasphemy.label")]: "Suppression",
+    [id("agenda.label")]: "Agenda", [id("blasphemy.label")]: "Suppression", [id("blasphemy.color")]: "#e8a000",
     [id("powers.entry1.name")]: "Personal power", [id("powers.entry1.description")]: "Personal edit",
     [id("powers.entry1.preview")]: "Personal edit",
     [id("powers.entry2.name")]: "Legacy power", [id("powers.entry2.description")]: "World description",
@@ -55,6 +56,18 @@ test("CAIN selected collections resolve embedded edits before world Items into b
   assert.deepEqual(actor.system, before);
   assert(!JSON.stringify(normalize()).includes("Unrequested private"));
   assert(!JSON.stringify(normalize()).includes("Wrong world"));
+});
+
+test("blasphemy color picks the first saturated sheet color and stays empty without a blasphemy", () => {
+  assert.equal(cainBlasphemyColor({ accentColor: "#0064FF", textColor: "#ffffff" }), "#0064ff");
+  assert.equal(cainBlasphemyColor({ accentColor: "#000000", textColor: "#ffdc00", primaryColor: "#333333" }), "#e8a000", "Bright yellow becomes a readable yellow-orange");
+  assert.equal(cainBlasphemyColor({ accentColor: "#f79646" }), "#f79646", "Orange is not treated as yellow");
+  assert.equal(cainBlasphemyColor({ accentColor: "#aaff00" }), "#aaff00", "Lime is not treated as yellow");
+  assert.equal(cainBlasphemyColor({ accentColor: "#555555", textColor: "#ffffff" }), "#555555", "Greyscale sheets keep their accent");
+  assert.equal(cainBlasphemyColor({ accentColor: "magenta" }), "");
+  const { actor, normalize } = fixture();
+  actor.system.currentBlasphemies = [];
+  assert.equal(normalize([id("blasphemy.color")])[id("blasphemy.color")], "");
 });
 
 test("agenda caption matches the actual Character sheet document name, including translated and personal names", () => {

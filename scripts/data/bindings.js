@@ -38,10 +38,14 @@ export function renderTemplateLines(template, values = {}, { fallback = "—", l
   const source = typeof template === "string" ? template.slice(0, 10000) : "";
   const lines = [];
   for (const line of source.split("\n")) {
-    if (hideEmptyLines && [...line.matchAll(TOKEN)].some(match => blank(values?.[match[1]]))) continue;
+    const tokens = [...line.matchAll(TOKEN)];
+    if (hideEmptyLines && tokens.some(match => blank(values?.[match[1]]))) continue;
     const parts = richText ? line.split("**") : [line];
-    lines.push(parts.map((part, index) => ({ text: renderTemplate(part, values, fallback, { labels }), strong: index % 2 === 1 }))
-      .filter(segment => segment.text));
+    const segments = parts.map((part, index) => ({ text: renderTemplate(part, values, fallback, { labels }), strong: index % 2 === 1 }))
+      .filter(segment => segment.text);
+    // A value label can also blank a field line, e.g. mapping a system's "—" to nothing.
+    if (hideEmptyLines && tokens.length && segments.every(segment => !segment.text.trim())) continue;
+    lines.push(segments);
   }
   return lines;
 }

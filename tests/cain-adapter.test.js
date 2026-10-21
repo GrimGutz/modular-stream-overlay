@@ -10,8 +10,8 @@ const normalize = (actor, fields, options = {}) => cainAdapter.normalize(actor, 
 test("CAIN 1.3.26 exposes the complete prepared scalar projection without mutating the Actor", () => {
   const actor = createCainCharacter(), before = structuredClone(actor.system);
   const fields = Object.keys(CAIN_EXPECTED_VALUES);
-  assert.equal(cainAdapter.fields.length, 83);
-  assert.equal(new Set(cainAdapter.fields.map(field => field.id)).size, 83);
+  assert.equal(cainAdapter.fields.length, 84);
+  assert.equal(new Set(cainAdapter.fields.map(field => field.id)).size, 84);
   assert.deepEqual(new Set(cainAdapter.fields.map(field => field.id)), new Set([...fields, ...CAIN_COLLECTION_FIELDS.map(field => field.id)]));
   for (const field of cainAdapter.fields) assert.doesNotThrow(() => validateCharacterBinding(field.id));
   assert.deepEqual(normalize(actor, fields), CAIN_EXPECTED_VALUES);

@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { generateOverlayBundle, validateOverlayBundle, installOverlayBundle } from "../scripts/authoring/bundle.js";
+import { generateOverlayBundle, validateOverlayBundle, installOverlayBundle, existingBundleRecords } from "../scripts/authoring/bundle.js";
 import { MODULE_ID, SCHEMA_VERSION, WIDGET_PRESET_SCHEMA_VERSION, createState, createOverlay,
   validateOverlay, validateWidgetPreset } from "../scripts/core/schema.js";
 import { OverlayStore, SETTINGS_KEY } from "../scripts/core/store.js";
@@ -178,6 +178,30 @@ test("dry run writes nothing, then real stores install ordered Actors while pres
   assert.equal(savedLayer.carousel.actorStartUuid, "Actor.companion");
   assert.equal(savedLayer.actorBindings, undefined);
   assert.deepEqual(bundle, portable, "Installation metadata and slot replacement must not mutate the portable bundle");
+});
+
+test("a newer bundle explicitly replaces its installed designs and keeps installed overlays untouched", async t => {
+  gmContext(t);
+  const fixture = memoryStores();
+  const first = generateOverlayBundle(await orderedSource(), { actors: actorChoices });
+  await installOverlayBundle(first, { api: fixture.api });
+  const installedOverlay = structuredClone(fixture.api.store.getState().overlays.find(overlay => overlay.id === first.overlays[0].id));
+  installedOverlay.name = "Edited in the designer";
+  await fixture.api.store.saveOverlay(installedOverlay);
+  const newer = generateOverlayBundle(await orderedSource());
+  newer.widgetPresets[0].name = "Newer design";
+  assert.deepEqual(existingBundleRecords(newer, fixture.api), { widgetPresets: [newer.widgetPresets[0]], overlays: [newer.overlays[0]] });
+  await assert.rejects(installOverlayBundle(newer, { api: fixture.api, actors: actorChoices }), /already exists/, "Replacement is never implicit");
+  const writes = fixture.writes.length;
+  const result = await installOverlayBundle(newer, { api: fixture.api, updateExisting: true });
+  assert.deepEqual(result.replacedWidgetPresetIds, [newer.widgetPresets[0].id]);
+  assert.deepEqual(result.keptOverlayIds, [newer.overlays[0].id]);
+  assert.deepEqual(result.actorSlotsResolved, [], "Kept overlays need no Actor choices");
+  assert.deepEqual(fixture.writes.slice(writes).map(write => write.key), [WIDGET_SETTINGS_KEY]);
+  assert.equal(fixture.api.widgetPresets.getState().presets.find(preset => preset.id === newer.widgetPresets[0].id).name, "Newer design");
+  assert.equal(fixture.api.widgetPresets.getState().presets.filter(preset => preset.id === newer.widgetPresets[0].id).length, 1);
+  assert.equal(fixture.api.store.getState().overlays.find(overlay => overlay.id === first.overlays[0].id).name, "Edited in the designer");
+  assert.deepEqual(fixture.api.widgetPresets.getState().presets.find(preset => preset.id === fixture.existingPreset.id), validateWidgetPreset(fixture.existingPreset));
 });
 
 test("collisions, missing presets, unresolved slots, and viewer permission failures preflight before any settings write", async t => {

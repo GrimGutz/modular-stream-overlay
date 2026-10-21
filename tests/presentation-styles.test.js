@@ -142,3 +142,25 @@ test("character profiles validate and resolve as shared fields with empty defaul
   assert.equal((await data.resolve("Actor.one", ["character.profile.accent"])).values["character.profile.accent"], "", "Invalid settings expose no stale values");
   assert.equal(new CharacterDataService({ adapters: registry, hooks: null }).fieldDefinitions().some(field => field.id === "character.profile.accent"), false);
 });
+
+test("callsign and real name split the Actor name, and the accent defaults to the system color", async () => {
+  const user = { id: "viewer" };
+  const actors = [["one", "Змей (Хикару Флекс)"], ["two", "Глист"]].map(([id, name]) => ({ uuid: `Actor.${id}`, documentName: "Actor", type: "character", name, system: {},
+    testUserPermission: (viewer, permission) => viewer?.id === user.id && permission === "OBSERVER" }));
+  const registry = new AdapterRegistry(); registry.register(genericAdapter);
+  registry.register({ id: "colors", label: "Colors", systemId: "test", accentField: "character.test.color",
+    fields: [{ id: "character.test.color", label: "Color", type: "string" }],
+    normalize: (actor, { fields }) => Object.fromEntries(fields.map(field => [field, actor.uuid === "Actor.one" ? "#ffe100" : "not a color"])) });
+  assert.throws(() => registry.register({ id: "bad", label: "Bad", systemId: "other", accentField: "character.missing", normalize: () => ({}) }), /accentField/);
+  let profiles = {};
+  const data = new CharacterDataService({ adapters: registry, getUser: () => user, getSystemId: () => "test", getActors: () => ({ contents: actors }),
+    resolveUuid: async uuid => actors.find(actor => actor.uuid === uuid), hooks: null, getProfiles: () => profiles });
+  const fields = ["character.callsign", "character.realName", ACCENT_FIELD];
+  assert.deepEqual((await data.resolve("Actor.one", fields)).values, { "character.callsign": "Змей", "character.realName": "Хикару Флекс", [ACCENT_FIELD]: "#ffe100" });
+  assert.deepEqual((await data.resolve("Actor.two", fields)).values, { "character.callsign": "Глист", "character.realName": "", [ACCENT_FIELD]: "" });
+  profiles = { "Actor.one": { accent: "#0064ff", fullName: "Другое Имя" } };
+  assert.deepEqual((await data.resolve("Actor.one", fields)).values, { "character.callsign": "Змей", "character.realName": "Другое Имя", [ACCENT_FIELD]: "#0064ff" },
+    "A character profile overrides both derived values");
+  assert.deepEqual(renderTemplateLines("{character.s|label}\n**{character.n}**", { "character.s": "—", "character.n": "Змей" },
+    { labels: parseValueLabels("—="), richText: true, hideEmptyLines: true }), [[{ text: "Змей", strong: true }]], "A label can blank and hide a system placeholder line");
+});
