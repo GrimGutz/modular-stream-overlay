@@ -12,12 +12,54 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
   let disposed = false, generation = 0;
   let previousValues = {}, actualValues = {}, displayValues = {}, resourceAvailable = false;
   let displayedPercent = 0;
-  let image = null, track = null, fill = null, label = null, text = null;
+  let image = null, track = null, fill = null, label = null, text = null, dotRow = null;
+  let dotCount = 0;
   const numberFields = requestedFields(layer).filter(field => layer.type !== "character-portrait" && (layer.type !== "resource-bar" || layer.showValue));
   const displayedNumbers = new Map(), numberTokens = new Map(), numberKeys = new Set(), forcedFields = new Map();
   const keyFor = field => `component:${layer.id}:${field}`;
   const settings = () => motion?.settings?.transition ?? {};
   const finite = value => typeof value === "number" && Number.isFinite(value);
+  const redrawDots = percent => {
+    if (!dotRow || !dotCount) return;
+    const units = Math.max(0, Math.min(dotCount, percent / 100 * dotCount));
+    for (let index = 0; index < dotCount; index++) {
+      const dot = dotRow.children[index], fraction = Math.round(Math.max(0, Math.min(1, units - index)) * 1e9) / 1e9;
+      dot.dataset.resourceFill = String(fraction);
+      dot.style.backgroundColor = fraction === 1 ? layer.foregroundColor : "transparent";
+      dot.style.backgroundImage = fraction > 0 && fraction < 1
+        ? `linear-gradient(to right, ${layer.foregroundColor} ${fraction * 100}%, transparent ${fraction * 100}%)` : "none";
+    }
+  };
+  const prepareDots = (current, maximum) => {
+    // One Document value can never allocate an unbounded number of DOM nodes.
+    const dots = layer.display === "dots" && resourceAvailable && Number.isInteger(maximum) && maximum <= 60;
+    const unavailable = layer.display === "dots" && !resourceAvailable;
+    track.className = `mso-resource-track${dots || unavailable ? " mso-resource-dots" : ""}`;
+    track.dataset.resourceDisplay = dots ? "dots" : unavailable ? "unavailable" : "bar";
+    fill.style.display = dots || unavailable ? "none" : "";
+    if (dotRow) dotRow.style.display = dots ? "" : "none";
+    if (label) label.style.display = resourceAvailable && !layer.showValue ? "none" : "";
+    if (!dots) return;
+    if (!dotRow) {
+      dotRow = document.createElement("div"); dotRow.className = "mso-resource-dot-row";
+      // Keep the optional numeric label after the circles without overlaying their fill.
+      track.replaceChildren(fill, dotRow, ...(label ? [label] : []));
+    }
+    if (dotCount !== maximum) {
+      dotCount = maximum;
+      const dots = Array.from({ length: dotCount }, () => {
+        const dot = document.createElement("span"); dot.className = "mso-resource-dot";
+        dot.style.borderColor = layer.backgroundColor; return dot;
+      });
+      dotRow.replaceChildren(...dots);
+    }
+    const reserved = layer.showValue ? Math.min(layer.width * .55, `${current} / ${maximum}`.length * layer.fontSize * .62 + 8) : 0;
+    const available = Math.max(1, layer.width - reserved), unit = available / maximum;
+    const gap = Math.min(8, unit * .3), diameter = Math.max(.5, Math.min(32, layer.height, (available - gap * (maximum - 1)) / maximum));
+    dotRow.style.gap = `${gap}px`;
+    for (const dot of dotRow.children) { dot.style.width = `${diameter}px`; dot.style.height = `${diameter}px`; }
+    redrawDots(displayedPercent);
+  };
   const invalidate = field => {
     numberTokens.set(field, (numberTokens.get(field) ?? 0) + 1);
     motion?.controller?.cancelNumber?.(keyFor(field), { finish: false });
@@ -121,12 +163,13 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
         fill.className = "mso-resource-fill";
         fill.style.backgroundColor = layer.foregroundColor;
         track.append(fill);
-        if (layer.showValue) {
+        if (layer.showValue || layer.display === "dots") {
           label = textElement(layer, "");
           label.className += " mso-resource-label";
           track.append(label);
         }
       }
+      prepareDots(current, maximum);
       const targetPercent = resourceAvailable ? Math.max(0, Math.min(100, current / maximum * 100)) : 0;
       const barField = "$bar", token = (numberTokens.get(barField) ?? 0) + 1;
       const previousPercent = finite(previousValues[layer.binding]) && finite(previousValues[layer.maxBinding]) && previousValues[layer.maxBinding] > 0
@@ -135,6 +178,7 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
         if (disposed || numberTokens.get(barField) !== token) return;
         displayedPercent = value;
         fill.style.width = `${value}%`;
+        redrawDots(value);
       };
       if (resourceAvailable && previouslyAvailable && settings().bar && targetPercent !== previousPercent && motion?.controller?.transitionNumber) {
         numberTokens.set(barField, token);
@@ -144,6 +188,7 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
         invalidate(barField);
         displayedPercent = targetPercent;
         fill.style.width = `${targetPercent}%`;
+        redrawDots(targetPercent);
       }
       if (!previouslyAvailable) previousValues = {};
       updateNumbers();

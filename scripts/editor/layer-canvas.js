@@ -1,4 +1,5 @@
 import { OverlayRenderer } from "../render/renderer.js";
+import { setAttr } from "../ui/i18n.js";
 import { clone } from "../core/schema.js";
 import { nativePoint, moveGeometry, resizeGeometry, shortcutCommand } from "./geometry.js";
 
@@ -22,7 +23,7 @@ export class LayerCanvas {
     this.listeners = [];
     this.host.classList.add("mso-design-viewport");
     this.host.tabIndex = 0;
-    this.host.setAttribute("aria-label", "Overlay design canvas. Select layers, drag, or use arrow keys.");
+    setAttr(this.host, "aria-label", "Canvas.Description");
     this.surface = document.createElement("div");
     this.surface.className = "mso-design-surface";
     this.host.replaceChildren(this.surface);
@@ -112,7 +113,8 @@ export class LayerCanvas {
       box.dataset.layerId = layer.id;
       if (layer.id === this.selectedId) box.classList.add("selected");
       if (layer.locked) box.classList.add("locked");
-      box.title = `${layer.name}${layer.locked ? " (locked)" : ""}`;
+      if (layer.locked) setAttr(box, "title", "Canvas.LockedLayer", { name: layer.name });
+      else box.title = layer.name;
       this.boxGeometry(box, layer);
       this.controls.append(box);
     }

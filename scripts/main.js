@@ -3,8 +3,9 @@ import { OverlayStore, registerSettings } from "./core/store.js";
 import { WidgetRegistry, AdapterRegistry } from "./core/registry.js";
 import { genericAdapter } from "./adapters/generic.js";
 import { cainAdapter } from "./adapters/cain.js";
+import { dnd5eAdapter } from "./adapters/dnd5e.js";
 import { WidgetPresetStore, registerWidgetSettings } from "./core/widget-presets.js";
-import { CharacterDataService } from "./data/character-data.js";
+import { CharacterDataService, validateAdapterPreferences } from "./data/character-data.js";
 import { validateMappings } from "./data/mappings.js";
 import { OverlayRenderer } from "./render/renderer.js";
 import { OverlayEditor, configureEditor, refreshEditors } from "./ui/editor.js";
@@ -18,7 +19,10 @@ import { effectiveWidgetMotion, refreshAnimationPreferences, registerAnimationAc
 import { configureLiveControls, openLiveControls, refreshLiveControls, LiveControls } from "./ui/live-controls.js";
 import { resolveCarouselSettings } from "./carousel/schema.js";
 import { installDemo } from "./demo/install.js";
+import { installCainPresets } from "./demo/cain.js";
 import { DEMO_CHARACTERS } from "./demo/data.js";
+import { t, errorText, setText, localizeSetting, registerLocalization, refreshLanguage, localizeSettingsDOM,
+  getLanguage, getLanguagePreference, setLanguagePreference } from "./ui/i18n.js";
 
 const broadcast = isOverlayRequest(window.location);
 // Set this before Foundry's stream chat renders. Join and normal game pages stay usable.
@@ -28,6 +32,7 @@ const widgets = new WidgetRegistry();
 const adapters = new AdapterRegistry();
 adapters.register(genericAdapter);
 adapters.register(cainAdapter);
+adapters.register(dnd5eAdapter);
 let store;
 let widgetPresets;
 let characterData;
@@ -47,10 +52,15 @@ const animationContext = {
   reducedMotion: () => game.settings.get(MODULE_ID, "respectReducedMotion") !== false && Boolean(reducedMotion?.matches)
 };
 reducedMotion?.addEventListener?.("change", refreshAnimationPreferences);
+// Commands cross PCs (GM -> OBS); Foundry's server-synchronized clock avoids local drift.
+function serverNow() {
+  const time = game.time?.serverTime;
+  return Number.isFinite(time) ? Math.round(time) : Date.now();
+}
 
 function notifyError(error) {
   console.error("Modular Stream Overlay |", error);
-  if (game.user?.isGM) ui.notifications?.error(`Modular Stream Overlay: ${error.message}`);
+  if (game.user?.isGM) ui.notifications?.error(`Modular Stream Overlay: ${errorText(error)}`);
 }
 
 function getViewerUserId() { return game.settings.get(MODULE_ID, "viewerUserId"); }
@@ -69,21 +79,44 @@ function showMessage(message) {
   output.append(element);
 }
 
-async function refreshOutput() {
+// Widget preset IDs reachable from the on-air overlay, including presets nested in presets.
+function usedPresets(overlay) {
+  const all = new Map((widgetPresets.list() ?? []).map(preset => [preset.id, preset]));
+  const used = new Map(), pending = [overlay];
+  while (pending.length) {
+    const value = pending.pop();
+    if (Array.isArray(value)) { pending.push(...value); continue; }
+    if (!value || typeof value !== "object") continue;
+    for (const [key, entry] of Object.entries(value)) {
+      if (key === "presetId" && typeof entry === "string" && all.has(entry) && !used.has(entry)) {
+        used.set(entry, all.get(entry)); pending.push(all.get(entry));
+      } else if (entry && typeof entry === "object") pending.push(entry);
+    }
+  }
+  return [...used.keys()].sort().map(id => used.get(id));
+}
+
+let outputSignature = null;
+async function refreshOutput({ skipUnchanged = false } = {}) {
   if (!broadcast || !streamReady || status === "disconnected" || status === "shutdown") return;
   try {
     const denied = viewerAccessMessage(game.user, getViewerUserId());
+    const state = denied ? null : store.getState();
+    const overlay = state?.overlays.find(item => item.id === state.activeOverlayId) ?? null;
+    // Saves of other overlays or unused presets must not rebuild the stage, restart carousels or re-resolve Actors.
+    const signature = JSON.stringify({ viewer: getViewerUserId(), denied, overlay, presets: overlay ? usedPresets(overlay) : [] });
+    if (skipUnchanged && signature === outputSignature) return;
+    outputSignature = signature;
     if (denied) {
       await renderer.render(null);
       showMessage(denied);
       return;
     }
-    const state = store.getState();
-    const overlay = state.overlays.find(item => item.id === state.activeOverlayId) ?? null;
     await renderer.render(overlay, { animateExit: true });
     // A null active selection is an intentional transparent scene, with no status text on air.
     showMessage("");
   } catch (error) {
+    outputSignature = null;
     await renderer.render(null);
     showMessage("The saved overlay could not be loaded. Check the overlay editor in Foundry.");
     notifyError(error);
@@ -92,9 +125,10 @@ async function refreshOutput() {
 
 function settingsChanged() {
   // Settings are updated by Foundry's authenticated database socket, including /stream.
+  characterData?.refresh();
   void refreshEditors({ external: true }).catch(notifyError);
   void refreshWidgetEditors({ external: true }).catch(notifyError);
-  void refreshOutput();
+  void refreshOutput({ skipUnchanged: true });
   void refreshLiveControls().catch(notifyError);
 }
 
@@ -109,17 +143,17 @@ function mappingsChanged() {
 }
 
 Hooks.once("init", () => {
+  registerLocalization();
   registerSettings(settingsChanged);
   registerWidgetSettings(widgetSettingsChanged);
-  for (const [key, name, hint] of [
-    ["animationsEnabled", "Enable overlay animations", "Disable to finish value transitions immediately and stop temporary visual effects."],
-    ["respectReducedMotion", "Respect reduced motion", "Suppress all overlay effects, including fades, Pulse and carousel transitions, when the output browser requests reduced motion. Turn this off to play your authored overlay animations; Windows and Foundry interface preferences remain unchanged."]
-  ]) game.settings.register(MODULE_ID, key, { name, hint, scope: "world", config: true, restricted: true,
-    type: Boolean, default: true, onChange: refreshAnimationPreferences });
-  game.settings.register(MODULE_ID, "debugAnimations", {
-    name: "Animation and carousel debug mode", hint: "Record actual playback, motion blockers, computed styles and interruption reasons; no Actor statistics are logged.",
+  // The capture PC's motion preference is not the audience's, so broadcasts animate by default.
+  for (const [key, initial] of [["animationsEnabled", true], ["respectReducedMotion", false]]) game.settings.register(MODULE_ID, key,
+    localizeSetting({ scope: "world", config: true, restricted: true,
+      type: Boolean, default: initial, onChange: refreshAnimationPreferences },
+    { name: `Settings.${key}.Name`, hint: `Settings.${key}.Hint` }));
+  game.settings.register(MODULE_ID, "debugAnimations", localizeSetting({
     scope: "world", config: true, restricted: true, type: Boolean, default: false
-  });
+  }, { name: "Settings.debugAnimations.Name", hint: "Settings.debugAnimations.Hint" }));
   game.settings.register(MODULE_ID, "viewerUserId", {
     name: "Overlay viewer account", scope: "world", config: false, type: String,
     default: "", onChange: settingsChanged
@@ -128,15 +162,21 @@ Hooks.once("init", () => {
     name: "Character field mappings", scope: "world", config: false, type: Array,
     restricted: true, default: [], onChange: mappingsChanged
   });
+  game.settings.register(MODULE_ID, "adapterPreferences", {
+    name: "Character data providers", scope: "world", config: false, type: Object,
+    restricted: true, default: {}, onChange: mappingsChanged
+  });
   store = new OverlayStore();
   widgetPresets = new WidgetPresetStore();
   characterData = new CharacterDataService({ adapters, getUser: getPresentationUser,
+    getSystemVersion: () => game.system?.version ?? "",
+    getAdapterPreferences: () => game.settings.get(MODULE_ID, "adapterPreferences") ?? {},
     getMappings: () => game.settings.get(MODULE_ID, "fieldMappings") ?? [] });
   animationCommands = new AnimationCommands({ getState: () => store.getState(), getUser: () => game.user,
     getViewer: () => game.users?.get(getViewerUserId()), getRenderer: () => renderer,
-    send: command => commandTransport.send(command),
+    send: command => commandTransport.send(command), now: serverNow,
     isReceiver: () => broadcast && streamReady && status !== "disconnected" && status !== "shutdown" && isViewerAllowed(game.user, getViewerUserId()) });
-  commandTransport = new StreamCommandTransport({ socket: game.socket, getUser: () => game.user,
+  commandTransport = new StreamCommandTransport({ socket: game.socket, getUser: () => game.user, now: serverNow,
     getViewer: () => game.users?.get(getViewerUserId()), getUserById: id => game.users?.get(id),
     isReceiver: () => broadcast && streamReady && status !== "disconnected" && status !== "shutdown",
     receive: (command, context) => animationCommands.receive(command, context) });
@@ -153,7 +193,7 @@ Hooks.once("init", () => {
             pages: configuration.pages.map(({ id, name }) => ({ id, name })),
             hasCarousel: configuration.pages.length > 0 || configuration.actors.length !== 1 || configuration.settings.mode !== "information",
             hasCharacterChoice: configuration.actors.length > 1,
-            characters: configuration.actors.map(uuid => ({ uuid, name: names.get(uuid) ?? "Unavailable character" })) } : {}) };
+            characters: configuration.actors.map(uuid => ({ uuid, name: names.get(uuid) ?? t("Settings.UnavailableCharacter") })) } : {}) };
         }) };
     },
     setActive: id => store.setActive(id || null),
@@ -177,6 +217,10 @@ Hooks.once("init", () => {
     if (!game.user?.isGM) throw Error("Only a GM can install the demonstration overlay.");
     return installDemo({ store, widgetPresets, characterData, reset });
   };
+  const installCainExamples = () => {
+    if (!game.user?.isGM) throw Error("Only a GM can install CAIN example presets.");
+    return installCainPresets({ store, widgetPresets });
+  };
   const getDebug = () => game.settings.get(MODULE_ID, "debugAnimations") === true;
   const setDebug = enabled => {
     if (!game.user?.isGM) throw Error("Only a GM can change animation diagnostics.");
@@ -188,31 +232,36 @@ Hooks.once("init", () => {
     context: { mode: "preview", widgetPresets, characterData, ...animationContext } };
   configureEditor(configuration);
   configureWidgetEditor(configuration);
-  game.settings.registerMenu(MODULE_ID, "editor", {
-    name: "Modular Stream Overlay", label: "Open Overlay Editor", icon: "fa-solid fa-display",
-    hint: "Design overlays, add character widgets, and configure the OBS viewer.",
+  game.settings.registerMenu(MODULE_ID, "editor", localizeSetting({
+    icon: "fa-solid fa-display",
     type: OverlayEditor, restricted: true
-  });
-  game.settings.registerMenu(MODULE_ID, "widgetPresets", {
-    name: "Character Widget Presets", label: "Manage Character Widgets", icon: "fa-solid fa-id-card",
-    hint: "Design reusable character cards, then assign different Actors to each overlay instance.",
+  }, { name: "Settings.Editor.Name", label: "Settings.Editor.Label", hint: "Settings.Editor.Hint" }));
+  game.settings.registerMenu(MODULE_ID, "widgetPresets", localizeSetting({
+    icon: "fa-solid fa-id-card",
     type: WidgetPresetManager, restricted: true
-  });
-  game.settings.registerMenu(MODULE_ID, "liveControls", { name: "Live Overlay Controls", label: "Open Live Controls",
-    icon: "fa-solid fa-play", hint: "Show, hide, and animate saved layers on the active stream overlay.", type: LiveControls, restricted: true });
+  }, { name: "Settings.Widgets.Name", label: "Settings.Widgets.Label", hint: "Settings.Widgets.Hint" }));
+  game.settings.registerMenu(MODULE_ID, "liveControls", localizeSetting({
+    icon: "fa-solid fa-play", type: LiveControls, restricted: true
+  }, { name: "Settings.Live.Name", label: "Settings.Live.Label", hint: "Settings.Live.Hint" }));
   const api = Object.freeze({
-    version: "0.5.5", schemaVersion: SCHEMA_VERSION, store, widgets, adapters, widgetPresets, characterData,
+    version: "0.6.0", schemaVersion: SCHEMA_VERSION, store, widgets, adapters, widgetPresets, characterData,
+    localization: Object.freeze({ t, getLanguage, getPreference: getLanguagePreference, setPreference: setLanguagePreference }),
     createOverlay, validateOverlay,
     registerWidget: definition => widgets.register(definition),
-    registerAdapter: definition => adapters.register(definition),
+    registerAdapter: definition => { const adapter = adapters.register(definition); mappingsChanged(); return adapter; },
     openWidgetManager, openWidgetPreset,
-    openLiveControls, liveControls, installDemo: installShowcase,
+    openLiveControls, liveControls, installDemo: installShowcase, installCainPresets: installCainExamples,
     getDebug, setDebug,
     getDiagnostics: () => game.user?.isGM || isViewerAllowed(game.user, getViewerUserId()) ? renderer?.getDiagnostics() ?? [] : [],
     animations: Object.freeze({ registry: defaultAnimationRegistry, registerType: definition => defaultAnimationRegistry.register(definition),
       registerEvent: registerTriggerEvent, registerAction: registerAnimationAction,
       dispatch: (id, eventType) => animationCommands.publish(id, { kind: "event", eventType }) }),
     getFieldMappings: () => validateMappings(game.settings.get(MODULE_ID, "fieldMappings") ?? []),
+    getAdapterPreferences: () => validateAdapterPreferences(game.settings.get(MODULE_ID, "adapterPreferences") ?? {}),
+    async setAdapterPreferences(value) {
+      if (!game.user?.isGM) throw Error("Only a GM can configure character data providers.");
+      return game.settings.set(MODULE_ID, "adapterPreferences", validateAdapterPreferences(value));
+    },
     async setFieldMappings(value) {
       if (!game.user?.isGM) throw Error("Only a GM can configure character fields.");
       return game.settings.set(MODULE_ID, "fieldMappings", validateMappings(value));
@@ -250,10 +299,13 @@ Hooks.on("renderSettings", (_application, element) => {
   const button = document.createElement("button");
   button.type = "button";
   button.dataset.msoEditor = "true";
-  button.textContent = "Open Overlay Editor";
+  setText(button, "Settings.Editor.Label");
   button.addEventListener("click", () => { void game.modules.get(MODULE_ID).api.openEditor().catch(notifyError); });
   target.append(button);
 });
+
+Hooks.on("i18nInit", refreshLanguage);
+Hooks.on("renderSettingsConfig", (_application, element) => localizeSettingsDOM(element instanceof HTMLElement ? element : element?.[0]));
 
 Hooks.once("streamReady", () => {
   if (!broadcast) return;
@@ -267,13 +319,14 @@ Hooks.once("streamReady", () => {
   game.socket.on("disconnect", () => {
     status = "disconnected";
     characterData.stop();
+    outputSignature = null;
     void renderer.render(null);
     // Transparent while disconnected; never fall through to the built-in chat page.
   });
   game.socket.on("connect", () => {
     if (status === "disconnected") window.location.reload(); // Re-fetch authoritative state after reconnect.
   });
-  game.socket.on("shutdown", () => { status = "shutdown"; characterData.stop(); void renderer.render(null); });
+  game.socket.on("shutdown", () => { status = "shutdown"; characterData.stop(); outputSignature = null; void renderer.render(null); });
   void refreshOutput();
 });
 
@@ -281,7 +334,7 @@ Hooks.on("updateUser", user => {
   if (broadcast && user.id === game.userId) void refreshOutput();
 });
 Hooks.on("deleteUser", user => {
-  if (broadcast && user.id === game.userId) void renderer?.render(null);
+  if (broadcast && user.id === game.userId) { outputSignature = null; void renderer?.render(null); }
 });
 
 window.addEventListener("pagehide", () => {

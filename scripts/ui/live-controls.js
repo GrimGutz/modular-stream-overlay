@@ -1,3 +1,5 @@
+import { t, errorText, localizeDOM, setText } from "./i18n.js";
+
 const MODULE_ID = "modular-stream-overlay";
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 let services = {};
@@ -5,7 +7,7 @@ let panel;
 
 export function configureLiveControls(configuration) { services = { ...services, ...configuration }; }
 export async function openLiveControls() {
-  if (!game.user?.isGM) throw new Error("Only a Game Master can control the live stream.");
+  if (!game.user?.isGM) throw new Error(t("Live.GMOnly"));
   panel ??= new LiveControls();
   await panel.render({ force: true });
   return panel;
@@ -14,9 +16,10 @@ export async function refreshLiveControls() { if (panel?.rendered && !panel._bus
 
 /** A compact control surface for saved, live overlays. Draft previews never call this API. */
 export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
+  get title() { return t("Live.Title"); }
   static DEFAULT_OPTIONS = {
     id: "modular-stream-overlay-live-controls", classes: ["mso-editor", "mso-live-controls"],
-    window: { title: "Stream Live Controls", icon: "fa-solid fa-play", resizable: true },
+    window: { title: "modular-stream-overlay.Live.Title", icon: "fa-solid fa-play", resizable: true },
     position: { width: 500, height: 600 }
   };
   static PARTS = { controls: { template: `modules/${MODULE_ID}/templates/live-controls.hbs` } };
@@ -24,7 +27,7 @@ export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
   get controls() { return services.liveControls ?? game.modules.get(MODULE_ID)?.api?.liveControls; }
   _canRender(options) { return game.user?.isGM ? super._canRender(options) : false; }
   async _prepareContext(options) {
-    if (!game.user?.isGM) throw new Error("Only a Game Master can control the live stream.");
+    if (!game.user?.isGM) throw new Error(t("Live.GMOnly"));
     const state = await this.controls.getState();
     return {
       ...await super._prepareContext(options),
@@ -35,6 +38,8 @@ export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
   }
   async _onRender(context, options) {
     await super._onRender(context, options);
+    const title = this.element?.querySelector(".window-title"); if (title) setText(title, "Live.Title");
+    localizeDOM(this.element);
     this.element.querySelector("[data-live-overlay]")?.addEventListener("change", event => {
       void this._perform(() => this.controls.setActive(event.currentTarget.value || null));
     });
@@ -51,12 +56,12 @@ export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
     });
   }
   async _command(command, layerId, ruleId) {
-    if (!game.user?.isGM) throw new Error("Only a Game Master can control the live stream.");
+    if (!game.user?.isGM) throw new Error(t("Live.GMOnly"));
     if (command === "show" || command === "hide") return this.controls.setVisibility(layerId, command === "show");
     if (command === "play") return this.controls.play(layerId, ruleId ? { ruleId } : {});
     if (command === "reset") return this.controls.reset(layerId);
     if (["next", "previous", "pause", "resume", "reset-sequence"].includes(command)) return this.controls.carousel(layerId, command === "reset-sequence" ? "reset" : command);
-    throw new Error("Choose an available live command.");
+    throw new Error(t("Live.ChooseCommand"));
   }
   async _perform(operation) {
     if (this._busy) return;
@@ -64,7 +69,7 @@ export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
     this.element?.querySelectorAll("button, select").forEach(control => { control.disabled = true; });
     let failure;
     try {
-      if (!game.user?.isGM) throw new Error("Only a Game Master can control the live stream.");
+      if (!game.user?.isGM) throw new Error(t("Live.GMOnly"));
       await operation();
     }
     catch (error) { failure = error; }
@@ -75,7 +80,8 @@ export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     if (failure) {
       console.error(`${MODULE_ID} | Live control failed`, failure);
-      ui.notifications.error(failure.message || "The live stream could not be updated.");
+      ui.notifications.error(errorText(failure) || t("Live.UpdateFailed"));
     }
   }
 }
+

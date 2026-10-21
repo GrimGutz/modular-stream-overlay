@@ -1,24 +1,24 @@
 <div class="mso-live-content">
-  <p class="mso-help">These controls affect the saved live overlay and OBS immediately. Editor drafts stay private.</p>
-  <label class="mso-field">Active overlay<select data-live-overlay aria-label="Live overlay"><option value="">None — transparent</option>{{#each overlays}}<option value="{{id}}" {{#if active}}selected{{/if}}>{{name}}</option>{{/each}}</select></label>
+  <p class="mso-help"><span data-i18n="Template.LiveHelp">{{msoT "Template.LiveHelp"}}</span></p>
+  <label class="mso-field"><span data-i18n="Template.ActiveOverlay">{{msoT "Template.ActiveOverlay"}}</span><select data-live-overlay data-i18n-aria-label="Template.LiveOverlay" aria-label="{{msoT "Template.LiveOverlay"}}"><option value="" data-i18n="Template.NoneTransparent">{{msoT "Template.NoneTransparent"}}</option>{{#each overlays}}<option value="{{id}}" {{#if active}}selected{{/if}}>{{name}}</option>{{/each}}</select></label>
   {{#if hasActive}}
   <div class="mso-live-list">
     {{#each layers}}
     <section class="mso-panel mso-live-layer">
-      <div class="mso-section-heading"><strong>{{name}}</strong><span class="mso-muted">{{#if visible}}Visible{{else}}Hidden{{/if}}</span></div>
+      <div class="mso-section-heading"><strong>{{name}}</strong><span class="mso-muted">{{#if visible}}<span data-i18n="Template.Visible">{{msoT "Template.Visible"}}</span>{{else}}<span data-i18n="Template.Hidden">{{msoT "Template.Hidden"}}</span>{{/if}}</span></div>
       <div class="mso-actions">
-        <button type="button" data-live-command="{{#if visible}}hide{{else}}show{{/if}}" data-layer-id="{{id}}">{{#if visible}}Hide{{else}}Show{{/if}}</button>
-        <button type="button" data-live-command="play" data-layer-id="{{id}}">Play emphasis</button>
-        <button type="button" data-live-command="reset" data-layer-id="{{id}}">Reset effects</button>
+        <button type="button" data-live-command="{{#if visible}}hide{{else}}show{{/if}}" data-layer-id="{{id}}">{{#if visible}}<span data-i18n="Template.Hide">{{msoT "Template.Hide"}}</span>{{else}}<span data-i18n="Template.Show">{{msoT "Template.Show"}}</span>{{/if}}</button>
+        <button type="button" data-live-command="play" data-layer-id="{{id}}"><span data-i18n="Template.PlayEmphasis">{{msoT "Template.PlayEmphasis"}}</span></button>
+        <button type="button" data-live-command="reset" data-layer-id="{{id}}"><span data-i18n="Template.ResetEffects">{{msoT "Template.ResetEffects"}}</span></button>
       </div>
-      {{#if rules}}<div class="mso-live-rules"><span class="mso-muted">Manual triggers</span>{{#each rules}}<button type="button" data-live-command="play" data-layer-id="{{../id}}" data-rule-id="{{id}}">{{name}}</button>{{/each}}</div>{{/if}}
-      {{#if hasCarousel}}<div class="mso-live-rules"><span class="mso-muted">Character and page sequence</span>
-        {{#if hasCharacterChoice}}<select data-live-character data-layer-id="{{id}}" aria-label="Select live character"><option value="">Switch to character…</option>{{#each characters}}<option value="{{uuid}}">{{name}}</option>{{/each}}</select>{{/if}}
-        {{#if pages}}<select data-live-page data-layer-id="{{id}}" aria-label="Select live information page"><option value="">Switch to page…</option>{{#each pages}}<option value="{{id}}">{{name}}</option>{{/each}}</select>{{/if}}
-        <div class="mso-actions"><button type="button" data-live-command="previous" data-layer-id="{{id}}">Previous step</button><button type="button" data-live-command="next" data-layer-id="{{id}}">Next step</button><button type="button" data-live-command="pause" data-layer-id="{{id}}">Pause sequence</button><button type="button" data-live-command="resume" data-layer-id="{{id}}">Resume sequence</button><button type="button" data-live-command="reset-sequence" data-layer-id="{{id}}">Reset sequence</button></div>
+      {{#if rules}}<div class="mso-live-rules"><span class="mso-muted"><span data-i18n="Template.ManualTriggers">{{msoT "Template.ManualTriggers"}}</span></span>{{#each rules}}<button type="button" data-live-command="play" data-layer-id="{{../id}}" data-rule-id="{{id}}">{{name}}</button>{{/each}}</div>{{/if}}
+      {{#if hasCarousel}}<div class="mso-live-rules"><span class="mso-muted"><span data-i18n="Template.Sequence">{{msoT "Template.Sequence"}}</span></span>
+        {{#if hasCharacterChoice}}<select data-live-character data-layer-id="{{id}}" data-i18n-aria-label="Template.SelectLiveCharacter" aria-label="{{msoT "Template.SelectLiveCharacter"}}"><option value="" data-i18n="Template.SwitchCharacter">{{msoT "Template.SwitchCharacter"}}</option>{{#each characters}}<option value="{{uuid}}">{{name}}</option>{{/each}}</select>{{/if}}
+        {{#if pages}}<select data-live-page data-layer-id="{{id}}" data-i18n-aria-label="Template.SelectLivePage" aria-label="{{msoT "Template.SelectLivePage"}}"><option value="" data-i18n="Template.SwitchPage">{{msoT "Template.SwitchPage"}}</option>{{#each pages}}<option value="{{id}}">{{name}}</option>{{/each}}</select>{{/if}}
+        <div class="mso-actions"><button type="button" data-live-command="previous" data-layer-id="{{id}}"><span data-i18n="Template.PreviousStep">{{msoT "Template.PreviousStep"}}</span></button><button type="button" data-live-command="next" data-layer-id="{{id}}"><span data-i18n="Template.NextStep">{{msoT "Template.NextStep"}}</span></button><button type="button" data-live-command="pause" data-layer-id="{{id}}"><span data-i18n="Template.PauseSequence">{{msoT "Template.PauseSequence"}}</span></button><button type="button" data-live-command="resume" data-layer-id="{{id}}"><span data-i18n="Template.ResumeSequence">{{msoT "Template.ResumeSequence"}}</span></button><button type="button" data-live-command="reset-sequence" data-layer-id="{{id}}"><span data-i18n="Template.ResetSequence">{{msoT "Template.ResetSequence"}}</span></button></div>
       </div>{{/if}}
     </section>
-    {{else}}<p class="mso-help">The active overlay has no layers yet.</p>{{/each}}
+    {{else}}<p class="mso-help"><span data-i18n="Template.EmptyLiveLayers">{{msoT "Template.EmptyLiveLayers"}}</span></p>{{/each}}
   </div>
-  {{else}}<p class="mso-help">Select a saved overlay to control its layers.</p>{{/if}}
+  {{else}}<p class="mso-help"><span data-i18n="Template.ChooseLiveOverlay">{{msoT "Template.ChooseLiveOverlay"}}</span></p>{{/if}}
 </div>

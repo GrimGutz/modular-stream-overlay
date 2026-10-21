@@ -1,0 +1,97 @@
+{
+  "format": "mso-authoring",
+  "version": 1,
+  "actors": { "hero": "Primary CAIN Character" },
+  "widgetPresets": [
+    {
+      "id": "author-character-preset",
+      "name": "Authoring — CAIN 1.3.26 Character",
+      "canvas": { "width": 720, "height": 300 },
+      "layers": [
+        {
+          "id": "author-character-panel",
+          "type": "color",
+          "name": "Card background",
+          "x": 0, "y": 0, "width": 720, "height": 300, "z": 0,
+          "color": "#14213a"
+        },
+        {
+          "id": "author-character-accent",
+          "type": "color",
+          "name": "Card accent",
+          "x": 0, "y": 0, "width": 6, "height": 300, "z": 1,
+          "color": "#45d6c4"
+        },
+        {
+          "id": "author-character-portrait",
+          "type": "character-portrait",
+          "name": "Actor portrait",
+          "x": 24, "y": 24, "width": 160, "height": 240, "z": 2,
+          "binding": "character.portrait",
+          "fit": "contain",
+          "borderRadius": 10
+        },
+        {
+          "id": "author-character-name",
+          "type": "character-name",
+          "name": "Actor name",
+          "x": 212, "y": 30, "width": 460, "height": 55, "z": 3,
+          "binding": "character.name",
+          "fallback": "Assign a CAIN Character",
+          "fontFamily": "Arial", "fontSize": 36, "fontWeight": "700", "color": "#ffffff"
+        },
+        {
+          "id": "author-character-rank",
+          "type": "dynamic-text",
+          "name": "CAT and prepared Psyche",
+          "x": 212, "y": 105, "width": 460, "height": 44, "z": 3,
+          "binding": "character.cain.cat",
+          "text": "CAT {character.cain.cat}  /  PSYCHE {character.psyche}",
+          "fallback": "—",
+          "fontFamily": "Arial", "fontSize": 25, "color": "#bed2e8"
+        },
+        {
+          "id": "author-character-stress-label",
+          "type": "text",
+          "name": "Stress caption",
+          "x": 212, "y": 170, "width": 460, "height": 28, "z": 3,
+          "text": "STRESS",
+          "fontFamily": "Arial", "fontSize": 19, "fontWeight": "700", "color": "#45d6c4"
+        },
+        {
+          "id": "author-character-stress",
+          "type": "resource-bar",
+          "name": "CAIN Stress",
+          "x": 212, "y": 211, "width": 460, "height": 38, "z": 4,
+          "binding": "character.stress.current",
+          "maxBinding": "character.stress.max",
+          "foregroundColor": "#bd6b48",
+          "backgroundColor": "#283a56",
+          "showValue": true,
+          "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+        }
+      ],
+      "cycling": { "enabled": false, "mode": "static" }
+    }
+  ],
+  "overlays": [
+    {
+      "id": "author-character-overlay",
+      "name": "Authoring — CAIN 1.3.26 Character Overlay",
+      "canvas": { "width": 1920, "height": 1080 },
+      "background": { "src": "", "fit": "cover", "opacity": 1 },
+      "layers": [
+        {
+          "id": "author-character-instance",
+          "type": "character-widget",
+          "name": "Primary Character card",
+          "x": 72, "y": 708, "width": 720, "height": 300, "z": 10,
+          "presetId": "author-character-preset",
+          "dataSource": "actors",
+          "actorUuid": "$actor:hero",
+          "actorUuids": ["$actor:hero"]
+        }
+      ]
+    }
+  ]
+}

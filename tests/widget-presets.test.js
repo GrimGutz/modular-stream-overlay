@@ -89,7 +89,9 @@ test("component validation bounds bindings, portrait options, resource colors, s
     assert.throws(() => validateLayer({ ...portrait, ...patch }), TypeError);
   }
   const bar = createLayer("resource-bar");
-  for (const patch of [{ binding: "system.hp.value" }, { maxBinding: "character.constructor" }, { foregroundColor: "red" }, { backgroundColor: "transparent" }, { showValue: 1 }, { fontSize: 513 }, { fallback: "a".repeat(1001) }]) assert.throws(() => validateLayer({ ...bar, ...patch }), TypeError);
+  for (const patch of [{ binding: "system.hp.value" }, { maxBinding: "character.constructor" }, { foregroundColor: "red" }, { backgroundColor: "transparent" }, { showValue: 1 }, { display: "html" }, { fontSize: 513 }, { fallback: "a".repeat(1001) }]) assert.throws(() => validateLayer({ ...bar, ...patch }), TypeError);
+  assert.equal(validateLayer({ id: "legacy-resource", type: "resource-bar" }).display, "bar");
+  assert.equal(validateLayer({ ...bar, display: "dots" }).display, "dots");
   const dynamic = createLayer("dynamic-text");
   assert.throws(() => validateLayer({ ...dynamic, text: "x".repeat(10001) }), TypeError);
   assert.throws(() => validateLayer({ ...dynamic, fallback: "\0" }), TypeError);

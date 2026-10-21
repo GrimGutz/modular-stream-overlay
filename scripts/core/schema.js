@@ -158,6 +158,10 @@ function instanceOverrides(input = {}) {
       else if (key === "fontSize") safe[key] = numeric(candidate, "Override font size", 1, 512);
       else if (key === "borderRadius") safe[key] = numeric(candidate, "Override border radius", 0, 3840);
       else if (["color", "foregroundColor", "backgroundColor"].includes(key)) safe[key] = color(candidate, `Override ${key}`);
+      else if (key === "display") {
+        if (!["bar", "dots"].includes(candidate)) fail("Choose bar or dots for resource display.");
+        safe[key] = candidate;
+      }
       else if (key === "fontFamily") {
         if (!FONT_FAMILIES.includes(candidate)) fail("Choose a supported override font family.");
         safe[key] = candidate;
@@ -273,6 +277,8 @@ export function validateLayer(input, canvas = { width: 1920, height: 1080 }, ind
     result.foregroundColor = color(input.foregroundColor ?? "#4caf77", "Resource foreground color");
     result.backgroundColor = color(input.backgroundColor ?? "#26313b", "Resource background color");
     result.showValue = boolean(input.showValue ?? true, "Resource numeric text");
+    result.display = input.display ?? "bar";
+    if (!["bar", "dots"].includes(result.display)) fail("Choose bar or dots for resource display.");
     result.fallback = content(input.fallback ?? "—", "Fallback text", 1000);
     Object.assign(result, textStyle(input));
   } else if (type === "character-widget") {

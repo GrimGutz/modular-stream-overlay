@@ -1,6 +1,6 @@
 # Extension interfaces
 
-These APIs describe **v0.5.5**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](../DEMO_GUIDE.md) describes the editable demonstration in Russian.
+These APIs describe **v0.6.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](../DEMO_GUIDE.md) describes the editable demonstration in Russian.
 
 ```js
 Hooks.once("modularStreamOverlayInit", api => {
@@ -32,7 +32,7 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 
 | Member | Contract |
 | --- | --- |
-| `version`, `schemaVersion` | API version `0.5.5`, overlay schema version `6` |
+| `version`, `schemaVersion` | API version `0.6.0`, overlay schema version `6` |
 | `registerWidget(definition)` | Registers a unique widget; returns a frozen registration |
 | `registerAdapter(definition)` | Registers a unique system adapter |
 | `widgets`, `adapters` | Registries with `get(id)` and `list()` |
@@ -45,6 +45,8 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 | `openWidgetManager()`, `openWidgetPreset(id)` | Open the GM design library or a source preset's visual editor |
 | `openLiveControls()`, `liveControls` | GM controls for the saved active overlay; see animation contracts below |
 | `animations` | Trusted animation/event/action registrations and semantic event dispatch |
+| `getAdapterPreferences()`, `setAdapterPreferences(map)` | Read/set explicit system providers; mutation is GM-only |
+| `installCainPresets()` | GM-only, idempotent installation of Actor-free CAIN examples without activating output |
 | `getFieldMappings()`, `setFieldMappings(value)` | Validated explicit system-field mappings; mutation is GM-only |
 | `getViewerUserId()`, `setViewerUserId(id)` | Read/set selected Player account; mutation is GM-only; empty string disables |
 | `getOBSUrl()`, `getJoinUrl()` | Origin and route-prefix-aware URLs without credentials |
@@ -215,41 +217,64 @@ Pause preserves remaining dwell; Resume continues it and can temporarily run a n
 
 ## System adapters
 
+The built-ins are generic identity, CAIN 1.3.26 and D&D5e 5.3.3 PC. See [CAIN.md](CAIN.md), [DND5E.md](DND5E.md) and the [acceptance report](PHASE6_ACCEPTANCE_RU.md) for schema targets and runtime limits. System paths belong in adapters, not in presets, UI or renderer. External adapters remain trusted JavaScript, not sandboxed expressions.
+
 ```js
 Hooks.once("modularStreamOverlayInit", api => {
   api.registerAdapter({
-    id: "my-module:system-adapter",
-    label: "My system adapter",
-    systemId: "my-system",
+    id: "my-module:focus", label: "My system focus", systemId: "my-system",
+    interfaceVersion: 1, actorTypes: ["character"], testedSystemVersions: ["2.0.0"],
     fields: [
-      { id: "character.focus.current", label: "Focus", type: "number", maxField: "character.focus.max" },
-      { id: "character.focus.max", label: "Maximum focus", type: "number" }
+      { id: "character.focus.current", label: "Focus", type: "number", group: "Resources",
+        maxField: "character.focus.max", role: "current", actorTypes: ["character"], testedSystemVersions: ["2.0.0"] },
+      { id: "character.focus.max", label: "Maximum focus", type: "number", group: "Resources",
+        role: "maximum", actorTypes: ["character"], testedSystemVersions: ["2.0.0"] }
     ],
-    normalize(actor, { user, fields = [] } = {}) {
-      if (!user || !actor.testUserPermission(user, "OBSERVER")) return null;
-      // This example path must match your system's public Actor schema.
-      const resource = actor.system.resources?.focus;
-      const result = {};
-      if (fields.includes("character.focus.current")) result["character.focus.current"] = Number.isFinite(resource?.value) ? resource.value : null;
-      if (fields.includes("character.focus.max")) result["character.focus.max"] = Number.isFinite(resource?.max) ? resource.max : null;
-      return result;
+    resources: [{ id: "focus", label: "Focus", currentField: "character.focus.current",
+      maxField: "character.focus.max", polarity: "lower-is-worse" }],
+    normalize(actor, { user, fields = [], systemVersion } = {}) {
+      if (!actor?.testUserPermission(user, "OBSERVER") || actor.type !== "character" || systemVersion !== "2.0.0") return null;
+      const values = {};
+      for (const id of fields) {
+        const value = id === "character.focus.current" ? actor.system.focus?.value
+          : id === "character.focus.max" ? actor.system.focus?.max : undefined;
+        if (id === "character.focus.current" || id === "character.focus.max") values[id] =
+          typeof value === "number" && Number.isFinite(value) ? value : null;
+      }
+      return values;
     }
   });
 });
 ```
 
-An adapter requires `id`, `label`, `normalize`, and optional `systemId` (a system ID or null for generic). `fields` makes normalized fields available to the live component UI and resolver; older registrations without field metadata remain registered but do not automatically supply dynamic component fields. The service combines the generic adapter with the first registered adapter matching the current `game.system.id`. The built-in system adapter targets CAIN; other systems retain generic basics and may add mappings or a matching adapter.
+`id`, `label` and `normalize` remain required; `systemId` is optional. Older registrations without metadata remain v1. Registrations without fields do not automatically supply dynamic component fields. The only supported explicit `interfaceVersion` is 1. Optional `actorTypes` and `testedSystemVersions` are arrays of 1–32 unique supported strings. Adapter-level tested versions are descriptive: **strict version checks belong on field descriptors**. Field actorTypes overrides the adapter default; this lets CAIN retain legacy field applicability while restricting new native fields.
 
-Field definitions need a unique normalized `id`, printable `label`, and type `string`, `number`, or `image`. Optional `maxField` identifies a related maximum field. Optional `format` accepts `integer`, `decimal`, or `percent` as metadata. Normalization returns a flat object keyed by requested field IDs, with safe scalars or null for missing data. Keep adapter paths inside the adapter; never hardcode them into component UI. Do not return full documents, nested system snapshots, or private notes.
+Field descriptors require unique normalized `id`, printable `label`, and `type: string|number|image`. Optional `group`, `unit` and `role` are printable strings up to80 characters. `format: integer|decimal|percent` remains descriptive metadata, not a new renderer formatter. `maxField` must refer to a numeric field; existing targets are checked at registration. A legacy cross-catalog target may be supplied by a mapping; unresolved targets are validated against the complete selected catalog before reads. A scope/provider change that removes a maximum marks only the affected descriptor unavailable (invalidMaximum:true) and removes its suggested maxField; generic identity and unrelated fields remain available. Malformed saved mappings are ignored with a warning while adapter fields remain usable. Resources are bounded to64 records `{id,label,currentField,maxField,polarity}`; both referenced fields must exist as numeric descriptors in the adapter. Polarity is `lower-is-worse`, `higher-is-worse` or `neutral`. IDs and fields are limited to128 entries per adapter; the request limit remains128. Stored resources remain separate scalar values, not nested resource objects.
 
-`generic.normalize` also retains the earlier explicit legacy `name`/`portrait` request contract for extensions. Automatic character components use normalized `character.*` IDs. Generic fields, CAIN fields, and mapping examples are listed in [PHASE3.md](PHASE3.md#available-fields-and-systems).
+Auto selection retains generic identity plus the **first registered** adapter whose systemId matches `game.system.id`. Multiple candidates produce a warning. **Widget Preset Manager → Data provider** stores an explicit choice in the new world setting `adapterPreferences`, shaped `{systemId:adapterId}`. `api.getAdapterPreferences()` returns a validated copy; `api.setAdapterPreferences(map)` is GM-only. Remove a system key to restore Auto. A missing/incompatible explicit provider or invalid preferences yields generic identity and a warning, suppressing system mappings until the choice is corrected. An ordinary unknown system without such an error can still use safe mappings. Providers are not composed. Saved `overlay.adapter.id/config` remains reserved and does not silently select this service's provider.
 
-`api.characterData.fieldDefinitions()` returns currently available field metadata; `listActors()` returns permitted world Actor summaries. `resolve(reference, fields, {portraitSource}?)` returns a promise for `{values, warning}` containing only selected supported fields. `resolveActor(reference)` validates and resolves a permitted world Actor for the editor assignment workflow; the document returned by that editor service must not be passed to the renderer or persisted. `subscribe(reference, callback)` returns an unsubscribe function. Callbacks should resolve fresh selected values instead of retaining document snapshots. The service uses the configured OBS viewer identity even in GM preview, requires Observer permission, and rechecks access after async reads.
+The generic adapter owns name, portrait, prototype-token artwork, UUID and Actor type. System adapters cannot shadow these five identity IDs. `generic.normalize` also retains its earlier explicit `name`/`portrait` legacy request contract. System normalizers receive `{user,fields,portraitSource,systemVersion}` and return only flat scalars. Never call rolls, migration, sheet preparation or document updates to obtain values; use prepared data. Do not return full documents, private notes, HTML payloads or system snapshots. The service filters extra returned fields and sanitizes numeric/image/text types.
 
-References support world `Actor.<id>` UUIDs and `@UUID[Actor.<id>]{label}` links. Compendiums and synthetic unlinked Token Actors are deferred. The module invalidates subscribed world Actors on Actor, relevant Item/ActiveEffect, linked-token, and viewer User lifecycle events, with a short debounce; it does not poll continuously. New mounts resolve current values immediately. Foundry's authenticated document updates deliver changes to each client. No extra raw Actor-document socket transport is used.
+### Character-data service
 
-Field mappings use explicit public `system.*` paths for string/number values, reject private/document-access paths, and are configured only by a GM. They cannot replace generic Actor basics. `api.setFieldMappings` validates before saving. Installed extensions are trusted code; selected-field rendering does not replace the configured Player account's Foundry permissions. Automatic player-to-character assignment remains outside this phase.
+- `getAdapterState()` returns `{systemId,systemVersion,adapterId,explicit,candidateIds,warning}`.
+- `fieldDefinitions({dataSource:"actors",actorType}?)` returns descriptors with `providerId` and metadata `status`; legacy unscoped mappings have `legacyGlobal:true`. `actorType` is optional; version checks apply even without an Actor. Metadata status does not certify viewer permission or a concrete value. The explicit demo source keeps its existing synthetic metadata contract.
+- `resourceDefinitions({actorType}?)` returns validated resource pairs plus providerId/status. It does not read Actor values.
+- `listActors()` returns permitted persistent world Actor summaries. Compendiums, unlinked Token Actors and external URLs remain unsupported.
+- `resolve(reference,fields,{portraitSource}?)` returns `{values,warning,status,fieldStatus}`. Existing callers can continue reading values/warning. Only requested known IDs enter values. Unknown IDs are absent and have unsupported-field status; known unavailable IDs are null. Field statuses are available, unsupported-field, unsupported-actor-type, unverified-version, unavailable. Missing and invalid legacy scalar reasons may both be unavailable. Mixed overall statuses become unavailable. The separate synthetic demo source retains its prior result shape.
+- `resolveActor(reference)` resolves a viewer-permitted Actor for assignment; do not persist or pass that Document into the renderer. GM previews use the configured OBS Player. Permission and viewer identity are rechecked after async reads.
+- `previewMappings(reference,input)` validates unsaved mappings and performs an isolated read using the same viewer/system/provider context. It changes no settings, subscriptions or live mappings.
+- `subscribe(reference,callback)` returns an unsubscribe function. Resolve fresh selected values from callbacks; do not retain Document snapshots. `refresh()` invalidates subscribers after mappings/provider/viewer changes without altering saved overlays.
 
+Invalid provider/mapping errors and adapter exceptions produce bounded diagnostic messages without dumping Actor data or exception payloads. Available empty strings and zero numbers remain valid scalars. HP percentage retains internal current/max dependencies and mapping precedence: generic → system provider → explicit mapping → derived percent, unless percent itself has an explicit applicable mapping.
+
+An optional synchronous `affectsChange(event,{actor,document,changes}) → boolean` can identify dependencies on world Items/ActiveEffects for subscribed permitted Actors. Events are limited to the service's public create/update/delete Actor, Item, ActiveEffect and linked Token hooks. No arbitrary hook names or per-widget watchers are registered. Base Actor/embedded document events always invalidate generic identity too, so returning false cannot suppress those. A thrown/non-boolean/async result makes the provider's fields unavailable until a successful later invalidation; generic identity remains. Clean-up removes every hook/timer/subscriber. This callback is trusted code; arbitrary JavaScript extensions are not a security sandbox.
+
+### Advanced field mappings
+
+`fieldMappings` remains an array of at most64 `{id,label,type,path}` records; optional `systemId`, `actorTypes`, `testedSystemVersions` and numeric `maxField` add scope/resource pairing. IDs stay normalized; identity replacements, private/flags/prototype/biography paths, expressions and document traversal are rejected. Only finite number or bounded string values are read through own-property traversal of a restricted `system.*` path. Syntactic validation alone does not prove that an arbitrary custom field is suitable for broadcast; choose documented public data deliberately.
+
+Older mappings with no scope remain global, unchanged, and are identified in metadata/UI. There is no automatic scope migration or path rewriting. Applicable explicit mappings override built-in values; an inactive scoped override leaves the applicable built-in definition intact. A newly declared inactive custom field remains null with its applicability status. The JSON dialog can preview unsaved input under viewer permissions without changing live data; editing the input invalidates a pending preview. Save is still an explicit GM setting write. No arbitrary JavaScript evaluator or full Actor field enumeration is introduced.
 ## Store and versioning
 
 All reads return isolated validated data. Mutations are async, GM-only, serialize within the store instance, and increment the global state revision. Pass a captured `expectedRevision` to detect an already stale editor; conflicts throw `OverlayConflictError` with code `OVERLAY_REVISION_CONFLICT`. This is not a server-side atomic lock across simultaneously writing GM browsers.

@@ -1,0 +1,266 @@
+{
+  "format": "mso-authoring",
+  "version": 1,
+  "actors": { "hero": "Primary CAIN Character", "companion": "Second CAIN Character" },
+  "widgetPresets": [
+    {
+      "id": "author-animated-preset",
+      "name": "Authoring — CAIN 1.3.26 Animated Party Card",
+      "canvas": { "width": 800, "height": 440 },
+      "animations": {
+        "entrance": { "type": "fade-in", "duration": 600, "easing": "ease-out" },
+        "exit": { "type": "fade-out", "duration": 600, "easing": "ease-in" },
+        "emphasis": { "type": "pulse", "duration": 800, "intensity": 1 },
+        "transition": { "duration": 350, "easing": "ease-out", "bar": true, "numeric": true }
+      },
+      "layers": [
+        {
+          "id": "author-animated-panel",
+          "type": "color",
+          "name": "Shared card background",
+          "x": 0, "y": 0, "width": 800, "height": 440, "z": 0,
+          "color": "#14213a"
+        },
+        {
+          "id": "author-animated-accent",
+          "type": "color",
+          "name": "Shared card accent",
+          "x": 0, "y": 0, "width": 6, "height": 440, "z": 1,
+          "color": "#45d6c4"
+        },
+        {
+          "id": "author-animated-portrait",
+          "type": "character-portrait",
+          "name": "Shared Actor portrait",
+          "x": 24, "y": 80, "width": 160, "height": 270, "z": 2,
+          "binding": "character.portrait", "fit": "contain", "borderRadius": 10
+        },
+        {
+          "id": "author-animated-heading",
+          "type": "text",
+          "name": "Shared card heading",
+          "x": 220, "y": 20, "width": 540, "height": 28, "z": 3,
+          "text": "CAIN / FIELD REPORT",
+          "fontFamily": "Arial", "fontSize": 17, "fontWeight": "700", "color": "#45d6c4"
+        },
+        {
+          "id": "author-animated-name",
+          "type": "character-name",
+          "name": "Shared Actor name",
+          "x": 220, "y": 58, "width": 540, "height": 52, "z": 3,
+          "binding": "character.name", "fallback": "Assign CAIN Characters",
+          "fontFamily": "Arial", "fontSize": 35, "fontWeight": "700", "color": "#ffffff"
+        },
+        {
+          "id": "author-animated-rank",
+          "type": "dynamic-text",
+          "name": "Shared CAT and prepared Psyche",
+          "x": 220, "y": 115, "width": 540, "height": 38, "z": 3,
+          "binding": "character.cain.cat",
+          "text": "CAT {character.cain.cat}  /  PSYCHE {character.psyche}",
+          "fallback": "—",
+          "fontFamily": "Arial", "fontSize": 24, "color": "#bed2e8"
+        }
+      ],
+      "pages": [
+        {
+          "id": "author-animated-condition-page",
+          "name": "Condition",
+          "duration": 4000,
+          "skipIfUnavailable": true,
+          "layers": [
+            {
+              "id": "author-animated-stress-label", "type": "text", "name": "Stress caption",
+              "x": 220, "y": 188, "width": 540, "height": 28, "z": 10,
+              "text": "STRESS", "fontFamily": "Arial", "fontSize": 19, "fontWeight": "700", "color": "#45d6c4"
+            },
+            {
+              "id": "author-animated-stress", "type": "resource-bar", "name": "CAIN Stress",
+              "x": 220, "y": 226, "width": 540, "height": 36, "z": 11,
+              "binding": "character.stress.current", "maxBinding": "character.stress.max",
+              "foregroundColor": "#bd6b48", "backgroundColor": "#283a56", "showValue": true,
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-injuries-label", "type": "text", "name": "Injuries caption",
+              "x": 220, "y": 288, "width": 540, "height": 28, "z": 10,
+              "text": "INJURIES", "fontFamily": "Arial", "fontSize": 19, "fontWeight": "700", "color": "#45d6c4"
+            },
+            {
+              "id": "author-animated-injuries", "type": "resource-bar", "name": "CAIN Injuries",
+              "x": 220, "y": 326, "width": 540, "height": 36, "z": 11,
+              "binding": "character.cain.injuries.current", "maxBinding": "character.cain.injuries.max",
+              "foregroundColor": "#ae4b54", "backgroundColor": "#283a56", "showValue": true,
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-condition-caption", "type": "text", "name": "Condition page indicator",
+              "x": 220, "y": 402, "width": 540, "height": 26, "z": 20,
+              "text": "1 / 3  ·  CONDITION", "fontFamily": "Arial", "fontSize": 16, "color": "#91a7c5"
+            }
+          ]
+        },
+        {
+          "id": "author-animated-resources-page",
+          "name": "Resources",
+          "duration": 4000,
+          "skipIfUnavailable": true,
+          "layers": [
+            {
+              "id": "author-animated-bursts-label", "type": "text", "name": "Psyche Bursts caption",
+              "x": 220, "y": 166, "width": 540, "height": 25, "z": 10,
+              "text": "PSYCHE BURSTS", "fontFamily": "Arial", "fontSize": 18, "fontWeight": "700", "color": "#45d6c4"
+            },
+            {
+              "id": "author-animated-bursts", "type": "resource-bar", "name": "CAIN Psyche Bursts",
+              "x": 220, "y": 198, "width": 540, "height": 30, "z": 11,
+              "binding": "character.cain.psycheBurst.current", "maxBinding": "character.cain.psycheBurst.max",
+              "foregroundColor": "#758de0", "backgroundColor": "#283a56", "showValue": true,
+              "fontFamily": "Arial", "fontSize": 18, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-kit-label", "type": "text", "name": "Kit Points caption",
+              "x": 220, "y": 244, "width": 540, "height": 25, "z": 10,
+              "text": "KIT POINTS", "fontFamily": "Arial", "fontSize": 18, "fontWeight": "700", "color": "#45d6c4"
+            },
+            {
+              "id": "author-animated-kit", "type": "resource-bar", "name": "CAIN Kit Points",
+              "x": 220, "y": 276, "width": 540, "height": 30, "z": 11,
+              "binding": "character.cain.kitPoints.current", "maxBinding": "character.cain.kitPoints.max",
+              "foregroundColor": "#45bda3", "backgroundColor": "#283a56", "showValue": true,
+              "fontFamily": "Arial", "fontSize": 18, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-overflow-label", "type": "text", "name": "Sin Overflow caption",
+              "x": 220, "y": 322, "width": 540, "height": 25, "z": 10,
+              "text": "SIN OVERFLOW", "fontFamily": "Arial", "fontSize": 18, "fontWeight": "700", "color": "#45d6c4"
+            },
+            {
+              "id": "author-animated-overflow", "type": "resource-bar", "name": "CAIN Sin Overflow",
+              "x": 220, "y": 354, "width": 540, "height": 30, "z": 11,
+              "binding": "character.cain.sinOverflow.current", "maxBinding": "character.cain.sinOverflow.max",
+              "foregroundColor": "#ae4b54", "backgroundColor": "#283a56", "showValue": true,
+              "fontFamily": "Arial", "fontSize": 18, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-resources-caption", "type": "text", "name": "Resources page indicator",
+              "x": 220, "y": 402, "width": 540, "height": 26, "z": 20,
+              "text": "2 / 3  ·  RESOURCES", "fontFamily": "Arial", "fontSize": 16, "color": "#91a7c5"
+            }
+          ]
+        },
+        {
+          "id": "author-animated-skills-page",
+          "name": "Skills",
+          "duration": 4000,
+          "skipIfUnavailable": true,
+          "layers": [
+            {
+              "id": "author-animated-force", "type": "dynamic-text", "name": "Force rating",
+              "x": 220, "y": 186, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.force.rating", "text": "Force  {character.cain.skills.force.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-conditioning", "type": "dynamic-text", "name": "Conditioning rating",
+              "x": 500, "y": 186, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.conditioning.rating", "text": "Conditioning  {character.cain.skills.conditioning.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-coordination", "type": "dynamic-text", "name": "Coordination rating",
+              "x": 220, "y": 229, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.coordination.rating", "text": "Coordination  {character.cain.skills.coordination.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-covert", "type": "dynamic-text", "name": "Covert rating",
+              "x": 500, "y": 229, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.covert.rating", "text": "Covert  {character.cain.skills.covert.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-interfacing", "type": "dynamic-text", "name": "Interfacing rating",
+              "x": 220, "y": 272, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.interfacing.rating", "text": "Interfacing  {character.cain.skills.interfacing.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-investigation", "type": "dynamic-text", "name": "Investigation rating",
+              "x": 500, "y": 272, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.investigation.rating", "text": "Investigation  {character.cain.skills.investigation.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-surveillance", "type": "dynamic-text", "name": "Surveillance rating",
+              "x": 220, "y": 315, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.surveillance.rating", "text": "Surveillance  {character.cain.skills.surveillance.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-negotiation", "type": "dynamic-text", "name": "Negotiation rating",
+              "x": 500, "y": 315, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.negotiation.rating", "text": "Negotiation  {character.cain.skills.negotiation.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-authority", "type": "dynamic-text", "name": "Authority rating",
+              "x": 220, "y": 358, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.authority.rating", "text": "Authority  {character.cain.skills.authority.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-connection", "type": "dynamic-text", "name": "Connection rating",
+              "x": 500, "y": 358, "width": 260, "height": 32, "z": 10,
+              "binding": "character.cain.skills.connection.rating", "text": "Connection  {character.cain.skills.connection.rating}",
+              "fontFamily": "Arial", "fontSize": 20, "color": "#ffffff"
+            },
+            {
+              "id": "author-animated-skills-caption", "type": "text", "name": "Skills page indicator",
+              "x": 220, "y": 402, "width": 540, "height": 26, "z": 20,
+              "text": "3 / 3  ·  SKILLS", "fontFamily": "Arial", "fontSize": 16, "color": "#91a7c5"
+            }
+          ]
+        }
+      ],
+      "cycling": {
+        "enabled": true, "mode": "combined", "traversal": "pages-first", "duration": 4000,
+        "transition": "fade", "transitionDuration": 400,
+        "characterTransition": "fade", "characterTransitionDuration": 600,
+        "loop": true, "startPageId": "author-animated-condition-page"
+      }
+    }
+  ],
+  "overlays": [
+    {
+      "id": "author-animated-overlay",
+      "name": "Authoring — CAIN 1.3.26 Animated Party Overlay",
+      "canvas": { "width": 1920, "height": 1080 },
+      "background": {
+        "src": "modules/modular-stream-overlay/assets/basic-background.svg",
+        "fit": "cover", "opacity": 1
+      },
+      "layers": [
+        {
+          "id": "author-animated-stream-title", "type": "text", "name": "Stream title",
+          "x": 128, "y": 128, "width": 1664, "height": 82, "z": 1,
+          "text": "CAIN — ANIMATED PARTY OVERLAY",
+          "fontFamily": "Arial", "fontSize": 48, "fontWeight": "700", "color": "#ffffff"
+        },
+        {
+          "id": "author-animated-instance", "type": "character-widget", "name": "Combined party card",
+          "x": 560, "y": 320, "width": 800, "height": 440, "z": 10,
+          "presetId": "author-animated-preset", "dataSource": "actors",
+          "actorUuid": "$actor:hero", "actorUuids": ["$actor:hero", "$actor:companion"],
+          "carousel": { "enabled": true, "mode": "combined", "traversal": "pages-first" }
+        },
+        {
+          "id": "author-animated-footer", "type": "text", "name": "Footer caption",
+          "x": 128, "y": 934, "width": 1664, "height": 64, "z": 20,
+          "text": "Three pages per character · Fade transitions · CAIN 1.3.26",
+          "fontFamily": "Arial", "fontSize": 25, "color": "#bed2e8", "align": "center"
+        }
+      ]
+    }
+  ]
+}

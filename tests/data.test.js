@@ -40,7 +40,8 @@ test("field metadata is validated, isolated, and selected by the active system",
 
 test("only supported explicitly selected scalar fields are returned, including safe token artwork", async () => {
   const service = setup();
-  assert.deepEqual(await service.resolve("Actor.one", ["character.name"]), { values: { "character.name": "Hero one" }, warning: null });
+  assert.deepEqual(await service.resolve("Actor.one", ["character.name"]), { values: { "character.name": "Hero one" }, warning: null,
+    status: "available", fieldStatus: { "character.name": "available" } });
   const resolved = await service.resolve("Actor.one", ["character.hp.current", "character.hp.max", "character.hp.percent", "character.level"]);
   assert.deepEqual(resolved.values, { "character.hp.current": 7, "character.hp.max": 10, "character.hp.percent": 70, "character.level": 3 });
   assert.equal(resolved.warning, null);

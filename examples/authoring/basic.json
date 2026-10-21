@@ -1,0 +1,53 @@
+{
+  "format": "mso-authoring",
+  "version": 1,
+  "actors": {},
+  "widgetPresets": [],
+  "overlays": [
+    {
+      "id": "author-basic-overlay",
+      "name": "Authoring — Basic Overlay",
+      "canvas": { "width": 1920, "height": 1080 },
+      "background": {
+        "src": "modules/modular-stream-overlay/assets/basic-background.svg",
+        "fit": "cover",
+        "opacity": 1
+      },
+      "layers": [
+        {
+          "id": "author-basic-title",
+          "type": "text",
+          "name": "Stream title",
+          "x": 128, "y": 190, "width": 980, "height": 160, "z": 1,
+          "text": "YOUR STREAM TITLE",
+          "fontFamily": "Arial", "fontSize": 76, "fontWeight": "700", "color": "#ffffff"
+        },
+        {
+          "id": "author-basic-subtitle",
+          "type": "text",
+          "name": "Stream subtitle",
+          "x": 132, "y": 380, "width": 940, "height": 150, "z": 2,
+          "text": "A simple background, title, and image.\nEdit this source and regenerate the bundle.",
+          "fontFamily": "Arial", "fontSize": 32, "color": "#bed2e8"
+        },
+        {
+          "id": "author-basic-image",
+          "type": "image",
+          "name": "Bundled illustration",
+          "x": 1180, "y": 150, "width": 580, "height": 730, "z": 3,
+          "src": "modules/modular-stream-overlay/assets/demo-warrior.svg",
+          "fit": "contain",
+          "lockAspectRatio": true
+        },
+        {
+          "id": "author-basic-footer",
+          "type": "text",
+          "name": "Footer caption",
+          "x": 128, "y": 934, "width": 1664, "height": 58, "z": 4,
+          "text": "MODULAR STREAM OVERLAY",
+          "fontFamily": "Arial", "fontSize": 24, "fontWeight": "700", "color": "#7dd8c4"
+        }
+      ]
+    }
+  ]
+}

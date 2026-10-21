@@ -355,3 +355,38 @@ test("module demo API installs safely and the native stream route renders its sy
   assert.deepEqual(f.actors.map(actor => actor.system.health.value), [20, 30]);
   f.socket.emit("disconnect"); assert.equal(f.api.characterData.subscriptions.size, 0);
 });
+
+test("system providers are wired to world preferences, refresh values and require a GM to change selection", async () => {
+  const f = await boot({ stream: false });
+  assert.equal(f.settings.get("adapterPreferences").restricted, true);
+  assert.deepEqual(f.api.getAdapterPreferences(), {});
+  assert.equal(f.api.adapters.get("dnd5e").systemId, "dnd5e");
+  await assert.rejects(f.api.setAdapterPreferences({ cain: "alternate" }), /Only a GM/);
+  game.user = { id: "gm", isGM: true, role: 4 };
+  game.system.version = "1.3.26"; f.actors[0].system.CATLEVEL = { value: 3 };
+  assert.equal((await f.api.characterData.resolve(f.actors[0].uuid, ["character.cain.cat"])).values["character.cain.cat"], 3);
+  f.api.registerAdapter({ id: "alternate", label: "Alternate CAIN", systemId: "cain", fields: [{ id: "character.cain.cat", label: "Custom CAT", type: "number" }], normalize: () => ({ "character.cain.cat": 9 }) });
+  await f.api.setAdapterPreferences({ cain: "alternate" });
+  assert.equal(f.api.characterData.getAdapterState().adapterId, "alternate");
+  assert.equal((await f.api.characterData.resolve(f.actors[0].uuid, ["character.cain.cat"])).values["character.cain.cat"], 9);
+  await assert.rejects(f.api.setAdapterPreferences(JSON.parse('{"__proto__":"alternate"}')), /supported system/);
+  await f.api.setAdapterPreferences({ cain: "missing" });
+  assert.deepEqual((await f.api.characterData.resolve(f.actors[0].uuid, ["character.name", "character.cain.cat"])).values, { "character.name": "alpha" });
+  f.api.characterData.stop();
+});
+
+test("CAIN examples are opt-in, GM-only and leave real Actor assignments and active output alone", async () => {
+  const f = await boot({ stream: false });
+  const before = f.api.store.getState(), actors = structuredClone(f.actors.map(actor => actor.system));
+  assert(!f.api.widgetPresets.list().some(preset => preset.id === "cain-exorcist-card"));
+  assert.throws(() => f.api.installCainPresets(), /Only a GM/);
+  game.user = { id: "gm", isGM: true, role: 4 };
+  const installed = await f.api.installCainPresets();
+  assert.equal(installed.createdPresetIds.length, 2);
+  assert.equal(f.api.store.getState().activeOverlayId, before.activeOverlayId);
+  const overlay = f.api.store.getState().overlays.find(overlay => overlay.id === installed.overlayId);
+  assert.deepEqual(overlay.layers[0].actorUuids, []);
+  assert.deepEqual(f.actors.map(actor => actor.system), actors);
+  assert.equal((await f.api.installCainPresets()).created, false);
+  f.api.characterData.stop();
+});

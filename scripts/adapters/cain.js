@@ -1,39 +1,34 @@
 import { permittedActor } from "./generic.js";
+import { CAIN_FIELDS, CAIN_LEGACY_PATHS, CAIN_NATIVE_PATHS, CAIN_RESOURCES, CAIN_SYSTEM_VERSION } from "./cain-fields.js";
+import { CAIN_COLLECTION_FIELDS, cainCollectionAffected, normalizeCainCollection } from "./cain-collections.js";
+import { versionCompatible } from "../core/versions.js";
 
-// Verified against installed CAIN 1.3.26 public TypeDataModel definitions:
-// module/data/base-actor.mjs and module/data/actor-character.mjs.
-const PATHS = Object.freeze({
-  "character.hp.current": ["health", "value"], "character.hp.max": ["health", "max"],
-  "character.level": ["attributes", "level", "value"],
-  "character.power.current": ["power", "value"], "character.power.max": ["power", "max"],
-  "character.stress.current": ["stress", "value"], "character.stress.max": ["stress", "max"],
-  "character.psyche": ["psyche"]
-});
 const number = value => typeof value === "number" && Number.isFinite(value) ? value : null;
-function read(actor, field) { return number(PATHS[field]?.reduce((value, key) => value?.[key], actor.system)); }
+const read = (actor, path) => path?.reduce((value, key) => value?.[key], actor.system);
+const legacyNumber = (actor, field) => number(read(actor, CAIN_LEGACY_PATHS[field]));
+const nativeTypes = new Map(CAIN_FIELDS.filter(field => Object.hasOwn(CAIN_NATIVE_PATHS, field.id)).map(field => [field.id, field.type]));
+const collectionFields = new Set(CAIN_COLLECTION_FIELDS.map(field => field.id));
 
 export const cainAdapter = {
   id: "cain", label: "CAIN character resources", systemId: "cain",
-  fields: [
-    { id: "character.hp.current", label: "Health", type: "number", maxField: "character.hp.max" },
-    { id: "character.hp.max", label: "Maximum health", type: "number" },
-    { id: "character.hp.percent", label: "Health percent", type: "number", format: "percent" },
-    { id: "character.level", label: "Level", type: "number", format: "integer" },
-    { id: "character.power.current", label: "Power", type: "number", maxField: "character.power.max" },
-    { id: "character.power.max", label: "Maximum power", type: "number" },
-    { id: "character.stress.current", label: "Stress", type: "number", maxField: "character.stress.max" },
-    { id: "character.stress.max", label: "Maximum stress", type: "number" },
-    { id: "character.psyche", label: "Psyche", type: "number" }
-  ],
-  normalize(actor, { user, fields = [] } = {}) {
+  interfaceVersion: 1, testedSystemVersions: [CAIN_SYSTEM_VERSION],
+  fields: CAIN_FIELDS, resources: CAIN_RESOURCES,
+  affectsChange: cainCollectionAffected,
+  normalize(actor, { user, fields = [], systemVersion, worldItems } = {}) {
     if (!Array.isArray(fields) || !permittedActor(actor, user)) return null;
+    const version = systemVersion === undefined ? (globalThis.game?.system?.id === "cain" ? globalThis.game.system.version : undefined) : systemVersion;
+    const nativeAvailable = actor.type === "character" && versionCompatible([CAIN_SYSTEM_VERSION], version);
     const result = {};
     for (const field of fields) {
-      if (Object.hasOwn(PATHS, field)) result[field] = read(actor, field);
+      if (typeof field !== "string") continue;
+      if (Object.hasOwn(CAIN_LEGACY_PATHS, field)) result[field] = legacyNumber(actor, field);
       else if (field === "character.hp.percent") {
-        const current = read(actor, "character.hp.current"), maximum = read(actor, "character.hp.max");
+        const current = legacyNumber(actor, "character.hp.current"), maximum = legacyNumber(actor, "character.hp.max");
         result[field] = current !== null && maximum > 0 ? Math.max(0, Math.min(100, current / maximum * 100)) : null;
-      }
+      } else if (Object.hasOwn(CAIN_NATIVE_PATHS, field)) {
+        const value = nativeAvailable ? read(actor, CAIN_NATIVE_PATHS[field]) : null;
+        result[field] = nativeTypes.get(field) === "number" ? number(value) : typeof value === "string" ? value.slice(0, 1000) : null;
+      } else if (collectionFields.has(field)) result[field] = nativeAvailable ? normalizeCainCollection(actor, field, { user, worldItems }) : null;
     }
     return result;
   }

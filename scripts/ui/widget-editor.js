@@ -3,11 +3,15 @@ import { OverlayRenderer } from "../render/renderer.js";
 import { WIDGET_DEFINITIONS, widgetPresetToOverlay, overlayToWidgetPreset } from "../core/widget-presets.js";
 import { PAGE_TRANSITIONS, addPage, duplicatePage, renamePage, deletePage, reorderPage, validateCycling } from "../carousel/schema.js";
 import { DEMO_CHARACTERS } from "../demo/data.js";
+import { openAdapterSettings, openFieldMappings } from "./field-settings.js";
+import { t, uiText, errorText, localizeDOM, setText, setAttr, setUIText, setUIAttr, onLanguageChange } from "./i18n.js";
 
 const MODULE_ID = "modular-stream-overlay";
+const L = (key, params = {}) => ({ key, params });
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 let services = {};
 const applications = new Set();
+onLanguageChange(() => { for (const application of applications) application.refreshLanguage?.(); });
 let manager;
 const presetEditors = new Map();
 
@@ -30,10 +34,11 @@ export async function openWidgetPreset(id) {
 
 /** Reuses the full overlay layer editor and its interaction controller in local design coordinates. */
 export class WidgetPresetEditor extends OverlayEditor {
+  get title() { return t("Widgets.DesignerTitle"); }
   static DEFAULT_OPTIONS = {
     ...OverlayEditor.DEFAULT_OPTIONS,
     id: "modular-stream-overlay-widget-editor",
-    window: { title: "Character Widget Designer", icon: "fa-solid fa-id-card", resizable: true },
+    window: { title: "modular-stream-overlay.Widgets.DesignerTitle", icon: "fa-solid fa-id-card", resizable: true },
     actions: { ...OverlayEditor.DEFAULT_OPTIONS.actions, addComponent: OverlayEditor.onAction, choosePreviewActor: OverlayEditor.onAction, chooseDemoPreviewActor: OverlayEditor.onAction }
   };
 
@@ -43,6 +48,7 @@ export class WidgetPresetEditor extends OverlayEditor {
     this._initialPresetId = presetId;
     this._previewActorUuid = "";
     this._previewActorLabel = "No character — safe placeholder preview";
+    this._previewActorDemo = false;
     this._pageScope = "shared";
     this._previewRunning = false;
   }
@@ -89,10 +95,23 @@ export class WidgetPresetEditor extends OverlayEditor {
   }
   _previewContext() { return { ...super._previewContext(), previewActorUuid: this._previewActorUuid, onCarouselChange: state => this._syncCarouselPreview(state) }; }
   async _prepareContext(options) {
-    return { ...await super._prepareContext(options), widgetMode: true, previewActorLabel: this._previewActorLabel,
-      componentDefinitions: [...WIDGET_DEFINITIONS.filter(definition => !["image", "text", "character-widget"].includes(definition.type)), { type: "color", label: "Color background" }] };
+    return { ...await super._prepareContext(options), widgetMode: true, previewActorLabel: this._localizedPreviewActorLabel(),
+      componentDefinitions: [...WIDGET_DEFINITIONS.filter(definition => !["image", "text", "character-widget"].includes(definition.type)), { type: "color", label: "Color background" }].map(definition => ({ ...definition, label: uiText(definition.label) })) };
   }
-  async _onRender(context, options) { await super._onRender(context, options); this._renderPagesPanel(); applications.add(this); }
+  async _onRender(context, options) {
+    await super._onRender(context, options);
+    const title = this.element?.querySelector(".window-title"); if (title) setText(title, "Widgets.DesignerTitle");
+    this._renderPagesPanel(); this._syncPreviewActorLabel(); localizeDOM(this.element); applications.add(this);
+  }
+
+  _localizedPreviewActorLabel() {
+    return !this._previewActorUuid ? t("Widgets.NoPreviewActor") : this._previewActorDemo
+      ? t("Widgets.DemoPreviewActor", { name: this._previewActorLabel }) : this._previewActorLabel;
+  }
+  _syncPreviewActorLabel() {
+    const label = this.element?.querySelector("[data-preview-actor]");
+    if (label) setText(label, !this._previewActorUuid ? "Widgets.NoPreviewActor" : this._previewActorDemo ? "Widgets.DemoPreviewActor" : "Widgets.PreviewActorName", { name: this._previewActorLabel });
+  }
 
   async _selectPageScope(id) {
     if (id !== "shared" && !this._draft?.pages.some(page => page.id === id)) return;
@@ -112,17 +131,17 @@ export class WidgetPresetEditor extends OverlayEditor {
     const page = this._draft.pages.find(entry => entry.id === id);
     let scope = id;
     if (command === "add") {
-      const name = await this._name("Add information page", `Information page ${this._draft.pages.length + 1}`);
+      const name = await this._name(L("Widgets.AddInfoPage"), `Information page ${this._draft.pages.length + 1}`);
       if (!name) return;
       scope = addPage(this._draft, name).id;
     } else if (!page) return;
     else if (command === "rename") {
-      const name = await this._name("Rename information page", page.name);
+      const name = await this._name(L("Widgets.RenameInfoPage"), page.name);
       if (!name) return;
       renamePage(this._draft, id, name);
     } else if (command === "duplicate") scope = duplicatePage(this._draft, id).id;
     else if (command === "delete") {
-      if (!await this._confirm("Delete information page", `Delete “${page.name}” and its components? Shared elements remain in the design.`, "Delete page")) return;
+      if (!await this._confirm(L("Widgets.DeleteInfoPage"), L("Widgets.DeletePagePrompt", { name: page.name }), L("Widgets.DeletePage"))) return;
       deletePage(this._draft, id);
       for (const key of this._invalidInputs.keys()) {
         if (key.startsWith(`page.${id}.`) || page.layers.some(layer => key.startsWith(`layer.${layer.id}.`) || key === `animation.${layer.id}`)) this._invalidInputs.delete(key);
@@ -144,8 +163,8 @@ export class WidgetPresetEditor extends OverlayEditor {
     try {
       if (["duration", "transitionDuration", "characterTransitionDuration"].includes(field)) {
         value = page && input.value.trim() === "" ? null : Number(input.value) * (field === "duration" ? 1000 : 1);
-        if (value !== null && (!Number.isSafeInteger(value) || value < (field === "duration" ? 100 : 0) || value > (field === "duration" ? 3600000 : 10000))) throw new Error(field === "duration" ? "Enter a duration from 0.1 to 3600 seconds." : "Enter a transition duration from 0 to 10000 milliseconds.");
-        if (!page && input.value.trim() === "") throw new Error("Enter a default page duration.");
+        if (value !== null && (!Number.isSafeInteger(value) || value < (field === "duration" ? 100 : 0) || value > (field === "duration" ? 3600000 : 10000))) throw new Error(t(field === "duration" ? "Widgets.DurationRange" : "Widgets.TransitionRange"));
+        if (!page && input.value.trim() === "") throw new Error(t("Widgets.DefaultDurationRequired"));
       }
       if (field === "startPageId") value ||= null;
       if (page) page[field] = value;
@@ -155,7 +174,7 @@ export class WidgetPresetEditor extends OverlayEditor {
       this._markDirty();
       void this._updatePreview();
     } catch (error) {
-      input.setCustomValidity(error.message);
+      input.setCustomValidity(errorText(error));
       this._invalidInputs.set(key, input.type === "checkbox" ? input.checked : input.value);
       this._markDirty();
     }
@@ -163,21 +182,21 @@ export class WidgetPresetEditor extends OverlayEditor {
 
   _carouselField(host, label, field, { page = null, type = "text", options, min, max, step } = {}) {
     const wrapper = document.createElement("label"); wrapper.className = `mso-layer-field${type === "checkbox" ? " mso-checkbox-field" : ""}`;
-    const title = document.createElement("span"); title.textContent = label;
+    const title = document.createElement("span"); setUIText(title, label);
     const input = document.createElement(options ? "select" : "input");
     if (!options) input.type = type;
-    input.dataset.carouselField = field; input.setAttribute("aria-label", label);
+    input.dataset.carouselField = field; setUIAttr(input, "aria-label", label);
     if (min !== undefined) input.min = String(min);
     if (max !== undefined) input.max = String(max);
     if (step !== undefined) input.step = String(step);
-    for (const option of options ?? []) { const entry = document.createElement("option"); entry.value = option.id; entry.textContent = option.label; input.append(entry); }
+    for (const option of options ?? []) { const entry = document.createElement("option"); entry.value = option.id; if (option.userLabel) entry.textContent = option.label; else setUIText(entry, option.label); input.append(entry); }
     const source = page ?? this._draft.cycling;
     let value = source[field];
     if (field === "duration" && value !== null) value /= 1000;
     if (type === "checkbox") input.checked = !!value;
     else input.value = String(value ?? "");
     const key = page ? `page.${page.id}.${field}` : `cycling.${field}`;
-    if (this._invalidInputs.has(key)) { input.value = this._invalidInputs.get(key); input.setCustomValidity("Correct this page or cycling setting before saving."); }
+    if (this._invalidInputs.has(key)) { input.value = this._invalidInputs.get(key); input.setCustomValidity(t("Widgets.CorrectCycling")); }
     input.disabled = this._uploading;
     input.addEventListener(type === "checkbox" || options ? "change" : "input", () => this._onCarouselInput(input, { page, field }));
     if (type === "checkbox") wrapper.append(input, title); else wrapper.append(title, input);
@@ -186,7 +205,7 @@ export class WidgetPresetEditor extends OverlayEditor {
   }
 
   _pageButton(host, label, operation, { disabled = false } = {}) {
-    const button = document.createElement("button"); button.type = "button"; button.textContent = label; button.disabled = disabled || this._uploading;
+    const button = document.createElement("button"); button.type = "button"; setUIText(button, label); button.disabled = disabled || this._uploading;
     button.addEventListener("click", () => { void this._draftOperation(operation); }); host.append(button); return button;
   }
 
@@ -195,10 +214,12 @@ export class WidgetPresetEditor extends OverlayEditor {
     if (!host || !this._draft) return;
     host.replaceChildren();
     const scopeLabel = document.createElement("label"); scopeLabel.className = "mso-layer-field";
-    const caption = document.createElement("span"); caption.textContent = "Edit content";
-    const scope = document.createElement("select"); scope.setAttribute("aria-label", "Edit shared elements or an information page");
+    const caption = document.createElement("span"); setText(caption, "Widgets.EditContent");
+    const scope = document.createElement("select"); setAttr(scope, "aria-label", "Widgets.EditScopeLabel");
     for (const entry of [{ id: "shared", name: "Shared elements — visible on every page" }, ...this._draft.pages]) {
-      const option = document.createElement("option"); option.value = entry.id; option.textContent = entry.name; scope.append(option);
+      const option = document.createElement("option"); option.value = entry.id;
+      if (entry.id === "shared") setText(option, "Widgets.SharedElements"); else option.textContent = entry.name;
+      scope.append(option);
     }
     scope.value = this._pageScope; scope.disabled = this._uploading;
     scope.addEventListener("change", () => { void this._draftOperation(() => this._selectPageScope(scope.value)); });
@@ -213,8 +234,8 @@ export class WidgetPresetEditor extends OverlayEditor {
       this._carouselField(pageFields, "This page duration (seconds; blank uses default)", "duration", { page, type: "number", min: .1, max: 3600, step: .1 });
       this._carouselField(pageFields, "Skip this page when no dynamic information is available", "skipIfUnavailable", { page, type: "checkbox" });
     }
-    const hint = document.createElement("p"); hint.className = "mso-help"; hint.textContent = page ? `Editing “${page.name}”. Shared elements remain visible and can be edited by choosing Shared elements.` : "Shared elements remain visible while pages change. Put the portrait, name, and frame here. To replace the entire card, put all components inside pages."; host.append(hint);
-    const heading = document.createElement("h4"); heading.textContent = "Cycling settings"; host.append(heading);
+    const hint = document.createElement("p"); hint.className = "mso-help"; setText(hint, page ? "Widgets.EditingPageHelp" : "Widgets.SharedHelp", { name: page?.name ?? "" }); host.append(hint);
+    const heading = document.createElement("h4"); setText(heading, "Widgets.CyclingSettings"); host.append(heading);
     const settings = document.createElement("div"); settings.className = "mso-cycling-grid"; host.append(settings);
     this._carouselField(settings, "Enable automatic cycling", "enabled", { type: "checkbox" });
     this._carouselField(settings, "Default cycling mode", "mode", { options: [{ id: "static", label: "Static — one character and page" }, { id: "information", label: "Information Only — one character, all pages" }, { id: "character", label: "Character Only — all characters, one page" }, { id: "combined", label: "Combined — all pages for each character" }] });
@@ -225,17 +246,18 @@ export class WidgetPresetEditor extends OverlayEditor {
     this._carouselField(settings, "Character transition", "characterTransition", { options: PAGE_TRANSITIONS });
     this._carouselField(settings, "Character transition duration (milliseconds)", "characterTransitionDuration", { type: "number", min: 0, max: 10000, step: 1 });
     this._carouselField(settings, "Loop pages", "loop", { type: "checkbox" });
-    this._carouselField(settings, "Starting page", "startPageId", { options: [{ id: "", label: "First available page" }, ...this._draft.pages.map(entry => ({ id: entry.id, label: entry.name }))] });
+    this._carouselField(settings, "Starting page", "startPageId", { options: [{ id: "", label: "First available page" }, ...this._draft.pages.map(entry => ({ id: entry.id, label: entry.name, userLabel: true }))] });
     const preview = document.createElement("div"); preview.className = "mso-carousel-preview"; host.append(preview);
     const status = document.createElement("p"); status.dataset.carouselPreviewStatus = ""; status.className = "mso-help"; status.setAttribute("role", "status"); preview.append(status);
     const actions = document.createElement("div"); actions.className = "mso-page-actions"; preview.append(actions);
     for (const [label, command] of [["Previous page", "previous"], ["Next page", "next"], ["Pause preview", "pause"], ["Resume preview", "resume"], ["Edit selected content", "edit"]]) this._pageButton(actions, label, () => this._previewCarousel(command), { disabled: command !== "edit" && !this._draft.pages.length });
-    const selectLabel = document.createElement("label"); selectLabel.className = "mso-layer-field"; selectLabel.textContent = "Preview page";
-    const select = document.createElement("select"); select.dataset.carouselPreviewPage = ""; select.setAttribute("aria-label", "Manually preview information page");
+    const selectLabel = document.createElement("label"); selectLabel.className = "mso-layer-field";
+    const previewCaption = document.createElement("span"); setText(previewCaption, "Widgets.PreviewPage"); selectLabel.append(previewCaption);
+    const select = document.createElement("select"); select.dataset.carouselPreviewPage = ""; setAttr(select, "aria-label", "Widgets.ManualPreviewPage");
     for (const entry of this._draft.pages) { const option = document.createElement("option"); option.value = entry.id; option.textContent = entry.name; select.append(option); }
     select.disabled = this._uploading || !this._draft.pages.length;
     select.addEventListener("change", () => { void this._draftOperation(() => this._previewCarousel("select", select.value)); }); selectLabel.append(select); preview.append(selectLabel);
-    const policy = document.createElement("p"); policy.className = "mso-help"; policy.textContent = "Pause preserves the remaining time; Resume continues it. Display duration starts after each transition completes. Manual changes keep the current pause state. Preview controls stay private. Assign character lists and preview the complete combined sequence in an overlay instance's Carousel Settings. Canvas editing pauses during playback preview."; preview.append(policy);
+    const policy = document.createElement("p"); policy.className = "mso-help"; setText(policy, "Widgets.PreviewPolicy"); preview.append(policy);
     this._syncCarouselPreview();
   }
 
@@ -256,25 +278,29 @@ export class WidgetPresetEditor extends OverlayEditor {
   _syncCarouselPreview(state = this._preview?.renderer?.carousel?.getState?.()) {
     const status = this.element?.querySelector("[data-carousel-preview-status]");
     const page = this._draft?.pages?.find(entry => entry.id === state?.activePageId);
-    if (status) status.textContent = this._previewRunning ? `Playback preview${page ? `: ${page.name}` : ""} — ${state?.paused ? "paused" : "running"}. Choose Edit selected content to adjust the canvas.` : `Editing ${this._pageScope === "shared" ? "shared elements" : this._draft?.pages?.find(entry => entry.id === this._pageScope)?.name ?? "page"}.`;
+    if (status) {
+      if (this._previewRunning) setText(status, state?.paused ? "Widgets.PlaybackPaused" : "Widgets.PlaybackRunning", { page: page?.name ?? "" });
+      else if (this._pageScope === "shared") setText(status, "Widgets.EditingShared");
+      else setText(status, "Widgets.EditingPage", { name: this._draft?.pages?.find(entry => entry.id === this._pageScope)?.name ?? "" });
+    }
     const select = this.element?.querySelector("[data-carousel-preview-page]"); if (select && state?.activePageId) select.value = state.activePageId;
     this._previewElement?.classList?.toggle("mso-carousel-playing", this._previewRunning);
   }
   async _createOverlay() {
     if (!await this._discardDraft()) return;
-    const name = await this._name("Create widget preset", "New character widget");
+    const name = await this._name(L("Widgets.CreatePreset"), "New character widget");
     if (!name) return;
     const preset = await this.widgetPresets.create(name);
     this._loadDraft(widgetPresetToOverlay(preset));
   }
   async _deleteOverlay() {
-    if (!this._draft || !await this._confirm("Delete widget design", `Delete “${this._draft.name}”? Linked instances keep their Actor assignments, but will show a missing-design placeholder.`, "Delete design")) return;
+    if (!this._draft || !await this._confirm(L("Widgets.DeleteDesign"), L("Widgets.DeleteDesignPrompt", { name: this._draft.name }), L("Widgets.DeleteDesignButton"))) return;
     await this.widgetPresets.delete(this._draft.id, { expectedRevision: this._loadedRevision });
     const state = this.store.getState(); this._loadDraft(this._initialOverlay(state), state.revision);
   }
   _validateInputs() {
     const invalid = [...this.element.querySelectorAll("[data-carousel-field]")].find(input => !input.checkValidity());
-    if (invalid) { invalid.reportValidity(); throw new Error("Correct the highlighted page or cycling setting before saving."); }
+    if (invalid) { invalid.reportValidity(); throw new Error(t("Widgets.CorrectHighlightedCycling")); }
     super._validateInputs();
   }
   async _saveOverlay() {
@@ -283,27 +309,29 @@ export class WidgetPresetEditor extends OverlayEditor {
     const preset = overlayToWidgetPreset(this._draft, { id: this._draft.id, name: this._draft.name });
     const saved = await this.widgetPresets.save(preset, { expectedRevision: this._loadedRevision });
     this._loadDraft(widgetPresetToOverlay(saved));
-    ui.notifications.info("Widget design saved. Linked instances retain their characters and positions.");
+    ui.notifications.info(t("Widgets.DesignSaved"));
   }
   async _addComponent(target) {
     const type = target.dataset.componentType;
-    if (type !== "color" && !WIDGET_DEFINITIONS.some(definition => definition.type === type) || type === "character-widget") throw new Error("Choose an available widget component.");
+    if (type !== "color" && !WIDGET_DEFINITIONS.some(definition => definition.type === type) || type === "character-widget") throw new Error(t("Widgets.ChooseComponent"));
     return this._addLayer(type);
   }
   async _choosePreviewActor() {
     const actor = await this._chooseActor(); if (actor === undefined) return;
     this._previewActorUuid = actor?.uuid ?? "";
     this._previewActorLabel = actor?.name ?? "No character — safe placeholder preview";
+    this._previewActorDemo = false;
     if (this._preview?.renderer) this._preview.renderer.context.previewActorUuid = this._previewActorUuid;
-    const label = this.element.querySelector("[data-preview-actor]"); if (label) label.textContent = this._previewActorLabel;
+    this._syncPreviewActorLabel();
     await this._updatePreview();
     this._renderLayerProperties(); this._renderSharedWidgetAnimations();
   }
   async _chooseDemoPreviewActor() {
     this._previewActorUuid = DEMO_CHARACTERS[0].uuid;
-    this._previewActorLabel = `${DEMO_CHARACTERS[0].name} — DEMO DATA`;
+    this._previewActorLabel = DEMO_CHARACTERS[0].name;
+    this._previewActorDemo = true;
     if (this._preview?.renderer) this._preview.renderer.context.previewActorUuid = this._previewActorUuid;
-    const label = this.element.querySelector("[data-preview-actor]"); if (label) label.textContent = this._previewActorLabel;
+    this._syncPreviewActorLabel();
     await this._updatePreview();
     this._renderLayerProperties(); this._renderSharedWidgetAnimations();
   }
@@ -316,10 +344,11 @@ export class WidgetPresetEditor extends OverlayEditor {
 
 /** Separate library for reusable character designs; full-overlay presets remain in the overlay editor. */
 export class WidgetPresetManager extends HandlebarsApplicationMixin(ApplicationV2) {
+  get title() { return t("Widgets.ManagerTitle"); }
   static DEFAULT_OPTIONS = {
     id: "modular-stream-overlay-widget-manager", classes: ["mso-editor", "mso-widget-manager"],
-    window: { title: "Widget Preset Manager", icon: "fa-solid fa-id-card", resizable: true }, position: { width: 1000, height: 740 },
-    actions: Object.fromEntries(["createWidgetPreset", "fieldMappings"].map(action => [action, WidgetPresetManager.onAction]))
+    window: { title: "modular-stream-overlay.Widgets.ManagerTitle", icon: "fa-solid fa-id-card", resizable: true }, position: { width: 1000, height: 740 },
+    actions: Object.fromEntries(["createWidgetPreset", "fieldMappings", "adapterSettings", "installCainPresets"].map(action => [action, WidgetPresetManager.onAction]))
   };
   static PARTS = { manager: { template: `modules/${MODULE_ID}/templates/widget-manager.hbs` } };
   constructor(options) { super(options); this._previews = []; this._busy = false; }
@@ -331,6 +360,8 @@ export class WidgetPresetManager extends HandlebarsApplicationMixin(ApplicationV
   _destroyPreviews() { this._previews.forEach(preview => preview.destroy()); this._previews = []; }
   async _onRender(context, options) {
     await super._onRender(context, options); applications.add(this); this._destroyPreviews();
+    const title = this.element?.querySelector(".window-title"); if (title) setText(title, "Widgets.ManagerTitle");
+    localizeDOM(this.element);
     const presets = this.store.list();
     for (const host of this.element.querySelectorAll("[data-widget-preview]")) {
       const preset = presets.find(entry => entry.id === host.dataset.widgetPreview); if (!preset) continue;
@@ -357,38 +388,32 @@ export class WidgetPresetManager extends HandlebarsApplicationMixin(ApplicationV
     }
     if (failure) {
       console.error(`${MODULE_ID} | Widget preset operation failed`, failure);
-      ui.notifications.error(failure.message || "The widget preset could not be updated.");
+      ui.notifications.error(errorText(failure) || t("Widgets.UpdateFailed"));
     }
   }
   async _name(title, initial) { return OverlayEditor.prototype._name.call(this, title, initial); }
   async _confirm(title, text, label) { return OverlayEditor.prototype._confirm.call(this, title, text, label); }
   async _createWidgetPreset() {
-    const name = await this._name("Create widget preset", "New character widget"); if (!name) return;
+    const name = await this._name(L("Widgets.CreatePreset"), "New character widget"); if (!name) return;
     const preset = await this.store.create(name); await openWidgetPreset(preset.id);
   }
   async _command(command, id) {
-    const preset = this.store.list().find(entry => entry.id === id); if (!preset) throw new Error("This widget preset no longer exists.");
+    const preset = this.store.list().find(entry => entry.id === id); if (!preset) throw new Error(t("Widgets.PresetMissing"));
     const options = { expectedRevision: this.store.getState().revision };
     if (command === "edit") return openWidgetPreset(id);
-    if (command === "rename") { const name = await this._name("Rename widget preset", preset.name); if (name) await this.store.rename(id, name, options); }
-    else if (command === "duplicate") { const name = await this._name("Duplicate widget preset", `${preset.name.slice(0, 75)} copy`); if (name) await this.store.duplicate(id, name, options); }
-    else if (command === "delete" && await this._confirm("Delete widget preset", `Delete “${preset.name}”? Existing instances will show a missing-design placeholder.`, "Delete preset")) await this.store.delete(id, options);
+    if (command === "rename") { const name = await this._name(L("Widgets.RenamePreset"), preset.name); if (name) await this.store.rename(id, name, options); }
+    else if (command === "duplicate") { const name = await this._name(L("Widgets.DuplicatePreset"), `${preset.name.slice(0, 75)} copy`); if (name) await this.store.duplicate(id, name, options); }
+    else if (command === "delete" && await this._confirm(L("Widgets.DeletePreset"), L("Widgets.DeletePresetPrompt", { name: preset.name }), L("Widgets.DeletePresetButton"))) await this.store.delete(id, options);
   }
   async _fieldMappings() {
-    const content = document.createElement("div");
-    const help = document.createElement("p"); help.textContent = "Advanced system fields: add mappings with id, label, type (number or string), and a system.* path from your system's documented Actor schema. Only fields explicitly used by a widget are read. Example: character.resource, Resource, number, system.resources.focus.value.";
-    const textarea = document.createElement("textarea"); textarea.name = "mappings"; textarea.rows = 14; textarea.style.width = "100%"; textarea.setAttribute("aria-label", "Character field mappings JSON");
-    // DialogV2 serializes the supplied DIV to HTML before constructing its form.
-    // Textarea content is its persisted default; a .value-only assignment would be lost.
-    textarea.textContent = JSON.stringify(this.api?.getFieldMappings?.() ?? [], null, 2);
-    content.append(help, textarea);
-    const result = await DialogV2.input({ window: { title: "Character field mappings" }, content, modal: true, rejectClose: false });
-    if (!result) return;
-    let mappings;
-    try { mappings = JSON.parse(result.mappings); } catch { throw new Error("Field mappings must be a JSON array. Reopen mappings to correct it."); }
-    if (!Array.isArray(mappings)) throw new Error("Field mappings must be a JSON array.");
-    if (!this.api?.setFieldMappings) throw new Error("Character mappings are not ready.");
-    await this.api.setFieldMappings(mappings); ui.notifications.info("Character field mappings saved.");
+    await openFieldMappings({ api: this.api, characterData: services.characterData ?? this.api?.characterData });
   }
-  async close(options) { this._destroyPreviews(); applications.delete(this); manager = undefined; return super.close(options); }
+  async _adapterSettings() {
+    await openAdapterSettings({ api: this.api, characterData: services.characterData ?? this.api?.characterData });
+  }
+  async _installCainPresets() {
+    if (!this.api?.installCainPresets) throw new Error(t("Widgets.CainNotReady"));
+    const result = await this.api.installCainPresets();
+    ui.notifications.info(t(result.created ? "Widgets.CainInstalled" : "Widgets.CainExisting"));
+  }  async close(options) { this._destroyPreviews(); applications.delete(this); manager = undefined; return super.close(options); }
 }

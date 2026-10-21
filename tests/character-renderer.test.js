@@ -176,6 +176,54 @@ async function motionFixture(type, values, { transition = { duration: 100, easin
   };
 }
 
+test("circle resources reconstruct actual units, preserve zero, clamp fill and recover after unavailable data", async () => {
+  const values = current => ({ "character.hp.current": current, "character.hp.max": 6 });
+  const f = await motionFixture("resource-bar", values(2), { patch: { display: "dots", showValue: true }, preview: true,
+    transition: { duration: 0, bar: false, numeric: false } });
+  const track = f.element.children[0], row = track.children.find(child => child.className === "mso-resource-dot-row");
+  const fills = () => row.children.map(dot => Number(dot.dataset.resourceFill));
+  assert.equal(track.dataset.resourceDisplay, "dots"); assert.equal(row.children.length, 6);
+  assert.deepEqual(fills(), [1, 1, 0, 0, 0, 0]);
+  assert.equal(track.children[0].style.display, "none");
+  await f.update(values(0)); assert.deepEqual(fills(), [0, 0, 0, 0, 0, 0]);
+  await f.update(values(20)); assert.deepEqual(fills(), [1, 1, 1, 1, 1, 1]);
+  assert.equal(track.children.at(-1).textContent, "20 / 6", "Indicator clamp never changes the source value");
+  await f.update(values(1.5)); assert.deepEqual(fills(), [1, .5, 0, 0, 0, 0]);
+  await f.update(values(null)); assert.equal(track.dataset.resourceDisplay, "unavailable");
+  assert.equal(row.style.display, "none"); assert.equal(track.children.at(-1).textContent, "—");
+  await f.update({ "character.hp.current": 1, "character.hp.max": 3 });
+  assert.equal(row.children.length, 3); assert.deepEqual(fills(), [1, 0, 0]);
+  assert.equal(f.element.children[0], track); f.destroy(); assert.equal(f.subscribed, false);
+});
+
+test("circle resources bound DOM allocation and use the normal bar for noninteger or large maxima", async () => {
+  const f = await motionFixture("resource-bar", { "character.hp.current": 2, "character.hp.max": 3 },
+    { patch: { display: "dots", showValue: false }, transition: { duration: 0, bar: false, numeric: false } });
+  const track = f.element.children[0], row = track.children.find(child => child.className === "mso-resource-dot-row");
+  await f.update({ "character.hp.current": 2, "character.hp.max": 60 }); assert.equal(row.children.length, 60);
+  for (const maximum of [61, 1000000, 3.5]) {
+    await f.update({ "character.hp.current": 2, "character.hp.max": maximum });
+    assert.equal(track.dataset.resourceDisplay, "bar"); assert.equal(row.style.display, "none");
+    assert.equal(row.children.length, 60); assert.equal(track.children[0].style.display, "");
+  }
+  await f.update({ "character.hp.current": 1, "character.hp.max": 3 });
+  assert.equal(track.dataset.resourceDisplay, "dots"); assert.equal(row.children.length, 3);
+  f.destroy();
+});
+
+test("circle fills use native resource transitions and reduced motion settles the latest state", async () => {
+  for (const reducedMotion of [false, true]) {
+    const f = await motionFixture("resource-bar", { "character.hp.current": 6, "character.hp.max": 6 },
+      { patch: { display: "dots", showValue: false }, controllerOptions: { reducedMotion },
+        transition: { duration: 100, easing: "linear", bar: true, numeric: false } });
+    const row = f.element.children[0].children.find(child => child.className === "mso-resource-dot-row");
+    const fills = () => row.children.map(dot => Number(dot.dataset.resourceFill));
+    await f.update({ "character.hp.current": 0, "character.hp.max": 6 });
+    if (!reducedMotion) { f.advance(50); assert.deepEqual(fills(), [1, 1, 1, 0, 0, 0]); f.advance(50); }
+    assert.deepEqual(fills(), [0, 0, 0, 0, 0, 0]); assert.equal(f.frames.size, 0); f.destroy();
+  }
+});
+
 test("live bars keep stable nodes and interpolate rapid changes from the visible percentage", async () => {
   const f = await motionFixture("resource-bar", { "character.hp.current": 80, "character.hp.max": 100 }, { transition: { duration: 100, easing: "linear", bar: true, numeric: false } });
   const track = f.element.children[0], fill = track.children[0], label = track.children[1];

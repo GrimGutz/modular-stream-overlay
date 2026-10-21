@@ -148,3 +148,19 @@ test("field mapping dialog retains saved JSON through DialogV2 HTML serializatio
   await new WidgetPresetManager()._fieldMappings();
   assert.deepEqual(saved, mappings, "Submitting unchanged defaults must retain every configured field");
 });
+
+test("resource pairing is an explicit edit and preserves custom maxima until the user requests a match", async () => {
+  const { editor } = fixture(); await editor._prepareContext({});
+  await editor._addComponent({ dataset: { componentType: "resource-bar" } });
+  const layer = editor._selectedLayer();
+  const fields = [{ id: "character.stress.current", label: "Stress", type: "number", maxField: "character.stress.max" },
+    { id: "character.stress.max", label: "Maximum", type: "number" }, { id: "character.customMax", label: "Custom", type: "number" }];
+  editor._fieldDefinitions = () => fields;
+  layer.maxBinding = "character.customMax"; layer.x = 35;
+  const input = { type: "select-one", value: "character.stress.current", dataset: { layerField: "binding" }, setCustomValidity() {} };
+  editor._onLayerInput({ currentTarget: input });
+  assert.equal(layer.maxBinding, "character.customMax");
+  assert.equal(editor._useResourceMaximum(layer), true); assert.equal(layer.maxBinding, "character.stress.max"); assert.equal(layer.x, 35);
+  layer.binding = "character.customMax";
+  assert.equal(editor._useResourceMaximum(layer), false); assert.equal(layer.maxBinding, "character.stress.max");
+});
