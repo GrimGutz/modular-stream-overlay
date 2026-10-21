@@ -129,6 +129,80 @@ function textStyle(input) {
   };
 }
 
+/**
+ * Optional presentation properties are emitted only when set, so layouts saved
+ * before they existed keep their exact normalized form. An empty value clears one.
+ */
+const unset = value => value === undefined || value === null || value === "";
+function optional(result, input, key, validate) {
+  if (!unset(input[key])) result[key] = validate(input[key]);
+}
+const VERTICAL_ALIGNMENTS = ["top", "middle", "bottom"];
+const IMAGE_POSITIONS = ["center", "top", "bottom"];
+export const BOX_STYLE_KEYS = Object.freeze(["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"]);
+export const TEXT_LAYOUT_KEYS = Object.freeze(["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize"]);
+export const DYNAMIC_TEXT_KEYS = Object.freeze(["accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"]);
+export const DOT_STYLE_KEYS = Object.freeze(["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth"]);
+export const OPTIONAL_LAYER_KEYS = Object.freeze([...new Set([...BOX_STYLE_KEYS, ...TEXT_LAYOUT_KEYS, ...DYNAMIC_TEXT_KEYS, ...DOT_STYLE_KEYS, "imagePosition"])]);
+
+function boxStyle(result, input) {
+  optional(result, input, "borderWidth", value => numeric(value, "Border width", 0, 64));
+  optional(result, input, "borderColor", value => color(value, "Border color"));
+  optional(result, input, "cornerRadius", value => numeric(value, "Corner radius", 0, 3840));
+  optional(result, input, "boxShadowX", value => numeric(value, "Shadow X offset", -200, 200));
+  optional(result, input, "boxShadowY", value => numeric(value, "Shadow Y offset", -200, 200));
+  optional(result, input, "boxShadowBlur", value => numeric(value, "Shadow blur", 0, 200));
+  optional(result, input, "boxShadowColor", value => color(value, "Shadow color"));
+}
+
+function textLayout(result, input) {
+  optional(result, input, "lineHeight", value => numeric(value, "Line height", 0.5, 5));
+  optional(result, input, "letterSpacing", value => numeric(value, "Letter spacing", -50, 200));
+  optional(result, input, "uppercase", value => boolean(value, "Uppercase text"));
+  optional(result, input, "verticalAlign", value => {
+    if (!VERTICAL_ALIGNMENTS.includes(value)) fail("Vertical alignment must be top, middle, or bottom.");
+    return value;
+  });
+  optional(result, input, "padding", value => numeric(value, "Text padding", 0, 500));
+  optional(result, input, "highlightColor", value => color(value, "Highlight color"));
+  optional(result, input, "richText", value => boolean(value, "Bold markup"));
+  optional(result, input, "strongColor", value => color(value, "Bold text color"));
+  optional(result, input, "strongFontSize", value => numeric(value, "Bold text size", 1, 512));
+}
+
+/** "value=label" lines translate a bound value such as CAT 2 into a display name. */
+export function parseValueLabels(value) {
+  const labels = new Map();
+  if (typeof value !== "string") return labels;
+  for (const line of value.split(/\r?\n/)) {
+    const index = line.indexOf("=");
+    if (index <= 0) continue;
+    const key = line.slice(0, index).trim(), label = line.slice(index + 1).trim();
+    if (key && !labels.has(key)) labels.set(key, label);
+  }
+  return labels;
+}
+
+function dynamicText(result, input) {
+  optional(result, input, "accent", value => boolean(value, "Character accent color"));
+  optional(result, input, "strongAccent", value => boolean(value, "Bold text accent color"));
+  optional(result, input, "emptyText", value => content(value, "Empty value text", 1000));
+  optional(result, input, "hideEmptyLines", value => boolean(value, "Hide empty lines"));
+  optional(result, input, "valueLabels", value => {
+    const labels = content(value, "Value labels", 4000);
+    if (parseValueLabels(labels).size > 100) fail("Value labels support at most 100 entries.");
+    return labels;
+  });
+}
+
+function dotStyle(result, input) {
+  optional(result, input, "accent", value => boolean(value, "Character accent color"));
+  optional(result, input, "maxValue", value => numeric(value, "Fixed maximum", 1, 60, true));
+  optional(result, input, "dotSize", value => numeric(value, "Circle size", 1, 256));
+  optional(result, input, "dotGap", value => numeric(value, "Circle spacing", 0, 256));
+  optional(result, input, "dotBorderWidth", value => numeric(value, "Circle outline width", 0, 32));
+}
+
 /** A normalized field ID, never an executable expression or an unrestricted Actor path. */
 export function validateCharacterBinding(value) {
   if (typeof value !== "string" || value !== value.trim() || !CHARACTER_FIELD_PATTERN.test(value)
@@ -257,9 +331,11 @@ export function validateLayer(input, canvas = { width: 1920, height: 1080 }, ind
     const dynamic = type !== "text";
     result.text = content(input.text ?? (type === "text" ? "Text" : type === "dynamic-text" ? "{character.name}" : ""));
     Object.assign(result, textStyle(input));
+    textLayout(result, input);
     if (dynamic) {
       result.binding = validateCharacterBinding(input.binding ?? (type === "dynamic-number" ? "character.hp.current" : "character.name"));
       result.fallback = content(input.fallback ?? "—", "Fallback text", 1000);
+      dynamicText(result, input);
     }
   } else if (type === "character-portrait") {
     result.binding = validateCharacterBinding(input.binding ?? "character.portrait");
@@ -271,6 +347,10 @@ export function validateLayer(input, canvas = { width: 1920, height: 1080 }, ind
     result.circular = boolean(input.circular ?? false, "Circular portrait");
     result.borderRadius = numeric(input.borderRadius ?? 0, "Portrait border radius", 0, 3840);
     result.lockAspectRatio = boolean(input.lockAspectRatio ?? true, "Aspect ratio lock");
+    optional(result, input, "imagePosition", value => {
+      if (!IMAGE_POSITIONS.includes(value)) fail("Image focus must be center, top, or bottom.");
+      return value;
+    });
   } else if (type === "resource-bar") {
     result.binding = validateCharacterBinding(input.binding ?? "character.hp.current");
     result.maxBinding = validateCharacterBinding(input.maxBinding ?? "character.hp.max");
@@ -281,6 +361,7 @@ export function validateLayer(input, canvas = { width: 1920, height: 1080 }, ind
     if (!["bar", "dots"].includes(result.display)) fail("Choose bar or dots for resource display.");
     result.fallback = content(input.fallback ?? "—", "Fallback text", 1000);
     Object.assign(result, textStyle(input));
+    dotStyle(result, input);
   } else if (type === "character-widget") {
     result.presetId = identifier(input.presetId, "Widget preset ID");
     result.dataSource = validateDataSource(input.dataSource);
@@ -301,6 +382,7 @@ export function validateLayer(input, canvas = { width: 1920, height: 1080 }, ind
     // Registered widget types own only their isolated JSON configuration.
     result.config = configuration(input.config);
   }
+  boxStyle(result, input);
   return result;
 }
 

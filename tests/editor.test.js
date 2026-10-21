@@ -574,3 +574,27 @@ test("Actor Directory drops bind their target widget using public document drag 
   assert.equal(first.actorUuid, "Actor.dropped"); assert.equal(second.actorUuid, "Actor.two"); assert.equal(prevented, true);
   assert.equal(editor._selectedLayerId, first.id);
 });
+
+test("optional box and text styles apply from the designer and clear back to defaults", async () => {
+  const { editor } = fixture();
+  await editor._prepareContext({});
+  await editor._addText();
+  const layer = editor._selectedLayer();
+  const border = layerField("borderWidth", "3");
+  const lineHeight = layerField("lineHeight", "1.3");
+  const rich = layerField("richText", true, "checkbox");
+  const fields = [border, lineHeight, rich];
+  editor.element.querySelectorAll = selector => selector === '[data-layer-command="delete"]' ? [] : fields;
+  for (const [field, value] of [[border, "3"], [lineHeight, "1.3"], [rich, true]]) {
+    // Each accepted input re-synchronizes the other mounted fields from the layer.
+    if (field.type === "checkbox") field.checked = value; else field.value = value;
+    editor._onLayerInput({ currentTarget: field });
+  }
+  assert.deepEqual([layer.borderWidth, layer.lineHeight, layer.richText], [3, 1.3, true]);
+  border.value = "";
+  editor._onLayerInput({ currentTarget: border });
+  assert.equal(Object.hasOwn(layer, "borderWidth"), false, "An empty optional field restores the default look");
+  lineHeight.value = "9";
+  editor._onLayerInput({ currentTarget: lineHeight });
+  assert.equal(layer.lineHeight, 1.3); assert.match(lineHeight.message, /Line height/);
+});

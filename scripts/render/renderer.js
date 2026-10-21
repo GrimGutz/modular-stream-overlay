@@ -6,6 +6,7 @@ import { validateAnimationSettings } from "../animation/schema.js";
 import { WidgetCarousel } from "./carousel.js";
 import { ActorCarousel } from "./actor-carousel.js";
 import { resolveCarouselSettings } from "../carousel/schema.js";
+import { applyBoxStyle, createTextElement, markupLines, usesSpans, writeTextContent } from "./text.js";
 
 function coordinated(instance, preset, settings = resolveCarouselSettings(instance, preset)) {
   return settings.actors.length !== 1 || settings.settings.mode !== "information"
@@ -102,6 +103,7 @@ export class OverlayRenderer {
       element.className = `mso-${kind}`;
       element.dataset.instanceId = value.id;
       applyGeometry(element, value);
+      applyBoxStyle(element, value);
       root.append(element);
       if (kind === "layer") {
         layerElements.set(value.id, element);
@@ -379,14 +381,8 @@ export class OverlayRenderer {
     if (value.type === "image" && value.src) element.append(this.image(value.src, value.fit));
     else if (value.type === "color") element.style.backgroundColor = value.color;
     else if (value.type === "text") {
-      const text = document.createElement("div");
-      text.className = "mso-text-content";
-      text.textContent = value.text;
-      Object.assign(text.style, {
-        fontFamily: `"${value.fontFamily}", ${["Georgia", "Times New Roman"].includes(value.fontFamily) ? "serif" : value.fontFamily === "Courier New" ? "monospace" : "sans-serif"}`,
-        fontSize: `${value.fontSize}px`, fontWeight: String(value.fontWeight), color: value.color,
-        textAlign: value.align, textShadow: value.shadow ? "0 2px 4px rgba(0,0,0,0.8)" : "none"
-      });
+      const text = createTextElement(value);
+      writeTextContent(text, value, usesSpans(value) ? markupLines(value.text, value.richText) : value.text);
       element.append(text);
     }
   }
@@ -397,7 +393,7 @@ export class OverlayRenderer {
     const value = validateLayer(input, this.overlay.canvas);
     const element = this.layerElements.get(value.id);
     if (!element && this.carousel?.updateLayer(value)) return;
-    if (element) applyGeometry(element, value);
+    if (element) { applyGeometry(element, value); applyBoxStyle(element, value); }
     const composition = this.compositions.get(value.id);
     if (composition) { composition.viewportSize = { width: value.width, height: value.height }; composition.fit(); }
     const index = this.overlay.layers.findIndex(layer => layer.id === value.id);

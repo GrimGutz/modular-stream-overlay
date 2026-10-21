@@ -7,6 +7,7 @@ import { dnd5eAdapter } from "./adapters/dnd5e.js";
 import { WidgetPresetStore, registerWidgetSettings } from "./core/widget-presets.js";
 import { CharacterDataService, validateAdapterPreferences } from "./data/character-data.js";
 import { validateMappings } from "./data/mappings.js";
+import { validateCharacterProfiles } from "./data/profiles.js";
 import { OverlayRenderer } from "./render/renderer.js";
 import { OverlayEditor, configureEditor, refreshEditors } from "./ui/editor.js";
 import { WidgetPresetManager, configureWidgetEditor, openWidgetManager, openWidgetPreset, refreshWidgetEditors } from "./ui/widget-editor.js";
@@ -166,12 +167,18 @@ Hooks.once("init", () => {
     name: "Character data providers", scope: "world", config: false, type: Object,
     restricted: true, default: {}, onChange: mappingsChanged
   });
+  // Values reach widgets through the data service, so no stage rebuild is needed.
+  game.settings.register(MODULE_ID, "characterProfiles", {
+    name: "Character profiles", scope: "world", config: false, type: Object,
+    restricted: true, default: {}, onChange: mappingsChanged
+  });
   store = new OverlayStore();
   widgetPresets = new WidgetPresetStore();
   characterData = new CharacterDataService({ adapters, getUser: getPresentationUser,
     getSystemVersion: () => game.system?.version ?? "",
     getAdapterPreferences: () => game.settings.get(MODULE_ID, "adapterPreferences") ?? {},
-    getMappings: () => game.settings.get(MODULE_ID, "fieldMappings") ?? [] });
+    getMappings: () => game.settings.get(MODULE_ID, "fieldMappings") ?? [],
+    getProfiles: () => game.settings.get(MODULE_ID, "characterProfiles") ?? {} });
   animationCommands = new AnimationCommands({ getState: () => store.getState(), getUser: () => game.user,
     getViewer: () => game.users?.get(getViewerUserId()), getRenderer: () => renderer,
     send: command => commandTransport.send(command), now: serverNow,
@@ -265,6 +272,11 @@ Hooks.once("init", () => {
     async setFieldMappings(value) {
       if (!game.user?.isGM) throw Error("Only a GM can configure character fields.");
       return game.settings.set(MODULE_ID, "fieldMappings", validateMappings(value));
+    },
+    getCharacterProfiles: () => validateCharacterProfiles(game.settings.get(MODULE_ID, "characterProfiles") ?? {}),
+    async setCharacterProfiles(value) {
+      if (!game.user?.isGM) throw Error("Only a GM can configure character profiles.");
+      return game.settings.set(MODULE_ID, "characterProfiles", validateCharacterProfiles(value));
     },
     getViewerUserId,
     async setViewerUserId(id) {

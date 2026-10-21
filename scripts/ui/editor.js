@@ -1,6 +1,6 @@
 import { LayerCanvas } from "../editor/layer-canvas.js";
 import { uploadBackground } from "../core/background-upload.js";
-import { validateAssetPath, validateLayer, FONT_FAMILIES, FONT_WEIGHTS } from "../core/schema.js";
+import { validateAssetPath, validateLayer, FONT_FAMILIES, FONT_WEIGHTS, OPTIONAL_LAYER_KEYS } from "../core/schema.js";
 import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, reorderLayer } from "../core/layers.js";
 import { safePortraitURL } from "../render/character-components.js";
 import { renderAnimationControls, renderAnimationTestControls } from "./animation-controls.js";
@@ -15,6 +15,10 @@ const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applicat
 let services = {};
 const editors = new Set();
 const L = (key, params = {}) => ({ key, params });
+const BOX_KEYS = ["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"];
+const TEXT_KEYS = ["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize", "accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"];
+const DOT_KEYS = ["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth"];
+const OPTIONAL_NUMBERS = ["borderWidth", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "lineHeight", "letterSpacing", "padding", "strongFontSize", "maxValue", "dotSize", "dotGap", "dotBorderWidth"];
 const S = literal => ({ literal });
 const labelText = label => label?.key ? t(label.key, label.params) : label?.literal !== undefined ? uiText(label.literal) : String(label ?? "");
 const errorNodes = new WeakMap();
@@ -712,6 +716,7 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     else if (layer.type === "color") this._layerField(host, layer, "color", L("Editor.Color"));
     this._renderComponentProperties(host, layer);
+    this._renderStyleProperties(host, layer);
     this._renderAnimationControls(host, layer);
     const commands = document.createElement("div");
     commands.className = "mso-layer-commands";
@@ -849,6 +854,124 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  /** Optional presentation; an empty field keeps the default look. */
+  _renderStyleProperties(host, layer) {
+    const textual = ["text", "character-name", "dynamic-text", "dynamic-number"].includes(layer.type);
+    const dynamic = textual && layer.type !== "text";
+    const section = (key, open = false) => {
+      const details = document.createElement("details"); details.className = "mso-style-section"; details.open = open;
+      const summary = document.createElement("summary"); setText(summary, key); details.append(summary);
+      host.append(details); return details;
+    };
+    const grid = parent => { const element = document.createElement("div"); element.className = "mso-property-grid"; parent.append(element); return element; };
+    const number = (parent, field, key, min, max, step = "any") => this._layerField(parent, layer, field, L(key), { type: "number", min, max, step });
+    const color = (parent, field, key) => this._layerField(parent, layer, field, L(key), { maxLength: 9 });
+    const check = (parent, field, key) => this._layerField(parent, layer, field, L(key), { type: "checkbox" });
+    if (textual) {
+      const text = section("Editor.TextLayoutSection", TEXT_KEYS.some(key => layer[key] !== undefined));
+      const metrics = grid(text);
+      number(metrics, "lineHeight", "Editor.LineHeight", 0.5, 5, 0.05);
+      number(metrics, "letterSpacing", "Editor.LetterSpacing", -50, 200);
+      number(metrics, "padding", "Editor.TextPadding", 0, 500);
+      this._layerField(metrics, layer, "verticalAlign", L("Editor.VerticalAlign"), { options: [
+        { value: "", label: L("Editor.StyleDefault") }, { value: "top", label: L("Editor.AlignTop") },
+        { value: "middle", label: L("Editor.AlignMiddle") }, { value: "bottom", label: L("Editor.AlignBottom") }] });
+      check(text, "uppercase", "Editor.Uppercase");
+      color(text, "highlightColor", "Editor.HighlightColor");
+      check(text, "richText", "Editor.RichText");
+      const strong = grid(text);
+      color(strong, "strongColor", "Editor.StrongColor");
+      number(strong, "strongFontSize", "Editor.StrongFontSize", 1, 512);
+      if (dynamic) {
+        check(text, "accent", "Editor.AccentText");
+        check(text, "strongAccent", "Editor.StrongAccent");
+        check(text, "hideEmptyLines", "Editor.HideEmptyLines");
+        this._layerField(text, layer, "emptyText", L("Editor.EmptyText"), { maxLength: 1000 });
+        this._layerField(text, layer, "valueLabels", L("Editor.ValueLabels"), { type: "textarea", maxLength: 4000 });
+      }
+      const help = document.createElement("p"); help.className = "mso-help"; setText(help, dynamic ? "Editor.TextLayoutHelp" : "Editor.StaticMarkupHelp"); text.append(help);
+    }
+    if (layer.type === "resource-bar") {
+      const dots = section("Editor.CirclesSection", DOT_KEYS.some(key => layer[key] !== undefined));
+      check(dots, "accent", "Editor.AccentFill");
+      const metrics = grid(dots);
+      number(metrics, "maxValue", "Editor.FixedMaximum", 1, 60, 1);
+      number(metrics, "dotSize", "Editor.DotSize", 1, 256);
+      number(metrics, "dotGap", "Editor.DotGap", 0, 256);
+      number(metrics, "dotBorderWidth", "Editor.DotBorderWidth", 0, 32);
+      const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.CirclesHelp"); dots.append(help);
+    }
+    if (layer.type === "character-portrait") {
+      this._layerField(host, layer, "imagePosition", L("Editor.ImagePosition"), { options: [
+        { value: "", label: L("Editor.StyleDefault") }, { value: "top", label: L("Editor.AlignTop") },
+        { value: "center", label: L("Editor.AlignMiddle") }, { value: "bottom", label: L("Editor.AlignBottom") }] });
+    }
+    const box = section("Editor.BoxStyleSection", BOX_KEYS.some(key => layer[key] !== undefined));
+    const border = grid(box);
+    number(border, "borderWidth", "Editor.BorderWidth", 0, 64);
+    color(border, "borderColor", "Editor.BorderColor");
+    number(border, "cornerRadius", "Editor.BoxCornerRadius", 0, 3840);
+    const shadow = grid(box);
+    number(shadow, "boxShadowX", "Editor.ShadowX", -200, 200);
+    number(shadow, "boxShadowY", "Editor.ShadowY", -200, 200);
+    number(shadow, "boxShadowBlur", "Editor.ShadowBlur", 0, 200);
+    color(shadow, "boxShadowColor", "Editor.ShadowColor");
+    const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.BoxStyleHelp"); box.append(help);
+  }
+
+  /** GM-only per-character values shared by every widget showing that Actor. */
+  async _editCharacterProfiles(layer) {
+    const api = this.api;
+    if (!api?.setCharacterProfiles) throw new Error(t("Editor.CharacterDataNotReady"));
+    const actors = this._assignedCharacters(layer).filter(uuid => /^Actor\./.test(uuid));
+    if (!actors.length) throw editorError("Editor.ProfilesNoCharacters");
+    const names = new Map((this.characterData?.listActors?.() ?? []).map(actor => [actor.uuid, actor.name]));
+    const profiles = api.getCharacterProfiles();
+    const content = document.createElement("div");
+    const root = document.createElement("div"); root.className = "mso-profile-editor";
+    const help = document.createElement("p"); setText(help, "Editor.ProfilesHelp"); root.append(help);
+    actors.forEach((uuid, index) => {
+      const row = document.createElement("fieldset"); row.className = "mso-profile-row";
+      const legend = document.createElement("legend"); legend.textContent = names.get(uuid) ?? uuid; row.append(legend);
+      for (const [key, caption, placeholder] of [["accent", "Editor.ProfileAccent", "#f79646"], ["fullName", "Editor.ProfileFullName", ""], ["art", "Editor.ProfileArt", ""]]) {
+        const label = document.createElement("label"); label.className = "mso-layer-field";
+        const title = document.createElement("span"); setText(title, caption);
+        const input = document.createElement("input"); input.type = "text"; input.name = `${key}-${index}`;
+        input.value = profiles[uuid]?.[key] ?? ""; if (placeholder) input.placeholder = placeholder;
+        input.maxLength = key === "art" ? 4096 : key === "accent" ? 9 : 200;
+        label.append(title, input);
+        if (key === "accent") { const swatch = document.createElement("input"); swatch.type = "color"; swatch.dataset.profileSwatch = String(index); label.append(swatch); }
+        if (key === "art") { const browse = document.createElement("button"); browse.type = "button"; browse.dataset.profileBrowse = String(index); setText(browse, "Editor.BrowseExisting"); label.append(browse); }
+        row.append(label);
+      }
+      root.append(row);
+    });
+    content.append(root);
+    const result = await DialogV2.input({ window: { title: t("Editor.ProfilesTitle") }, content, modal: true, rejectClose: false,
+      render: (_event, dialog) => {
+        markDialog(dialog, L("Editor.ProfilesTitle"));
+        dialog.element.querySelectorAll("[data-profile-swatch]").forEach(swatch => {
+          const text = dialog.element.querySelector(`[name="accent-${swatch.dataset.profileSwatch}"]`);
+          if (/^#[\da-f]{6}$/i.test(text.value)) swatch.value = text.value;
+          swatch.addEventListener("input", () => { text.value = swatch.value; });
+          text.addEventListener("input", () => { if (/^#[\da-f]{6}$/i.test(text.value)) swatch.value = text.value; });
+        });
+        dialog.element.querySelectorAll("[data-profile-browse]").forEach(button => button.addEventListener("click", () => {
+          const input = dialog.element.querySelector(`[name="art-${button.dataset.profileBrowse}"]`);
+          void new foundry.applications.apps.FilePicker.implementation({ type: "image", current: input.value, allowUpload: false,
+            callback: path => { input.value = path; } }).render({ force: true });
+        }));
+      }
+    });
+    if (!result) return;
+    const next = { ...profiles };
+    actors.forEach((uuid, index) => {
+      next[uuid] = { accent: result[`accent-${index}`] ?? "", fullName: result[`fullName-${index}`] ?? "", art: result[`art-${index}`] ?? "" };
+    });
+    await api.setCharacterProfiles(next);
+    ui.notifications?.info(t("Editor.ProfilesSaved"));
+  }
+
   _useResourceMaximum(layer = this._selectedLayer()) {
     if (layer?.type !== "resource-bar") return false;
     const fields = this._fieldDefinitions(layer);
@@ -897,7 +1020,7 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       this._actorStatusUnsubscribe = this.characterData.subscribe?.(reference, updateStatus);
     }
     const actions = document.createElement("div"); actions.className = "mso-image-actions";
-    for (const [label, operation] of [...(!demoMode ? [[L("Editor.ChangeCharacter"), () => this._assignActor()], [L("Editor.ClearCharacter"), () => this._assignActor("")]] : []), [L("Editor.EditDesign"), () => services.openWidgetPreset?.(layer.presetId)]]) {
+    for (const [label, operation] of [...(!demoMode ? [[L("Editor.ChangeCharacter"), () => this._assignActor()], [L("Editor.ClearCharacter"), () => this._assignActor("")], [L("Editor.CharacterProfiles"), () => this._editCharacterProfiles(layer)]] : []), [L("Editor.EditDesign"), () => services.openWidgetPreset?.(layer.presetId)]]) {
       const button = document.createElement("button"); button.type = "button"; writeText(button, label); button.disabled = this._uploading || label.key === "Editor.EditDesign" && !preset; button.addEventListener("click", () => { void this._draftOperation(operation); }); actions.append(button);
     }
     host.append(actions);
@@ -1140,15 +1263,18 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!layer) return;
     const input = event.currentTarget;
     const field = input.dataset.layerField;
-    const numeric = new Set(["x", "y", "width", "height", "rotation", "opacity", "fontSize", "borderRadius"]);
-    const allowed = new Set(["name", "x", "y", "width", "height", "rotation", "opacity", "visible", "locked", "src", "fit", "lockAspectRatio", "text", "fontFamily", "fontSize", "fontWeight", "color", "align", "shadow", "binding", "maxBinding", "fallback", "portraitSource", "circular", "borderRadius", "foregroundColor", "backgroundColor", "showValue", "display"]);
+    const numeric = new Set(["x", "y", "width", "height", "rotation", "opacity", "fontSize", "borderRadius", ...OPTIONAL_NUMBERS]);
+    const allowed = new Set(["name", "x", "y", "width", "height", "rotation", "opacity", "visible", "locked", "src", "fit", "lockAspectRatio", "text", "fontFamily", "fontSize", "fontWeight", "color", "align", "shadow", "binding", "maxBinding", "fallback", "portraitSource", "circular", "borderRadius", "foregroundColor", "backgroundColor", "showValue", "display", ...OPTIONAL_LAYER_KEYS]);
     if (!allowed.has(field)) return;
     let value = input.type === "checkbox" ? input.checked : input.value;
-    if (numeric.has(field)) value = input.value.trim() === "" ? NaN : Number(input.value);
+    // Clearing an optional style restores its default instead of failing validation.
+    if (OPTIONAL_LAYER_KEYS.includes(field) && input.type !== "checkbox" && input.value.trim() === "") value = undefined;
+    else if (numeric.has(field)) value = input.value.trim() === "" ? NaN : Number(input.value);
     try {
       const patch = { [field]: value };
       if (field === "binding" && layer.text === `{${layer.binding}}`) patch.text = `{${value}}`;
       const validated = validateLayer({ ...layer, ...patch }, this._draft.canvas, this._editingLayers().indexOf(layer));
+      for (const key of OPTIONAL_LAYER_KEYS) if (!Object.hasOwn(validated, key)) delete layer[key];
       Object.assign(layer, validated);
       setValidity(input, "");
       this._invalidInputs.delete(`layer.${layer.id}.${field}`);

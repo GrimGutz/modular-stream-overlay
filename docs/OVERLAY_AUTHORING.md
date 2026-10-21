@@ -76,6 +76,26 @@ All layers support `id`, `type`, `name`, `visible`, `locked`, `x`, `y`, `width`,
 | `resource-bar` | `binding`, `maxBinding`, `foregroundColor`, `backgroundColor`, `showValue`, `display: "bar" | "dots"`, `fallback`, and text styling. |
 | `character-widget` | `presetId`, `dataSource`, `actorUuid`/`actorUuids`, `carousel`, supported per-component `overrides`, `animationOverrides`. It belongs in an overlay, not inside a reusable preset or page. |
 
+### Optional presentation fields
+
+These fields are omitted unless set; older layouts keep their exact look. The designer shows them under **Box style**, **Text layout** and **Circles**; clearing a field restores the default.
+
+| Applies to | Fields |
+| --- | --- |
+| Every layer, including `character-widget` | `borderWidth` (0–64 px), `borderColor`, `cornerRadius` (px), drop shadow `boxShadowX`, `boxShadowY` (−200–200), `boxShadowBlur` (0–200) and `boxShadowColor`. The shadow is drawn only when `boxShadowColor` is set. |
+| `text` and dynamic text types | `lineHeight` (0.5–5, multiplier), `letterSpacing` (px), `uppercase`, `verticalAlign: "top" | "middle" | "bottom"`, `padding` (px), `highlightColor` (background behind the text itself, e.g. a black name label), `richText` with `strongColor` and `strongFontSize`. |
+| `character-name`, `dynamic-text`, `dynamic-number` | `accent` (text uses the character accent), `strongAccent` (bold parts use it), `emptyText`, `hideEmptyLines`, `valueLabels`. |
+| `resource-bar` | `accent` (fill), `maxValue` (fixed 1–60 circles instead of the maximum field), `dotSize`, `dotGap`, `dotBorderWidth`. |
+| `character-portrait` | `imagePosition: "center" | "top" | "bottom"` for cropped artwork. |
+
+With `richText: true`, `**text**` is bold within one line. Markup is read from the template before values are inserted, so Actor text never becomes markup. `hideEmptyLines` omits a template line when any of its fields is an empty text; unavailable values still show `fallback`. `emptyText` replaces a blank result, for example `"ЧИСТ"` for no sin marks; it never replaces unavailable data. `valueLabels` holds `value=label` lines, used by `{field|label}` tokens: `{character.cain.cat|label}` with `1=1 - Чёрт` shows `1 - Чёрт`, and unlisted values show the value itself.
+
+Colors are hexadecimal; 8-digit colors such as `#00000059` carry transparency. A resource with `backgroundColor: "#00000000"` and `dotBorderWidth: 0` draws fill-only circles over printed artwork.
+
+### Character profiles
+
+`character.profile.accent`, `character.profile.fullName` and `character.profile.art` come from the module's **Character profiles** world setting, not from the game system. A GM edits them from a widget instance (**Character profiles…**); one profile per world Actor is shared by every overlay. Unset values are empty text, and `character.profile.art` falls back to the Actor portrait. Layers with `accent: true` request the accent automatically and keep their own color when it is unset.
+
 Use flat properties such as `fontSize: 28` and `rotation: 12`; there are no `style`, `position`, `transform`, `resourceId`, `actorName` or arbitrary CSS properties. Font weights are strings `"400"`, `"600"`, `"700"`; fonts are Arial, Verdana, Georgia, Times New Roman, Courier New or Trebuchet MS. Text alignment is left/center/right. Image fitting is cover/contain/stretch; portraits accept cover/contain. Portrait artwork selects `profile` or `token` (prototype-token artwork).
 
 Resource indicators default to the existing continuous `display: "bar"`. Choose `display: "dots"` for one outlined circle per resource unit when the bound maximum is an integer from 1 to 60. `foregroundColor` fills circles and `backgroundColor` colors their outlines. Zero draws empty circles; fill clamps to the available units without altering the displayed source number. Fractional current values partially fill the next circle. Larger or fractional maxima use the continuous bar, keeping DOM allocation bounded. Missing values never become fabricated zeroes. The widget designer exposes this option as **Resource display / Вид индикатора**.

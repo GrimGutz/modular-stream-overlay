@@ -172,3 +172,10 @@
 .mso-live-controls .mso-live-rules { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .mso-live-controls .mso-live-rules > span { flex-basis: 100%; }
 @media (max-width: 1000px) { .mso-editor .mso-shared-animations .mso-animation-controls { grid-template-columns: 1fr; } }
+.mso-editor .mso-style-section { margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, .12); padding-top: 6px; }
+.mso-editor .mso-style-section > summary { cursor: pointer; font-weight: 600; font-size: .8rem; }
+.mso-profile-editor .mso-profile-row { margin: 8px 0; }
+.mso-profile-editor .mso-layer-field { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.mso-profile-editor .mso-layer-field > span { flex: 0 0 9rem; }
+.mso-profile-editor .mso-layer-field > input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.mso-profile-editor .mso-layer-field > input[type="color"] { flex: 0 0 2.5rem; padding: 0; }

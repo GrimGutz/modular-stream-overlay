@@ -4,6 +4,7 @@ import { validateMappings, readMappedField } from "./mappings.js";
 import { validateActorUuid } from "../core/schema.js";
 import { DemoDataSource, DEMO_FIELDS, isDemoReference } from "../demo/data.js";
 import { versionCompatible } from "../core/versions.js";
+import { PROFILE_FIELDS, profileValue, validateCharacterProfiles } from "./profiles.js";
 
 const WORLD_ACTOR = /^Actor\.[A-Za-z0-9_-]{1,64}$/;
 const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/;
@@ -71,7 +72,7 @@ function safeScalar(value, type) {
 export class CharacterDataService {
   constructor({ adapters, getUser = () => globalThis.game?.user, resolveUuid = uuid => globalThis.foundry?.utils?.fromUuid(uuid),
     getSystemId = () => globalThis.game?.system?.id, getSystemVersion = () => globalThis.game?.system?.version ?? "",
-    getAdapterPreferences = () => ({}), getMappings = () => [], getActors = () => globalThis.game?.actors,
+    getAdapterPreferences = () => ({}), getMappings = () => [], getActors = () => globalThis.game?.actors, getProfiles = null,
     hooks = globalThis.Hooks, debounceMs = 40, demoData = new DemoDataSource(), onError = error => console.error("Modular Stream Overlay |", error) } = {}) {
     this.adapters = adapters;
     this.getUser = getUser;
@@ -81,6 +82,7 @@ export class CharacterDataService {
     this.getAdapterPreferences = getAdapterPreferences;
     this.getMappings = getMappings;
     this.getActors = getActors;
+    this.getProfiles = getProfiles;
     this.hooks = hooks;
     this.debounceMs = Math.max(0, Math.min(1000, Number(debounceMs) || 0));
     this.onError = onError;
@@ -115,6 +117,10 @@ export class CharacterDataService {
   getAdapterState() { return this._selection().state; }
   _adapters() { const { generic, selected } = this._selection(); return selected ? [generic, selected] : [generic]; }
   _mappings() { return validateMappings(this.getMappings() ?? []); }
+  _profiles() {
+    try { return validateCharacterProfiles(this.getProfiles?.() ?? {}); }
+    catch { return {}; }
+  }
 
   _catalog({ actorType } = {}) {
     const selection = this._selection(), { systemId, systemVersion } = selection.state;
@@ -123,6 +129,11 @@ export class CharacterDataService {
       if (adapter !== selection.generic && IDENTITY_FIELDS.has(field.id)) continue;
       result.set(field.id, { ...field, providerId: adapter.id,
         status: this.changeFailures.has(adapter.id) ? "unavailable" : applicability(field, actorType, systemVersion, adapter) });
+    }
+    // Module-owned presentation values are available for every system and Actor type.
+    if (this.getProfiles) for (const field of PROFILE_FIELDS) {
+      const { key: _key, ...metadata } = field;
+      result.set(field.id, { ...metadata, providerId: "profile", status: "available" });
     }
     let mappings = [];
     if (!selection.state.warning || selection.selected) {
@@ -176,7 +187,7 @@ export class CharacterDataService {
     const mappings = validateMappings(input);
     const preview = new CharacterDataService({ adapters: this.adapters, getUser: this.getUser, resolveUuid: this.resolveUuid,
       getSystemId: this.getSystemId, getSystemVersion: this.getSystemVersion, getAdapterPreferences: this.getAdapterPreferences,
-      getMappings: () => mappings, getActors: this.getActors, hooks: null, demoData: this.demoData });
+      getMappings: () => mappings, getActors: this.getActors, getProfiles: this.getProfiles, hooks: null, demoData: this.demoData });
     return preview.resolve(reference, mappings.map(mapping => mapping.id));
   }
 
@@ -246,6 +257,13 @@ export class CharacterDataService {
         && definitions.get(mapping.id)?.status === "available") {
         try { resolved[mapping.id] = readMappedField(actor, mapping); }
         catch { resolved[mapping.id] = null; failed = true; }
+      }
+      const profileFields = readFields.filter(field => definitions.get(field)?.providerId === "profile");
+      if (profileFields.length) {
+        const profiles = this._profiles();
+        for (const field of profileFields) resolved[field] = safeScalar(profileValue(profiles, actor.uuid, field), definitions.get(field).type)
+          // Without separate art, a full-body slot shows the Actor's own portrait.
+          ?? (field === "character.profile.art" ? safePortrait(actor.img) : null) ?? "";
       }
       if (deriveHealthPercent) {
         const current = resolved["character.hp.current"], max = resolved["character.hp.max"];

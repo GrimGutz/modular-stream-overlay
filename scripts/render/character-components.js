@@ -1,5 +1,6 @@
-import { validateAssetPath } from "../core/schema.js";
-import { requestedFields, renderTemplate } from "../data/bindings.js";
+import { validateAssetPath, parseValueLabels } from "../core/schema.js";
+import { ACCENT_FIELD, requestedFields, renderTemplate, renderTemplateLines } from "../data/bindings.js";
+import { createTextElement, safeColor, usesSpans, writeTextContent } from "./text.js";
 
 const TYPES = new Set(["character-portrait", "character-name", "dynamic-text", "dynamic-number", "resource-bar"]);
 export const isCharacterComponent = type => TYPES.has(type);
@@ -19,15 +20,20 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
   const keyFor = field => `component:${layer.id}:${field}`;
   const settings = () => motion?.settings?.transition ?? {};
   const finite = value => typeof value === "number" && Number.isFinite(value);
+  const labels = parseValueLabels(layer.valueLabels);
+  // A character's profile accent replaces the authored color only when one is set.
+  const accent = () => layer.accent || layer.strongAccent ? safeColor(actualValues[ACCENT_FIELD]) : null;
+  const fillColor = () => (layer.accent ? accent() : null) ?? layer.foregroundColor;
+  const maximumOf = values => layer.maxValue ?? values[layer.maxBinding];
   const redrawDots = percent => {
     if (!dotRow || !dotCount) return;
-    const units = Math.max(0, Math.min(dotCount, percent / 100 * dotCount));
+    const units = Math.max(0, Math.min(dotCount, percent / 100 * dotCount)), color = fillColor();
     for (let index = 0; index < dotCount; index++) {
       const dot = dotRow.children[index], fraction = Math.round(Math.max(0, Math.min(1, units - index)) * 1e9) / 1e9;
       dot.dataset.resourceFill = String(fraction);
-      dot.style.backgroundColor = fraction === 1 ? layer.foregroundColor : "transparent";
+      dot.style.backgroundColor = fraction === 1 ? color : "transparent";
       dot.style.backgroundImage = fraction > 0 && fraction < 1
-        ? `linear-gradient(to right, ${layer.foregroundColor} ${fraction * 100}%, transparent ${fraction * 100}%)` : "none";
+        ? `linear-gradient(to right, ${color} ${fraction * 100}%, transparent ${fraction * 100}%)` : "none";
     }
   };
   const prepareDots = (current, maximum) => {
@@ -49,13 +55,17 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
       dotCount = maximum;
       const dots = Array.from({ length: dotCount }, () => {
         const dot = document.createElement("span"); dot.className = "mso-resource-dot";
-        dot.style.borderColor = layer.backgroundColor; return dot;
+        dot.style.borderColor = layer.backgroundColor;
+        if (layer.dotBorderWidth !== undefined) dot.style.borderWidth = `${layer.dotBorderWidth}px`;
+        return dot;
       });
       dotRow.replaceChildren(...dots);
     }
     const reserved = layer.showValue ? Math.min(layer.width * .55, `${current} / ${maximum}`.length * layer.fontSize * .62 + 8) : 0;
     const available = Math.max(1, layer.width - reserved), unit = available / maximum;
-    const gap = Math.min(8, unit * .3), diameter = Math.max(.5, Math.min(32, layer.height, (available - gap * (maximum - 1)) / maximum));
+    // Explicit circle metrics let pips line up with printed artwork.
+    const gap = layer.dotGap ?? Math.min(8, unit * .3);
+    const diameter = layer.dotSize ?? Math.max(.5, Math.min(32, layer.height, (available - gap * (maximum - 1)) / maximum));
     dotRow.style.gap = `${gap}px`;
     for (const dot of dotRow.children) { dot.style.width = `${diameter}px`; dot.style.height = `${diameter}px`; }
     redrawDots(displayedPercent);
@@ -68,15 +78,25 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
   const redrawText = () => {
     if (disposed) return;
     if (layer.type === "resource-bar") {
-      if (label) label.textContent = resourceAvailable ? `${displayValues[layer.binding]} / ${displayValues[layer.maxBinding]}` : context.mode === "preview" ? layer.fallback : "";
+      if (label) label.textContent = resourceAvailable ? `${displayValues[layer.binding]} / ${maximumOf(displayValues)}` : context.mode === "preview" ? layer.fallback : "";
     } else if (text) {
-      if (layer.text) text.textContent = renderTemplate(layer.text, displayValues, layer.fallback);
+      const color = (layer.accent ? accent() : null) ?? layer.color;
+      if (text.style.color !== color) text.style.color = color;
+      let content;
+      if (layer.text && (usesSpans(layer) || layer.hideEmptyLines)) {
+        content = renderTemplateLines(layer.text, displayValues, { fallback: layer.fallback, labels, richText: layer.richText, hideEmptyLines: layer.hideEmptyLines });
+        if (!usesSpans(layer)) content = content.map(line => line.map(segment => segment.text).join("")).join("\n");
+        else if (layer.emptyText && content.every(line => line.every(segment => !segment.text.trim()))) content = layer.emptyText;
+      } else if (layer.text) content = renderTemplate(layer.text, displayValues, layer.fallback, { labels });
       else {
         const value = displayValues[layer.binding];
         const valid = layer.type === "dynamic-number" ? finite(actualValues[layer.binding])
           : typeof value === "string" || finite(value);
-        text.textContent = valid ? String(value) : layer.fallback;
+        content = valid ? String(value) : layer.fallback;
       }
+      // An empty Actor list may have a meaningful caption, such as "none".
+      if (typeof content === "string" && layer.emptyText && !content.trim()) content = layer.emptyText;
+      writeTextContent(text, layer, content, { accent: accent() });
     }
   };
   const animateField = (field, from, to, config) => {
@@ -141,6 +161,7 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
         image.className = "mso-character-portrait";
         Object.assign(image.style, { width: "100%", height: "100%", objectFit: layer.fit,
           borderRadius: layer.circular ? "50%" : `${layer.borderRadius}px` });
+        if (layer.imagePosition) image.style.objectPosition = `center ${layer.imagePosition}`;
         image.addEventListener("error", () => { image.style.visibility = "hidden"; });
       }
       if (image.dataset.portraitSource !== imageURL) {
@@ -152,7 +173,7 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
       return;
     }
     if (layer.type === "resource-bar") {
-      const current = values[layer.binding], maximum = values[layer.maxBinding];
+      const current = values[layer.binding], maximum = maximumOf(values);
       const previouslyAvailable = resourceAvailable;
       resourceAvailable = finite(current) && finite(maximum) && maximum > 0;
       if (!track) {
@@ -161,19 +182,20 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
         track.style.backgroundColor = layer.backgroundColor;
         fill = document.createElement("div");
         fill.className = "mso-resource-fill";
-        fill.style.backgroundColor = layer.foregroundColor;
         track.append(fill);
         if (layer.showValue || layer.display === "dots") {
-          label = textElement(layer, "");
+          label = createTextElement(layer);
           label.className += " mso-resource-label";
           track.append(label);
         }
       }
+      fill.style.backgroundColor = fillColor();
       prepareDots(current, maximum);
       const targetPercent = resourceAvailable ? Math.max(0, Math.min(100, current / maximum * 100)) : 0;
       const barField = "$bar", token = (numberTokens.get(barField) ?? 0) + 1;
-      const previousPercent = finite(previousValues[layer.binding]) && finite(previousValues[layer.maxBinding]) && previousValues[layer.maxBinding] > 0
-        ? Math.max(0, Math.min(100, previousValues[layer.binding] / previousValues[layer.maxBinding] * 100)) : 0;
+      const previousMaximum = maximumOf(previousValues);
+      const previousPercent = finite(previousValues[layer.binding]) && finite(previousMaximum) && previousMaximum > 0
+        ? Math.max(0, Math.min(100, previousValues[layer.binding] / previousMaximum * 100)) : 0;
       const onPercent = value => {
         if (disposed || numberTokens.get(barField) !== token) return;
         displayedPercent = value;
@@ -198,7 +220,7 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
       previousValues = { ...values };
       return;
     }
-    if (!text) text = textElement(layer, "");
+    if (!text) text = createTextElement(layer);
     mount(text);
     updateNumbers();
     redrawText();
@@ -233,18 +255,6 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
       numberTokens.clear(); displayedNumbers.clear(); forcedFields.clear();
     }
   };
-}
-
-function textElement(layer, value) {
-  const element = document.createElement("div");
-  element.className = "mso-text-content";
-  element.textContent = value ?? "";
-  Object.assign(element.style, {
-    fontFamily: `"${layer.fontFamily}", ${["Georgia", "Times New Roman"].includes(layer.fontFamily) ? "serif" : layer.fontFamily === "Courier New" ? "monospace" : "sans-serif"}`,
-    fontSize: `${layer.fontSize}px`, fontWeight: layer.fontWeight, color: layer.color,
-    textAlign: layer.align, textShadow: layer.shadow ? "0 2px 4px rgba(0,0,0,0.8)" : "none"
-  });
-  return element;
 }
 
 /** Actor artwork may use a managed asset or a credential-free HTTP(S) image URL. */

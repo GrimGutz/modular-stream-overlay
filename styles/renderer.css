@@ -21,3 +21,5 @@ html.mso-broadcast body > :not(#mso-output) { display: none !important; }
 html.mso-broadcast::before, html.mso-broadcast::after, html.mso-broadcast body::before, html.mso-broadcast body::after { display: none !important; }
 #mso-output { position: fixed; inset: 0; width: 100vw; height: 100vh; margin: 0; padding: 0; background: transparent; z-index: 2147483647; }
 #mso-output .mso-message { position: absolute; top: 16px; left: 16px; max-width: 600px; padding: 14px 18px; font: 16px/1.5 sans-serif; color: #fff; background: #17232e; border: 1px solid #6b8595; border-radius: 6px; }
+.mso-text-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+.mso-text-highlight { padding: 0 .2em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
