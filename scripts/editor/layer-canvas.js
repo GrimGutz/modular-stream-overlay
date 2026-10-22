@@ -156,9 +156,13 @@ export class LayerCanvas {
     const { width, height } = this.overlay.canvas;
     // Fitting leaves room for the rulers on every side, so the canvas stays centered.
     const margin = 32 + (this.rulersOn ? 2 * RULER_SIZE : 0);
-    const scale = this.zoom === "fit" ? Math.max(0.01, Math.min(Math.max(1, bounds.width - margin) / width, Math.max(1, bounds.height - margin) / height)) : this.zoom;
-    this.surface.style.width = `${Math.max(bounds.width - 2, width * scale + 32)}px`;
-    this.surface.style.height = `${Math.max(bounds.height - 2, height * scale + 32)}px`;
+    // The viewport's 1 px border is not room for the canvas.
+    const scale = this.zoom === "fit" ? Math.max(0.01, Math.min(Math.max(1, bounds.width - 2 - margin) / width, Math.max(1, bounds.height - 2 - margin) / height)) : this.zoom;
+    // A fixed size only when the zoomed canvas is larger than the viewport; otherwise the surface
+    // fills it through CSS, so a momentary scrollbar cannot keep both scrollbars showing.
+    const needWidth = width * scale + 32, needHeight = height * scale + 32;
+    this.surface.style.width = needWidth > bounds.width - 2 ? `${needWidth}px` : "";
+    this.surface.style.height = needHeight > bounds.height - 2 ? `${needHeight}px` : "";
     this.renderer.setScale(scale);
   }
 
