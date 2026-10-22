@@ -14,6 +14,11 @@ async function fakeFoundry() {
   const server = createServer((request, response) => {
     const session = /session=([^;]+)/.exec(request.headers.cookie ?? "")?.[1];
     if (request.url === "/join" && request.method === "POST") {
+      // Foundry 14 answers 400 to a POST from another origin or without one.
+      const site = request.headers["sec-fetch-site"];
+      if (site ? site !== "same-origin" : request.headers.origin !== `http://${request.headers.host}`) {
+        response.writeHead(400, { "Content-Type": "application/json" }); return response.end('{"error":"The request could not be processed."}');
+      }
       let body = ""; request.on("data", chunk => { body += chunk; });
       request.on("end", () => {
         const data = JSON.parse(body); joins.push({ ...data, session });

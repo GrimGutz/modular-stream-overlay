@@ -122,8 +122,10 @@ export class ObsConnector {
     if (probe.userId === user._id) { this.#report("ready", `Signed in as "${user.name}" in world ${probe.worldId}.`); return "ready"; }
     let response;
     try {
+      // Foundry refuses a POST whose Origin is missing or another site (400), so name Foundry's own.
       response = await this.fetch(new URL("join", this.upstream), { method: "POST", redirect: "manual",
-        headers: { "Content-Type": "application/json", Cookie: this.cookie }, body: JSON.stringify({ action: "join", userId: user._id, password: this.config.password }) });
+        headers: { "Content-Type": "application/json", Cookie: this.cookie, Origin: this.upstream.origin },
+        body: JSON.stringify({ action: "join", userId: user._id, password: this.config.password }) });
     } catch (error) { this.#report("waiting", `Waiting for Foundry: ${error.message}`); return "waiting"; }
     const result = await response.json().catch(() => null);
     if (response.ok && result?.status === "success") { this.#report("ready", `Signed in as "${user.name}" in world ${probe.worldId}.`); return "ready"; }
