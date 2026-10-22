@@ -1,4 +1,5 @@
 import { permittedActor } from "./generic.js";
+import { cainTranslated } from "./cain-translations.js";
 
 // Only these explicitly selected, public Character collections enter the scalar provider.
 // The renderer never receives Item documents, IDs, HTML, flags, or permission metadata.
@@ -160,12 +161,19 @@ function selectedItems(value, actor, user, expectedType, worldItems, { worldOnly
   return items;
 }
 
+// A shown Item field, in Russian on the stream when cain-ru translates that catalog text.
+function itemField(item, key) {
+  const path = key !== null && item.system?.[key] ? `system.${key}` : "name";
+  return cainTranslated(item, path, path === "name" ? item.name : item.system[key]);
+}
+
+const itemDescription = (item, key) => cainTranslated(item, `system.${key}`, item.system?.[key]);
+
 function itemText(item, nameKey, descriptionKey, category) {
-  const rawName = nameKey === null ? item.name : item.system?.[nameKey] || item.name;
-  const name = cainPlainText(rawName, 160);
+  const name = cainPlainText(itemField(item, nameKey), 160);
   if (!name) return null;
   if (!descriptionKey) return name;
-  const rawDescription = item.system?.[descriptionKey];
+  const rawDescription = itemDescription(item, descriptionKey);
   const description = rawDescription === undefined || rawDescription === "" ? "" : cainPlainText(cainCatText(rawDescription, category));
   if (description === null) return null;
   return description ? `${name}\n${description}` : name;
@@ -217,7 +225,7 @@ export function normalizeCainCollection(actor, field, { user, worldItems = globa
     const item = selected[Number(entry[2]) - 1];
     if (!item) return "";
     if (entry[3] === "name") return itemText(item, powers ? "powerName" : "abilityName");
-    const raw = item.system?.[powers ? "powerDescription" : "abilityDescription"];
+    const raw = itemDescription(item, powers ? "powerDescription" : "abilityDescription");
     const description = raw === undefined || raw === "" ? "" : cainPlainText(cainCatText(raw, actor.system.CATLEVEL?.value), MAX_ENTRY_DESCRIPTION + 1);
     if (description === null) return null;
     return entry[3] === "preview" ? excerpt(description.replace(/\s+/g, " ").trim(), MAX_PREVIEW) : excerpt(description, MAX_ENTRY_DESCRIPTION);
@@ -231,7 +239,7 @@ export function normalizeCainCollection(actor, field, { user, worldItems = globa
       const ordinary = items(actor.system.currentUnboldedAgendaTasks, "agendaTask"), bold = items(actor.system.currentBoldedAgendaTasks, "agendaTask");
       if (!ordinary || !bold) return null;
       const entries = [...ordinary.map(item => [item, "▸"]), ...bold.map(item => [item, "◆"])].map(([item, prefix]) => {
-        const text = cainPlainText(item.system?.task || item.name); return text ? `${prefix} ${text}` : null;
+        const text = cainPlainText(itemField(item, "task")); return text ? `${prefix} ${text}` : null;
       });
       if (entries.includes(null)) return null;
       return entries.length ? entries.join("\n").slice(0, MAX_SUMMARY) : EMPTY;
