@@ -78,12 +78,13 @@ All layers support `id`, `type`, `name`, `visible`, `locked`, `x`, `y`, `width`,
 
 ### Optional presentation fields
 
-These fields are omitted unless set; older layouts keep their exact look. The designer shows them under **Box style**, **Text layout** and **Circles**; clearing a field restores the default.
+These fields are omitted unless set; older layouts keep their exact look. The designer shows them under **Box style**, **Shape and mask**, **Text layout** and **Circles**; clearing a field restores the default.
 
 | Applies to | Fields |
 | --- | --- |
-| Every layer, including `character-widget` | `borderWidth` (0–64 px), `borderColor`, `cornerRadius` (px), drop shadow `boxShadowX`, `boxShadowY` (−200–200), `boxShadowBlur` (0–200) and `boxShadowColor`. The shadow is drawn only when `boxShadowColor` is set. |
-| `text` and dynamic text types | `lineHeight` (0.5–5, multiplier), `letterSpacing` (px), `uppercase`, `verticalAlign: "top" | "middle" | "bottom"`, `padding` (px), `highlightColor` (background behind the text itself, e.g. a black name label), `richText` with `strongColor` and `strongFontSize`. |
+| Every layer, including `character-widget` | `borderWidth` (0–64 px), `borderColor`, `cornerRadius` (px), drop shadow `boxShadowX`, `boxShadowY` (−200–200), `boxShadowBlur` (0–200) and `boxShadowColor`. The shadow is drawn only when `boxShadowColor` is set. Shape and mask: `clipShape: "circle" | "ellipse" | "hexagon" | "diamond" | "triangle" | "chamfer" | "parallelogram"` with `clipSize` (corner cut or slant, 0–2000 px, default 24), `maskSrc` (an image in Foundry's files whose transparency hides the layer) and `fadeEdge: "top" | "bottom" | "left" | "right" | "vertical" | "horizontal"` with `fadeSize` (1–100 %, default 25). |
+| `color` | `gradientTo` (a second color: the fill runs from `color` to it), `gradientType: "linear" | "radial"` and `gradientAngle` (0–360°, default 180 = top to bottom). |
+| `text` and dynamic text types | `lineHeight` (0.5–5, multiplier), `letterSpacing` (px), `uppercase`, `verticalAlign: "top" | "middle" | "bottom"`, `padding` (px), `highlightColor` (background behind the text itself, e.g. a black name label), `richText` with `strongColor` and `strongFontSize`, `autoFit` (shrink the font, and bold text with it, until the content fits the box) and `minFontSize` (the smallest it may go, default 6). |
 | `character-name`, `dynamic-text`, `dynamic-number` | `accent` (text uses the character accent), `strongAccent` (bold parts use it), `emptyText`, `hideEmptyLines`, `valueLabels`. |
 | `resource-bar` | `accent` (fill), `maxValue` (fixed 1–60 circles instead of the maximum field), `dotSize`, `dotGap`, `dotBorderWidth`, `dotDirection: "right" | "down" | "up"` (a row, or a column filling from the top or from the bottom). |
 | `character-portrait` | `imagePosition: "center" | "top" | "bottom"` for cropped artwork. |

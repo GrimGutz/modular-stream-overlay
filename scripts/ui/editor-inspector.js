@@ -2,7 +2,7 @@
  * Layer properties for the overlay editor and widget designer: geometry, content, typography,
  * optional styles and animations. Edits change only the private draft.
  */
-import { validateLayer, FONT_WEIGHTS, OPTIONAL_LAYER_KEYS } from "../core/schema.js";
+import { validateLayer, validateAssetPath, FONT_WEIGHTS, OPTIONAL_LAYER_KEYS, CLIP_SHAPES, FADE_EDGES } from "../core/schema.js";
 import { fontFamilies } from "../integration/fonts.js";
 import { createLayer } from "../core/layers.js";
 import { renderAnimationControls } from "./animation-controls.js";
@@ -12,9 +12,10 @@ import { t, setText, setAttr } from "./i18n.js";
 import { L, S, writeText, writeAttr, setValidity } from "./editor-text.js";
 
 const BOX_KEYS = ["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"];
-const TEXT_KEYS = ["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize", "accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"];
+const SHAPE_KEYS = ["clipShape", "clipSize", "maskSrc", "fadeEdge", "fadeSize"];
+const TEXT_KEYS = ["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize", "accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels", "autoFit", "minFontSize"];
 const DOT_KEYS = ["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "dotDirection"];
-const OPTIONAL_NUMBERS = ["borderWidth", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "lineHeight", "letterSpacing", "padding", "strongFontSize", "maxValue", "dotSize", "dotGap", "dotBorderWidth"];
+const OPTIONAL_NUMBERS = ["borderWidth", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "lineHeight", "letterSpacing", "padding", "strongFontSize", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "minFontSize", "clipSize", "fadeSize", "gradientAngle"];
 const clone = value => foundry.utils.deepClone(value);
 const ALIGN_BUTTONS = [
   ["left", "Editor.ArrangeLeft", "fa-objects-align-left"], ["center", "Editor.ArrangeCenter", "fa-objects-align-center-horizontal"],
@@ -291,7 +292,15 @@ export const LayerInspector = Base => class extends Base {
       host.append(typography);
       this._layerField(host, layer, "shadow", L("Editor.TextShadow"), { type: "checkbox" });
     }
-    else if (layer.type === "color") this._layerField(host, layer, "color", L("Editor.Color"));
+    else if (layer.type === "color") {
+      this._layerField(host, layer, "color", L("Editor.Color"));
+      // An optional second color turns the fill into a gradient.
+      const gradient = document.createElement("div"); gradient.className = "mso-property-grid";
+      this._layerField(gradient, layer, "gradientTo", L("Editor.GradientTo"), { maxLength: 11 });
+      this._layerField(gradient, layer, "gradientType", L("Editor.GradientType"), { options: [{ value: "", label: L("Editor.GradientLinear") }, { value: "radial", label: L("Editor.GradientRadial") }] });
+      this._layerField(gradient, layer, "gradientAngle", L("Editor.GradientAngle"), { type: "number", min: 0, max: 360, step: 1 });
+      host.append(gradient);
+    }
     this._renderComponentProperties(host, layer);
     this._renderStyleProperties(host, layer);
     this._renderAnimationControls(host, layer);
@@ -454,6 +463,9 @@ export const LayerInspector = Base => class extends Base {
         { value: "", label: L("Editor.StyleDefault") }, { value: "top", label: L("Editor.AlignTop") },
         { value: "middle", label: L("Editor.AlignMiddle") }, { value: "bottom", label: L("Editor.AlignBottom") }] });
       check(text, "uppercase", "Editor.Uppercase");
+      const fit = grid(text);
+      check(fit, "autoFit", "Editor.AutoFit");
+      number(fit, "minFontSize", "Editor.MinFontSize", 1, 512);
       color(text, "highlightColor", "Editor.HighlightColor");
       check(text, "richText", "Editor.RichText");
       const strong = grid(text);
@@ -497,6 +509,36 @@ export const LayerInspector = Base => class extends Base {
     number(shadow, "boxShadowBlur", "Editor.ShadowBlur", 0, 200);
     color(shadow, "boxShadowColor", "Editor.ShadowColor");
     const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.BoxStyleHelp"); box.append(help);
+    // Shape, mask image and faded edges clip the whole layer.
+    const shape = section("Editor.ShapeSection", SHAPE_KEYS.some(key => layer[key] !== undefined));
+    const outline = grid(shape);
+    this._layerField(outline, layer, "clipShape", L("Editor.ClipShape"), { options: [{ value: "", label: L("Editor.ShapeRectangle") }, ...CLIP_SHAPES.map(value => ({ value, label: L(`Editor.Shape.${value}`) }))] });
+    number(outline, "clipSize", "Editor.ClipSize", 0, 2000);
+    const mask = this._layerField(shape, layer, "maskSrc", L("Editor.MaskImage"), { maxLength: 4096 });
+    const browse = document.createElement("button"); browse.type = "button"; setText(browse, "Editor.BrowseExisting"); browse.disabled = this._uploading;
+    browse.addEventListener("click", () => { void this._draftOperation(() => this._browseLayerAsset(layer, "maskSrc", mask)); });
+    shape.append(browse);
+    const fade = grid(shape);
+    this._layerField(fade, layer, "fadeEdge", L("Editor.FadeEdge"), { options: [{ value: "", label: L("Editor.FadeNone") }, ...FADE_EDGES.map(value => ({ value, label: L(`Editor.Fade.${value}`) }))] });
+    number(fade, "fadeSize", "Editor.FadeSize", 1, 100, 1);
+    const shapeHelp = document.createElement("p"); shapeHelp.className = "mso-help"; setText(shapeHelp, "Editor.ShapeHelp"); shape.append(shapeHelp);
+  }
+
+  /** Pick an image from Foundry's files for a layer field such as a mask. */
+  async _browseLayerAsset(layer, field, input) {
+    const draft = this._draft;
+    const picker = new foundry.applications.apps.FilePicker.implementation({ type: "image", current: layer[field] ?? "", allowUpload: false,
+      callback: path => {
+        if (this._draft !== draft || !this._allLayers().includes(layer)) return;
+        void this._draftOperation(async () => {
+          Object.assign(layer, validateLayer({ ...layer, [field]: validateAssetPath(path) }, this._draft.canvas));
+          if (input) input.value = layer[field] ?? "";
+          this._invalidInputs.delete(`layer.${layer.id}.${field}`);
+          this._markDirty();
+          await this._updatePreview();
+        });
+      } });
+    await picker.render({ force: true });
   }
 
   _useResourceMaximum(layer = this._selectedLayer()) {

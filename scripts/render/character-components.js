@@ -1,6 +1,6 @@
 import { validateAssetPath, parseValueLabels } from "../core/schema.js";
 import { ACCENT_FIELD, requestedFields, renderTemplate, renderTemplateLines } from "../data/bindings.js";
-import { createTextElement, safeColor, usesSpans, writeTextContent } from "./text.js";
+import { createTextElement, keepFitted, safeColor, usesSpans, writeTextContent } from "./text.js";
 
 const TYPES = new Set(["character-portrait", "character-name", "dynamic-text", "dynamic-number", "resource-bar"]);
 export const isCharacterComponent = type => TYPES.has(type);
@@ -107,6 +107,7 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
       // An empty Actor list may have a meaningful caption, such as "none".
       if (typeof content === "string" && layer.emptyText && !content.trim()) content = layer.emptyText;
       writeTextContent(text, layer, content, { accent: accent() });
+      keepFitted(text, layer);
     }
   };
   const animateField = (field, from, to, config) => {

@@ -100,7 +100,11 @@
 .mso-editor .mso-fragments { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; border-top: 1px solid var(--mso-line); padding-top: 8px; }
 .mso-editor .mso-fragments h4 { margin: 0 0 2px; font-size: .78rem; color: var(--mso-muted); }
 .mso-editor .mso-fragment-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px; }
-.mso-editor .mso-fragment-insert { overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.mso-editor .mso-fragment-insert { display: flex; align-items: center; gap: 6px; overflow: hidden; text-align: left; }
+.mso-editor .mso-fragment-insert > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.mso-editor .mso-fragment-thumb { position: relative; flex: 0 0 auto; width: 48px; height: 28px; border-radius: 3px; background: #171b23 repeating-conic-gradient(#232835 0 25%, #1b1f28 0 50%) 0 0 / 8px 8px; overflow: hidden; }
+.mso-editor .mso-fragment-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+.mso-editor .mso-import-file { margin-bottom: 8px; }
 .mso-editor .mso-layer-search { margin-bottom: 6px; min-height: 28px; font-size: .75rem; }
 .mso-editor .mso-rename-input { min-height: 26px; font-size: .73rem; }
 .mso-editor .mso-version-list { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; }

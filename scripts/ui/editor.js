@@ -5,9 +5,14 @@ import { alignPositions, boundsOf, distributePositions } from "../editor/arrange
 import { moveGeometry } from "../editor/geometry.js";
 import { uploadBackground } from "../core/background-upload.js";
 import { loadFoundryFonts } from "../integration/fonts.js";
-import { validateAssetPath, validateLayer, validateOverlay } from "../core/schema.js";
+import { createOverlay, validateAssetPath, validateLayer, validateOverlay } from "../core/schema.js";
 import { VersionStore } from "../core/saved-versions.js";
 import { listFragments, saveFragment, deleteFragment } from "../core/fragments.js";
+import { rescaleOverlay, rescaleTransform } from "../core/rescale.js";
+import { overlayToWidgetPreset } from "../core/widget-presets.js";
+import { OverlayRenderer } from "../render/renderer.js";
+import { exportBundle, exportFragment, exportFilename, readTransferFile, needsActorChoices, planImport } from "../authoring/transfer.js";
+import { importOverlayBundle } from "../authoring/bundle.js";
 import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayers, reorderLayer, reorderInGroup, stepLayer,
   moveLayers, groupLayers, layerOrder, dissolveSmallGroups } from "../core/layers.js";
 import { isCharacterComponent } from "../render/character-components.js";
@@ -48,6 +53,26 @@ export async function refreshEditors(options = {}) {
 
 const clone = value => foundry.utils.deepClone(value);
 
+/** Save JSON as a file through Foundry's helper, or a plain download link without it. */
+function downloadJson(data, filename) {
+  const text = JSON.stringify(data, null, 2);
+  if (typeof foundry.utils?.saveDataToFile === "function") return foundry.utils.saveDataToFile(text, "application/json", filename);
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+/** A fragment drawn on its own small canvas, for its thumbnail. */
+function fragmentOverlay(fragment) {
+  const bounds = boundsOf(fragment.layers);
+  const overlay = createOverlay(fragment.name);
+  overlay.canvas = { width: Math.min(7680, Math.max(64, Math.ceil(bounds.width))), height: Math.min(7680, Math.max(64, Math.ceil(bounds.height))) };
+  overlay.layers = fragment.layers.map(layer => ({ ...layer, x: layer.x - bounds.x, y: layer.y - bounds.y }));
+  return overlay;
+}
+
 /** Natural pixel size of an image file; a fallback box when the browser cannot decode it here. */
 async function imageSize(file) {
   try {
@@ -74,7 +99,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       "editOverlay", "createOverlay", "renameOverlay", "deleteOverlay", "saveOverlay", "reloadOverlay",
       "uploadBackground", "browseBackground", "removeBackground", "savePreset", "loadPreset", "renamePreset", "duplicatePreset",
       "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "installDemo", "resetDemo",
-      "toggleCanvasFullscreen", "showVersions"
+      "toggleCanvasFullscreen", "showVersions", "rescaleCanvas", "exportFile", "importFile"
     ].map(action => [action, OverlayEditor.onAction]))
   };
 
@@ -506,6 +531,11 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       input.value = ""; // Permit choosing the same file again after cancellation or failure.
       if (file) void this._perform(() => this._uploadBackgroundFile(file));
     });
+    this.element.querySelector("[data-transfer-file]")?.addEventListener("change", event => {
+      const file = event.currentTarget.files?.[0];
+      event.currentTarget.value = "";
+      if (file) void this._draftOperation(() => this._importFile(file));
+    });
     this.element.querySelector("[data-image-upload]")?.addEventListener("change", event => {
       const input = event.currentTarget;
       const file = input.files?.[0];
@@ -915,11 +945,16 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       return;
     }
     // Keep the local file chooser inside the trusted click's synchronous stack.
+    // The file chooser also needs the trusted click's own stack.
+    if (target.dataset.action === "importFile") {
+      this._chooseImportFile();
+      return;
+    }
     if (target.dataset.action === "uploadBackground") {
       this._uploadBackground();
       return;
     }
-    if (["addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "addComponent", "choosePreviewActor", "chooseDemoPreviewActor", "showVersions"].includes(target.dataset.action)) {
+    if (["addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "addComponent", "choosePreviewActor", "chooseDemoPreviewActor", "showVersions", "rescaleCanvas", "exportFile"].includes(target.dataset.action)) {
       void this._draftOperation(() => this[`_${target.dataset.action}`](target));
       return;
     }
@@ -1415,6 +1450,8 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   _renderFragments() {
     const host = this.element?.querySelector("[data-fragments]");
     if (!host) return;
+    for (const preview of this._fragmentPreviews ?? []) preview.destroy();
+    this._fragmentPreviews = [];
     host.replaceChildren();
     const heading = document.createElement("h4"); setText(heading, "Editor.Fragments"); host.append(heading);
     const store = document.createElement("button");
@@ -1427,14 +1464,36 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     for (const fragment of fragments) {
       const row = document.createElement("div"); row.className = "mso-fragment-row";
       const insert = document.createElement("button"); insert.type = "button"; insert.className = "mso-fragment-insert"; insert.disabled = this._uploading;
-      insert.textContent = fragment.name;
+      const thumb = document.createElement("span"); thumb.className = "mso-fragment-thumb"; thumb.setAttribute("aria-hidden", "true");
+      const caption = document.createElement("span"); caption.textContent = fragment.name;
+      insert.append(thumb, caption);
+      this._fragmentThumb(thumb, fragment);
       setAttr(insert, "title", "Editor.InsertFragment", { name: fragment.name, count: fragment.layers.length });
       insert.addEventListener("click", () => { void this._draftOperation(() => this._insertFragment(fragment.id)); });
       const remove = document.createElement("button"); remove.type = "button"; remove.className = "mso-icon-button"; remove.disabled = this._uploading;
       remove.textContent = "✕"; setAttr(remove, "title", "Editor.DeleteFragment"); setAttr(remove, "aria-label", "Editor.DeleteFragment");
       remove.addEventListener("click", () => { void this._draftOperation(() => this._deleteFragment(fragment.id)); });
-      row.append(insert, remove); host.append(row);
+      const save = document.createElement("button"); save.type = "button"; save.className = "mso-icon-button"; save.disabled = this._uploading;
+      save.innerHTML = '<i class="fa-solid fa-file-export" aria-hidden="true"></i>'; setAttr(save, "title", "Editor.ExportFragment"); setAttr(save, "aria-label", "Editor.ExportFragment");
+      save.addEventListener("click", () => { void this._draftOperation(async () => this._exportFragment(fragment.id)); });
+      row.append(insert, save, remove); host.append(row);
     }
+  }
+
+  /** A small static drawing of the fragment's layers. */
+  _fragmentThumb(host, fragment) {
+    try {
+      const preview = new OverlayRenderer(host, { widgets: services.widgets ?? this.api?.widgets, preview: true,
+        context: { ...this._previewContext(), animationsEnabled: () => false, deferEntrances: true } });
+      this._fragmentPreviews.push(preview);
+      void preview.render(fragmentOverlay(fragment)).catch(() => {});
+    } catch { /* A thumbnail is decoration; the fragment still inserts. */ }
+  }
+
+  _exportFragment(id) {
+    const fragment = listFragments().find(entry => entry.id === id);
+    if (!fragment) return;
+    downloadJson(exportFragment(fragment, this.widgetPresets?.list?.() ?? []), exportFilename(fragment.name, "fragment"));
   }
 
   async _saveFragment() {
@@ -1460,9 +1519,127 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     await deleteFragment(id);
   }
 
+  /**
+   * Rescale everything to a new canvas size: "fit" keeps proportions and centers, "stretch"
+   * fills both axes. Guides move with the layout. One undoable change.
+   */
+  async _rescaleCanvas() {
+    if (!this._draft) return;
+    const content = document.createElement("div");
+    const root = document.createElement("div"); root.className = "mso-rescale";
+    const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.RescaleHelp"); root.append(help);
+    const sizes = document.createElement("div"); sizes.className = "mso-dimensions";
+    for (const [name, key] of [["width", "Template.Width"], ["height", "Template.Height"]]) {
+      const label = document.createElement("label"); const caption = document.createElement("span"); setText(caption, key);
+      const input = document.createElement("input"); input.type = "number"; input.name = name; input.min = "64"; input.max = "7680"; input.step = "1"; input.required = true;
+      input.setAttribute("value", String(this._draft.canvas[name]));
+      label.append(caption, input); sizes.append(label);
+    }
+    root.append(sizes);
+    for (const [mode, key] of [["fit", "Editor.RescaleFit"], ["stretch", "Editor.RescaleStretch"]]) {
+      const label = document.createElement("label"); label.className = "mso-version";
+      const input = document.createElement("input"); input.type = "radio"; input.name = "mode"; input.value = mode; if (mode === "fit") input.setAttribute("checked", "");
+      const caption = document.createElement("span"); setText(caption, key);
+      label.append(input, caption); root.append(label);
+    }
+    content.append(root);
+    const result = await DialogV2.input({ window: { title: t("Editor.RescaleTitle") }, content, modal: true, rejectClose: false,
+      ok: { label: t("Editor.RescaleApply") }, render: (_event, dialog) => markDialog(dialog, L("Editor.RescaleTitle")) });
+    if (!result) return;
+    const width = Number(result.width), height = Number(result.height);
+    if (![width, height].every(value => Number.isInteger(value) && value >= 64 && value <= 7680)) throw editorError("Editor.CanvasNumber");
+    await this._applyRescale(width, height, result.mode === "stretch" ? "stretch" : "fit");
+  }
+
+  async _applyRescale(width, height, mode = "fit") {
+    if (!this._draft) return;
+    const before = { ...this._draft.canvas };
+    const scaled = rescaleOverlay(this._draft, width, height, { mode });
+    await this._historyStep(async () => {
+      this._replaceDraft(scaled);
+      const guides = this._guides();
+      if (guides.x.length || guides.y.length) {
+        const transform = rescaleTransform(before, { width, height }, mode);
+        const moved = { x: guides.x.map(value => Math.round(value * transform.sx + transform.ox)), y: guides.y.map(value => Math.round(value * transform.sy + transform.oy)) };
+        this._saveGuides(moved);
+        this._preview?.setGuides(moved);
+      }
+      this._markDirty();
+      await this._refreshDraftViews();
+    });
+  }
+
+  /** Replace the draft's contents, keeping the object the canvas and panels refer to. */
+  _replaceDraft(next) {
+    for (const key of Object.keys(this._draft)) delete this._draft[key];
+    Object.assign(this._draft, clone(next));
+    this._scopeProjection = null;
+    this._invalidInputs.clear();
+    this._animationEdits.clear();
+    this._pruneSelection(this._allLayers());
+  }
+
+  /** Save this overlay (with the widget designs it uses) or this widget design as a file. */
+  _exportFile() {
+    if (!this._draft) return;
+    const library = this.widgetPresets?.list?.() ?? [];
+    const bundle = this.widgetMode
+      ? exportBundle({ widgetPresets: [overlayToWidgetPreset(this._draft, { id: this._draft.id, name: this._draft.name })] })
+      : exportBundle({ overlays: [this._draft], library });
+    downloadJson(bundle, exportFilename(this._draft.name, this.widgetMode ? "widget" : "overlay"));
+    ui.notifications.info(t("Editor.Exported", { name: this._draft.name }));
+  }
+
+  _chooseImportFile() {
+    if (this._uploading || this._busy) { ui.notifications.info(t("Editor.WaitOperation")); return; }
+    const input = this.element?.querySelector("[data-transfer-file]");
+    if (!input) return;
+    input.value = "";
+    input.click();
+  }
+
+  /**
+   * Import an exported overlay, widget design or fragment. Nothing is overwritten: taken IDs get
+   * new ones, identical designs are reused, and Actors this world lacks are left unassigned.
+   */
+  async _importFile(file) {
+    const data = readTransferFile(await file.text());
+    const library = this.widgetPresets?.list?.() ?? [];
+    const overlayStore = services.store ?? this.api?.store;
+    const actorExists = async uuid => !!(await this.characterData?.resolveActor?.(uuid));
+    if (data.kind === "bundle" && needsActorChoices(data.bundle)) { await importOverlayBundle({ bundle: data.bundle }); return; }
+    const plan = await planImport(data.kind === "bundle" ? data.bundle : { widgetPresets: data.widgetPresets, layers: data.layers },
+      { overlayIds: overlayStore?.getState?.().overlays.map(overlay => overlay.id) ?? [], presets: library, actorExists });
+    // Widget designs come first, so imported widgets find them.
+    for (const preset of plan.widgetPresets) {
+      const write = options => this.widgetPresets.save(preset, options);
+      if (this.widgetMode) await this._sideMutation(write);
+      else await write({ expectedRevision: this.widgetPresets.getState().revision });
+    }
+    const saved = [];
+    for (const overlay of plan.overlays) {
+      const write = options => overlayStore.saveOverlay(overlay, { ...options, activateIfEmpty: false });
+      saved.push(this.widgetMode ? await write({ expectedRevision: overlayStore.getState().revision }) : await this._sideMutation(write));
+    }
+    if (data.kind === "fragment") {
+      await saveFragment(data.name, plan.layers);
+      ui.notifications.info(t("Editor.FragmentImported", { name: data.name }));
+    } else ui.notifications.info(t("Editor.Imported", { overlays: plan.overlays.length, designs: plan.widgetPresets.length }));
+    if (plan.droppedActors) ui.notifications.warn(t("Editor.ImportDroppedActors", { count: plan.droppedActors }));
+    // Open what was imported when nothing unsaved would be lost.
+    const opened = this.widgetMode ? plan.widgetPresets[0] : saved[0];
+    if (opened && !this._dirty) {
+      const state = this.store.getState();
+      this._loadDraft(state.overlays.find(overlay => overlay.id === opened.id) ?? this._draft, state.revision);
+    }
+    if (this.rendered) await this.render({ force: true });
+  }
+
   async close(options = {}) {
     if (!await this._discardDraft()) return this;
     fragmentViews.delete(this);
+    for (const preview of this._fragmentPreviews ?? []) preview.destroy();
+    this._fragmentPreviews = [];
     this._toggleCanvasFullscreen(false);
     this._actorStatusUnsubscribe?.();
     this._actorStatusUnsubscribe = null;

@@ -6,7 +6,7 @@ import { validateAnimationSettings } from "../animation/schema.js";
 import { WidgetCarousel } from "./carousel.js";
 import { ActorCarousel } from "./actor-carousel.js";
 import { resolveCarouselSettings } from "../carousel/schema.js";
-import { applyBoxStyle, createTextElement, markupLines, usesSpans, writeTextContent } from "./text.js";
+import { applyBoxStyle, createTextElement, gradientFill, keepFitted, markupLines, usesSpans, writeTextContent } from "./text.js";
 
 /** A layer's own cleanup list that also records into the scene's pending list as it grows. */
 function trackedList(sink) {
@@ -131,7 +131,7 @@ export class OverlayRenderer {
       element.className = "mso-widget";
       element.dataset.instanceId = value.id;
       applyGeometry(element, value);
-      applyBoxStyle(element, value);
+      applyBoxStyle(element, value, this.resolveAsset);
       root.append(element);
       const start = instances.length;
       await this.renderRegisteredWidget(element, value, overlay, instances);
@@ -226,7 +226,7 @@ export class OverlayRenderer {
     element.className = "mso-layer";
     element.dataset.instanceId = value.id;
     applyGeometry(element, value);
-    applyBoxStyle(element, value);
+    applyBoxStyle(element, value, this.resolveAsset);
     let appearance = value;
     if (value.type === "character-widget") {
       try {
@@ -305,7 +305,7 @@ export class OverlayRenderer {
     for (const value of ordered) {
       const element = this.layerElements.get(value.id);
       applyGeometry(element, value);
-      applyBoxStyle(element, value);
+      applyBoxStyle(element, value, this.resolveAsset);
       if (prepared.has(value.id)) continue;
       const motion = this.motions.get(value.id);
       if (motion) Object.assign(motion.layer, { x: value.x, y: value.y, width: value.width, height: value.height, rotation: value.rotation, opacity: value.opacity, z: value.z });
@@ -520,11 +520,15 @@ export class OverlayRenderer {
 
   renderStaticLayer(element, value) {
     if (value.type === "image" && value.src) element.append(this.image(value.src, value.fit));
-    else if (value.type === "color") element.style.backgroundColor = value.color;
+    else if (value.type === "color") {
+      element.style.backgroundColor = value.color;
+      element.style.backgroundImage = gradientFill(value);
+    }
     else if (value.type === "text") {
       const text = createTextElement(value);
       writeTextContent(text, value, usesSpans(value) ? markupLines(value.text, value.richText) : value.text);
       element.append(text);
+      keepFitted(text, value);
     }
   }
 
@@ -534,7 +538,7 @@ export class OverlayRenderer {
     const value = validateLayer(input, this.overlay.canvas);
     const element = this.layerElements.get(value.id);
     if (!element && this.carousel?.updateLayer(value)) return;
-    if (element) { applyGeometry(element, value); applyBoxStyle(element, value); }
+    if (element) { applyGeometry(element, value); applyBoxStyle(element, value, this.resolveAsset); }
     const composition = this.compositions.get(value.id);
     if (composition) { composition.viewportSize = { width: value.width, height: value.height }; composition.fit(); }
     const index = this.overlay.layers.findIndex(layer => layer.id === value.id);

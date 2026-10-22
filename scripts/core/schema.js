@@ -143,12 +143,16 @@ function optional(result, input, key, validate) {
 }
 const VERTICAL_ALIGNMENTS = ["top", "middle", "bottom"];
 const IMAGE_POSITIONS = ["center", "top", "bottom"];
-export const BOX_STYLE_KEYS = Object.freeze(["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"]);
-export const TEXT_LAYOUT_KEYS = Object.freeze(["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize"]);
+export const BOX_STYLE_KEYS = Object.freeze(["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor",
+  "clipShape", "clipSize", "maskSrc", "fadeEdge", "fadeSize"]);
+export const TEXT_LAYOUT_KEYS = Object.freeze(["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize", "autoFit", "minFontSize"]);
+export const GRADIENT_KEYS = Object.freeze(["gradientTo", "gradientAngle", "gradientType"]);
+export const CLIP_SHAPES = Object.freeze(["circle", "ellipse", "hexagon", "diamond", "triangle", "chamfer", "parallelogram"]);
+export const FADE_EDGES = Object.freeze(["top", "bottom", "left", "right", "vertical", "horizontal"]);
 export const DYNAMIC_TEXT_KEYS = Object.freeze(["accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"]);
 export const DOT_STYLE_KEYS = Object.freeze(["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "dotDirection"]);
 export const DOT_DIRECTIONS = Object.freeze(["right", "down", "up"]);
-export const OPTIONAL_LAYER_KEYS = Object.freeze([...new Set([...BOX_STYLE_KEYS, ...TEXT_LAYOUT_KEYS, ...DYNAMIC_TEXT_KEYS, ...DOT_STYLE_KEYS, "imagePosition"])]);
+export const OPTIONAL_LAYER_KEYS = Object.freeze([...new Set([...BOX_STYLE_KEYS, ...TEXT_LAYOUT_KEYS, ...DYNAMIC_TEXT_KEYS, ...DOT_STYLE_KEYS, ...GRADIENT_KEYS, "imagePosition"])]);
 
 function boxStyle(result, input) {
   optional(result, input, "borderWidth", value => numeric(value, "Border width", 0, 64));
@@ -158,6 +162,18 @@ function boxStyle(result, input) {
   optional(result, input, "boxShadowY", value => numeric(value, "Shadow Y offset", -200, 200));
   optional(result, input, "boxShadowBlur", value => numeric(value, "Shadow blur", 0, 200));
   optional(result, input, "boxShadowColor", value => color(value, "Shadow color"));
+  // Shapes, masks and faded edges clip the whole layer, whatever its content.
+  optional(result, input, "clipShape", value => {
+    if (!CLIP_SHAPES.includes(value)) fail("Choose a supported shape.");
+    return value;
+  });
+  optional(result, input, "clipSize", value => numeric(value, "Shape cut size", 0, 2000));
+  optional(result, input, "maskSrc", value => validateAssetPath(value));
+  optional(result, input, "fadeEdge", value => {
+    if (!FADE_EDGES.includes(value)) fail("Choose which edges fade.");
+    return value;
+  });
+  optional(result, input, "fadeSize", value => numeric(value, "Fade length", 1, 100));
 }
 
 function textLayout(result, input) {
@@ -173,6 +189,8 @@ function textLayout(result, input) {
   optional(result, input, "richText", value => boolean(value, "Bold markup"));
   optional(result, input, "strongColor", value => color(value, "Bold text color"));
   optional(result, input, "strongFontSize", value => numeric(value, "Bold text size", 1, 512));
+  optional(result, input, "autoFit", value => boolean(value, "Fit text to box"));
+  optional(result, input, "minFontSize", value => numeric(value, "Smallest font size", 1, 512));
 }
 
 /** "value=label" lines translate a bound value such as CAT 2 into a display name. */
@@ -386,6 +404,14 @@ export function validateLayer(input, canvas = { width: 1920, height: 1080 }, ind
     result.color = input.color ?? "transparent";
     if (typeof result.color !== "string" || !/^(?:#[\da-f]{3,4}|#[\da-f]{6}|#[\da-f]{8}|transparent)$/i.test(result.color)) {
       fail("Color layers require a hexadecimal color or transparent.");
+    }
+    optional(result, input, "gradientTo", value => color(value, "Gradient end color", true));
+    if (result.gradientTo) {
+      optional(result, input, "gradientAngle", value => numeric(value, "Gradient angle", 0, 360));
+      optional(result, input, "gradientType", value => {
+        if (!["linear", "radial"].includes(value)) fail("A gradient is linear or radial.");
+        return value;
+      });
     }
   } else {
     // Registered widget types own only their isolated JSON configuration.
