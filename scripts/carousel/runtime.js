@@ -1,4 +1,4 @@
-const TRANSITIONS = new Set(["fade", "slide-left", "slide-right", "slide-up", "slide-down", "scale", "instant"]);
+const TRANSITIONS = new Set(["fade", "fade-over", "slide-left", "slide-right", "slide-up", "slide-down", "scale", "instant"]);
 const duration = (value, fallback, minimum = 100, maximum = 3600000) => Number.isFinite(value)
   ? Math.max(minimum, Math.min(maximum, value)) : fallback;
 

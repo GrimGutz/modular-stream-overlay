@@ -1,4 +1,4 @@
-import { genericAdapter, permittedActor, safePortrait } from "../adapters/generic.js";
+import { genericAdapter, permittedActor, playerAvatar, safePortrait } from "../adapters/generic.js";
 import { FIELD_ID } from "./bindings.js";
 import { validateMappings, readMappedField } from "./mappings.js";
 import { validateActorUuid } from "../core/schema.js";
@@ -8,7 +8,7 @@ import { PROFILE_FIELDS, profileValue, validateCharacterProfiles } from "./profi
 
 const WORLD_ACTOR = /^Actor\.[A-Za-z0-9_-]{1,64}$/;
 const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/;
-const IDENTITY_FIELDS = new Set(["character.name", "character.callsign", "character.realName", "character.portrait", "character.tokenPortrait", "character.uuid", "character.type"]);
+const IDENTITY_FIELDS = new Set(["character.name", "character.callsign", "character.realName", "character.portrait", "character.tokenPortrait", "character.playerAvatar", "character.uuid", "character.type"]);
 const ACCENT = "character.profile.accent", REAL_NAME = "character.realName";
 const COLOR = /^#(?:[\da-f]{6}|[\da-f]{8})$/i;
 const FORBIDDEN = new Set(["__proto__", "prototype", "constructor"]);
@@ -75,6 +75,7 @@ export class CharacterDataService {
   constructor({ adapters, getUser = () => globalThis.game?.user, resolveUuid = uuid => globalThis.foundry?.utils?.fromUuid(uuid),
     getSystemId = () => globalThis.game?.system?.id, getSystemVersion = () => globalThis.game?.system?.version ?? "",
     getAdapterPreferences = () => ({}), getMappings = () => [], getActors = () => globalThis.game?.actors, getProfiles = null,
+    getUsers = () => globalThis.game?.users,
     hooks = globalThis.Hooks, debounceMs = 40, demoData = new DemoDataSource(), onError = error => console.error("Modular Stream Overlay |", error) } = {}) {
     this.adapters = adapters;
     this.getUser = getUser;
@@ -85,6 +86,7 @@ export class CharacterDataService {
     this.getMappings = getMappings;
     this.getActors = getActors;
     this.getProfiles = getProfiles;
+    this.getUsers = getUsers;
     this.hooks = hooks;
     this.debounceMs = Math.max(0, Math.min(1000, Number(debounceMs) || 0));
     this.onError = onError;
@@ -267,8 +269,8 @@ export class CharacterDataService {
       if (profileFields.length || selected.includes(REAL_NAME)) {
         const profiles = this._profiles();
         for (const field of profileFields) resolved[field] = safeScalar(profileValue(profiles, actor.uuid, field), definitions.get(field).type)
-          // Without separate art, a full-body slot shows the Actor's own portrait.
-          ?? (field === "character.profile.art" ? safePortrait(actor.img) : null) ?? "";
+          // Without separate art, a full-body slot shows the player's avatar, then the Actor's portrait.
+          ?? (field === "character.profile.art" ? playerAvatar(actor, this.getUsers()) ?? safePortrait(actor.img) : null) ?? "";
         if (resolved[ACCENT] === "" && accentReadable) resolved[ACCENT] = COLOR.test(resolved[accentSource] ?? "") ? resolved[accentSource] : "";
         // A profile full name replaces the name written in parentheses.
         const fullName = profileValue(profiles, actor.uuid, "character.profile.fullName");
@@ -377,8 +379,10 @@ export class CharacterDataService {
         if (token?.actorLink) this._documentChanged(`${operation}Token`, token.actor, token, changes, true);
       });
     }
-    for (const operation of ["update", "delete"]) on(`${operation}User`, user => {
-      if (!this.getUser() || user?.id === this.getUser()?.id) this.refresh();
+    for (const operation of ["update", "delete"]) on(`${operation}User`, (user, changes) => {
+      // Player avatars and character assignments feed the player-avatar fields.
+      if (!this.getUser() || user?.id === this.getUser()?.id || operation === "delete"
+        || changes?.avatar !== undefined || changes?.character !== undefined) this.refresh();
     });
     return this;
   }

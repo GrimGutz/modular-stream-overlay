@@ -176,7 +176,8 @@ function summary(items, nameKey, descriptionKey, category) {
   if (!items.length) return EMPTY;
   const entries = items.map(item => itemText(item, nameKey, descriptionKey, category));
   if (entries.includes(null)) return null;
-  const text = entries.join("\n\n");
+  // A blank line separates name + description blocks; plain names stay one per line.
+  const text = entries.join(descriptionKey ? "\n\n" : "\n");
   return text.length > MAX_SUMMARY ? `${text.slice(0, MAX_SUMMARY - 1).trimEnd()}…` : text;
 }
 

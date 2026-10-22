@@ -3,7 +3,8 @@ import { requestedFields } from "../data/bindings.js";
 import { LayerMotion } from "./motion.js";
 import { pageHasInformation } from "./carousel.js";
 
-const EFFECTS = { fade: ["fade-in", "fade-out"], "slide-left": ["slide-in-right", "slide-out-left"],
+// Whole-character changes run exit then entrance; Fade Over behaves as Fade there.
+const EFFECTS = { fade: ["fade-in", "fade-out"], "fade-over": ["fade-in", "fade-out"], "slide-left": ["slide-in-right", "slide-out-left"],
   "slide-right": ["slide-in-left", "slide-out-right"], "slide-up": ["slide-in-bottom", "slide-out-top"],
   "slide-down": ["slide-in-top", "slide-out-bottom"], scale: ["scale-in", "scale-out"] };
 

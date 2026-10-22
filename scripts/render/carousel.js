@@ -3,7 +3,7 @@ import { LayerMotion } from "./motion.js";
 import { templateFields } from "../data/bindings.js";
 
 const TRANSITIONS = {
-  fade: ["fade-in", "fade-out"], "slide-left": ["slide-in-right", "slide-out-left"],
+  fade: ["fade-in", "fade-out"], "fade-over": ["fade-in", "fade-out"], "slide-left": ["slide-in-right", "slide-out-left"],
   "slide-right": ["slide-in-left", "slide-out-right"], "slide-up": ["slide-in-bottom", "slide-out-top"],
   "slide-down": ["slide-in-top", "slide-out-bottom"], scale: ["scale-in", "scale-out"]
 };
@@ -88,15 +88,23 @@ export class WidgetCarousel {
   async changePage({ to, transition, duration, initial, isCurrent }) {
     if (this.disposed) return;
     const types = !initial && duration > 0 ? TRANSITIONS[transition] : null;
+    // Fade over: the incoming page fades in above the outgoing one, which is hidden only
+    // afterwards, so content repeated on both pages stays steady instead of dimming.
+    const over = Boolean(types) && transition === "fade-over";
     const operations = [];
     for (const [id, { element, gate }] of this.views) {
       gate.settings.entrance = types ? { type: types[0], duration, easing: "ease-in-out" } : null;
-      gate.settings.exit = types ? { type: types[1], duration, easing: "ease-in-out" } : null;
+      gate.settings.exit = types && !over ? { type: types[1], duration, easing: "ease-in-out" } : null;
+      element.style.zIndex = over && id === to ? "1" : "";
       if (id === to) element.style.display = "";
-      operations.push(gate.setVisible(id === to));
+      if (id === to || !over) operations.push(gate.setVisible(id === to));
     }
     await Promise.all(operations);
     if (this.disposed || !isCurrent()) return;
+    if (over) {
+      await Promise.all([...this.views].filter(([id]) => id !== to).map(([, { gate }]) => gate.setVisible(false)));
+      if (this.disposed || !isCurrent()) return;
+    }
     for (const [id, { element }] of this.views) element.style.display = id === to ? "" : "none";
   }
 

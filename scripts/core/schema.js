@@ -142,7 +142,8 @@ const IMAGE_POSITIONS = ["center", "top", "bottom"];
 export const BOX_STYLE_KEYS = Object.freeze(["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"]);
 export const TEXT_LAYOUT_KEYS = Object.freeze(["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize"]);
 export const DYNAMIC_TEXT_KEYS = Object.freeze(["accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"]);
-export const DOT_STYLE_KEYS = Object.freeze(["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth"]);
+export const DOT_STYLE_KEYS = Object.freeze(["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "dotDirection"]);
+export const DOT_DIRECTIONS = Object.freeze(["right", "down", "up"]);
 export const OPTIONAL_LAYER_KEYS = Object.freeze([...new Set([...BOX_STYLE_KEYS, ...TEXT_LAYOUT_KEYS, ...DYNAMIC_TEXT_KEYS, ...DOT_STYLE_KEYS, "imagePosition"])]);
 
 function boxStyle(result, input) {
@@ -201,6 +202,10 @@ function dotStyle(result, input) {
   optional(result, input, "dotSize", value => numeric(value, "Circle size", 1, 256));
   optional(result, input, "dotGap", value => numeric(value, "Circle spacing", 0, 256));
   optional(result, input, "dotBorderWidth", value => numeric(value, "Circle outline width", 0, 32));
+  optional(result, input, "dotDirection", value => {
+    if (!DOT_DIRECTIONS.includes(value)) fail("Circle direction must be right, down, or up.");
+    return value;
+  });
 }
 
 /** A normalized field ID, never an executable expression or an unrestricted Actor path. */

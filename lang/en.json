@@ -585,12 +585,17 @@
       "BoxStyleHelp": "Leave a field empty to keep the default. Colors are hexadecimal, e.g. #111111 or #00000059 with transparency.",
       "CharacterProfiles": "Character profiles…",
       "ProfilesTitle": "Character profiles",
-      "ProfilesHelp": "Values the game system does not store. Each character's profile is shared by every overlay and widget showing that character. Leave the accent empty to use the system's character color (CAIN: the blasphemy color). A full name replaces the name written in parentheses in the Actor name.",
+      "ProfilesHelp": "Values the game system does not store. Each character's profile is shared by every overlay and widget showing that character. Leave the accent empty to use the system's character color (CAIN: the blasphemy color). A full name replaces the name written in parentheses in the Actor name. Without full-body art, the player's avatar is used, then the Actor portrait.",
       "ProfileAccent": "Accent color",
       "ProfileFullName": "Full name",
       "ProfileArt": "Full-body art",
       "ProfilesSaved": "Character profiles saved.",
-      "ProfilesNoCharacters": "Assign world characters to this widget first."
+      "ProfilesNoCharacters": "Assign world characters to this widget first.",
+      "DotDirection": "Circle direction",
+      "DotRight": "Row, left to right",
+      "DotDown": "Column, top to bottom",
+      "DotUp": "Column, filling from the bottom",
+      "SchemaFadeOver": "Fade Over"
     },
     "Settings": {
       "LanguageHint": "Choose the language of this module's configuration interface on this client. Auto follows Foundry; unsupported languages use English. Stream content is unchanged.",
@@ -1246,7 +1251,8 @@
       "BlasphemyColor": "Blasphemy color",
       "Callsign": "Callsign (name before parentheses)",
       "RealName": "Name in parentheses",
-      "CharacterProfileGroup": "Character profile"
+      "CharacterProfileGroup": "Character profile",
+      "PlayerAvatar": "Player avatar"
     },
     "Widgets": {
       "DesignerTitle": "Character Widget Designer",
@@ -1335,7 +1341,8 @@
       "SlideUp": "Slide Up",
       "SlideDown": "Slide Down",
       "Scale": "Scale",
-      "Instant": "Instant Switch"
+      "Instant": "Instant Switch",
+      "FadeOver": "Fade Over"
     },
     "Fields": {
       "CustomFields": "Custom fields",

@@ -164,3 +164,34 @@ test("callsign and real name split the Actor name, and the accent defaults to th
   assert.deepEqual(renderTemplateLines("{character.s|label}\n**{character.n}**", { "character.s": "—", "character.n": "Змей" },
     { labels: parseValueLabels("—="), richText: true, hideEmptyLines: true }), [[{ text: "Змей", strong: true }]], "A label can blank and hide a system placeholder line");
 });
+
+test("vertical circle columns fill from the bottom or top and size along the column", async () => {
+  const element = await mount({ id: "stress", type: "resource-bar", display: "dots", showValue: false, binding: "character.s", maxBinding: "character.smax",
+    dotDirection: "up", width: 26, height: 300, foregroundColor: "#ff0000", backgroundColor: "#000000" }, { "character.s": 2.5, "character.smax": 6 });
+  const track = element.children[0], row = track.children[1];
+  assert.equal(track.style.flexDirection, "column"); assert.equal(row.style.flexDirection, "column-reverse");
+  assert.equal(row.children.length, 6);
+  assert.equal(row.children[0].style.width, "26px", "The column width limits the circle size");
+  assert.match(row.children[2].style.backgroundImage, /^linear-gradient\(to top, #ff0000 50%/);
+  assert.throws(() => validateLayer({ id: "bad", type: "resource-bar", dotDirection: "left" }), /direction/);
+});
+
+test("the player avatar comes from the assigned or owning player and backs the full-body art", async () => {
+  const { playerAvatar } = await import("../scripts/adapters/generic.js");
+  const actor = { id: "one", testUserPermission: (user, level) => level === "OWNER" && user.id === "owner" };
+  const users = [{ id: "gm", isGM: true, character: { id: "one" }, avatar: "gm.png" }, { id: "owner", isGM: false, avatar: "assets/owner.png" },
+    { id: "player", isGM: false, character: { id: "one" }, avatar: "assets/player.png" }];
+  assert.equal(playerAvatar(actor, users), "assets/player.png", "The assigned player wins over other owners and GMs");
+  assert.equal(playerAvatar(actor, users.slice(0, 2)), "assets/owner.png");
+  assert.equal(playerAvatar(actor, [{ id: "player", isGM: false, character: "one", avatar: "icons/svg/mystery-man.svg" }]), null);
+  const user = { id: "viewer" };
+  const source = { uuid: "Actor.one", id: "one", documentName: "Actor", type: "character", name: "Змей", img: "assets/portrait.png", system: {},
+    testUserPermission: (viewer, permission) => viewer?.id === user.id && permission === "OBSERVER" };
+  const registry = new AdapterRegistry(); registry.register(genericAdapter);
+  let players = [{ id: "player", isGM: false, character: { id: "one" }, avatar: "assets/player.png" }];
+  const data = new CharacterDataService({ adapters: registry, getUser: () => user, getSystemId: () => "test", getActors: () => ({ contents: [source] }),
+    resolveUuid: async uuid => uuid === source.uuid ? source : null, hooks: null, getProfiles: () => ({}), getUsers: () => players });
+  assert.equal((await data.resolve("Actor.one", ["character.profile.art"])).values["character.profile.art"], "assets/player.png");
+  players = [];
+  assert.equal((await data.resolve("Actor.one", ["character.profile.art"])).values["character.profile.art"], "assets/portrait.png");
+});

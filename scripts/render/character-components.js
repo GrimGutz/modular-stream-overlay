@@ -25,6 +25,9 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
   const accent = () => layer.accent || layer.strongAccent ? safeColor(actualValues[ACCENT_FIELD]) : null;
   const fillColor = () => (layer.accent ? accent() : null) ?? layer.foregroundColor;
   const maximumOf = values => layer.maxValue ?? values[layer.maxBinding];
+  // Vertical columns fill from the top ("down") or like a gauge from the bottom ("up").
+  const vertical = layer.dotDirection === "down" || layer.dotDirection === "up";
+  const fillSide = { right: "to right", down: "to bottom", up: "to top" }[layer.dotDirection ?? "right"];
   const redrawDots = percent => {
     if (!dotRow || !dotCount) return;
     const units = Math.max(0, Math.min(dotCount, percent / 100 * dotCount)), color = fillColor();
@@ -33,7 +36,7 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
       dot.dataset.resourceFill = String(fraction);
       dot.style.backgroundColor = fraction === 1 ? color : "transparent";
       dot.style.backgroundImage = fraction > 0 && fraction < 1
-        ? `linear-gradient(to right, ${color} ${fraction * 100}%, transparent ${fraction * 100}%)` : "none";
+        ? `linear-gradient(${fillSide}, ${color} ${fraction * 100}%, transparent ${fraction * 100}%)` : "none";
     }
   };
   const prepareDots = (current, maximum) => {
@@ -48,6 +51,11 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
     if (!dots) return;
     if (!dotRow) {
       dotRow = document.createElement("div"); dotRow.className = "mso-resource-dot-row";
+      if (vertical) {
+        track.style.flexDirection = "column";
+        Object.assign(dotRow.style, { flexDirection: layer.dotDirection === "up" ? "column-reverse" : "column", width: "100%", height: "auto" });
+        if (label) label.style.margin = "8px 0 0";
+      }
       // Keep the optional numeric label after the circles without overlaying their fill.
       track.replaceChildren(fill, dotRow, ...(label ? [label] : []));
     }
@@ -61,11 +69,13 @@ export function mountCharacterComponent({ element, layer, context, resolveAsset,
       });
       dotRow.replaceChildren(...dots);
     }
-    const reserved = layer.showValue ? Math.min(layer.width * .55, `${current} / ${maximum}`.length * layer.fontSize * .62 + 8) : 0;
-    const available = Math.max(1, layer.width - reserved), unit = available / maximum;
+    const length = vertical ? layer.height : layer.width, cross = vertical ? layer.width : layer.height;
+    const reserved = !layer.showValue ? 0 : vertical ? Math.min(length * .3, layer.fontSize * 1.3 + 8)
+      : Math.min(layer.width * .55, `${current} / ${maximum}`.length * layer.fontSize * .62 + 8);
+    const available = Math.max(1, length - reserved), unit = available / maximum;
     // Explicit circle metrics let pips line up with printed artwork.
     const gap = layer.dotGap ?? Math.min(8, unit * .3);
-    const diameter = layer.dotSize ?? Math.max(.5, Math.min(32, layer.height, (available - gap * (maximum - 1)) / maximum));
+    const diameter = layer.dotSize ?? Math.max(.5, Math.min(32, cross, (available - gap * (maximum - 1)) / maximum));
     dotRow.style.gap = `${gap}px`;
     for (const dot of dotRow.children) { dot.style.width = `${diameter}px`; dot.style.height = `${diameter}px`; }
     redrawDots(displayedPercent);

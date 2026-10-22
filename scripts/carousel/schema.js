@@ -8,6 +8,7 @@ export const CAROUSEL_MODES = Object.freeze(["static", "information", "character
 export const CAROUSEL_TRAVERSALS = Object.freeze(["pages-first", "characters-first"]);
 export const PAGE_TRANSITIONS = Object.freeze([
   Object.freeze({ id: "fade", label: "Fade" }),
+  Object.freeze({ id: "fade-over", label: "Fade Over" }),
   Object.freeze({ id: "slide-left", label: "Slide Left" }),
   Object.freeze({ id: "slide-right", label: "Slide Right" }),
   Object.freeze({ id: "slide-up", label: "Slide Up" }),

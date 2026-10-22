@@ -18,7 +18,7 @@ const L = (key, params = {}) => ({ key, params });
 const VIEWER_ROLES = { 1: "Template.RolePlayer", 2: "Template.RoleTrusted", 3: "Template.RoleAssistant", 4: "Template.RoleGamemaster" };
 const BOX_KEYS = ["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"];
 const TEXT_KEYS = ["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize", "accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"];
-const DOT_KEYS = ["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth"];
+const DOT_KEYS = ["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "dotDirection"];
 const OPTIONAL_NUMBERS = ["borderWidth", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "lineHeight", "letterSpacing", "padding", "strongFontSize", "maxValue", "dotSize", "dotGap", "dotBorderWidth"];
 const S = literal => ({ literal });
 const labelText = label => label?.key ? t(label.key, label.params) : label?.literal !== undefined ? uiText(label.literal) : String(label ?? "");
@@ -901,6 +901,9 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       number(metrics, "dotSize", "Editor.DotSize", 1, 256);
       number(metrics, "dotGap", "Editor.DotGap", 0, 256);
       number(metrics, "dotBorderWidth", "Editor.DotBorderWidth", 0, 32);
+      this._layerField(metrics, layer, "dotDirection", L("Editor.DotDirection"), { options: [
+        { value: "", label: L("Editor.StyleDefault") }, { value: "right", label: L("Editor.DotRight") },
+        { value: "down", label: L("Editor.DotDown") }, { value: "up", label: L("Editor.DotUp") }] });
       const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.CirclesHelp"); dots.append(help);
     }
     if (layer.type === "character-portrait") {

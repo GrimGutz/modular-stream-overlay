@@ -217,3 +217,11 @@ test("world Item edit/delete/permission changes invalidate only subscribed refer
   assert.equal((await service.resolve(actor.uuid, [field])).values[field], "Recovered affliction");
   service.stop(); assert.equal(hooks.listeners.size, 0);
 });
+
+test("name-only lists put one entry per line while name and description blocks stay separated", () => {
+  const { actor, world, normalize } = fixture();
+  world.set("cough", { ...world.get("illness"), id: "cough", system: { afflictionName: "Cough" } });
+  actor.system.afflictions = ["illness", "cough"];
+  assert.equal(normalize([id("afflictions.summary")])[id("afflictions.summary")], "Exhaustion\nCough");
+  assert.equal(normalize([id("powers.summary")])[id("powers.summary")], "Personal power\nPersonal edit\n\nLegacy power\nWorld description");
+});

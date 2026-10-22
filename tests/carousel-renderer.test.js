@@ -227,3 +227,17 @@ test("live page commands acknowledge acceptance before a long transition complet
   assert.equal(f.carousel(f.a).getState().activePageId, "attributes");
   f.renderer.destroy(); assert.equal(f.subscribers.size, 0);
 });
+
+test("fade over keeps the outgoing page fully visible until the incoming page has faded in above it", async t => {
+  const f = fixture(t, { enabled: false });
+  f.preset.cycling.transition = "fade-over";
+  await f.renderer.render(f.overlay); const a = f.carousel(f.a);
+  holdTransitions = true;
+  const change = a.next(); await settle();
+  const incoming = a.views.get("attributes").element, outgoing = a.views.get("basic").element;
+  assert.equal(incoming.style.zIndex, "1"); assert.equal(incoming.animations.length, 1);
+  assert.equal(outgoing.animations.length, 0, "The outgoing page does not fade while the new page covers it");
+  assert.notEqual(outgoing.style.display, "none");
+  incoming.animations[0].finish(); await change;
+  assert.deepEqual(active(a), ["attributes"]); assert.equal(outgoing.animations.length, 0, "It is then hidden without its own fade");
+});
