@@ -383,7 +383,7 @@
       "SendBack": "Send to back",
       "Duplicate": "Duplicate",
       "Delete": "Delete",
-      "KeyboardHelp": "Arrow keys move 1 px; Shift moves 10 px. Ctrl/Cmd+D duplicates. Delete removes an unlocked layer.",
+      "KeyboardHelp": "Arrow keys move 1 px; Shift moves 10 px. Ctrl/Cmd+C copies, +X cuts, +V pastes, +D duplicates. Ctrl/Cmd+Z undoes; Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redoes. Delete removes an unlocked layer.",
       "InheritMotion": "Inherit shared widget animations and triggers",
       "InheritedMotionHelp": "This widget uses the shared design's grouped animations and triggers. Edit the shared design, or turn off inheritance to configure only this instance.",
       "ContentSource": "Content source",
@@ -598,7 +598,8 @@
       "DotRight": "Row, left to right",
       "DotDown": "Column, top to bottom",
       "DotUp": "Column, filling from the bottom",
-      "SchemaFadeOver": "Fade Over"
+      "SchemaFadeOver": "Fade Over",
+      "PasteUnsupported": "This kind of layer cannot be pasted here: widget designs cannot hold widgets, and overlays cannot hold character components."
     },
     "Settings": {
       "LanguageHint": "Choose the language of this module's configuration interface on this client. Auto follows Foundry; unsupported languages use English. Stream content is unchanged.",

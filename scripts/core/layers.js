@@ -62,6 +62,28 @@ export function duplicateLayer(overlay, id) {
   return result;
 }
 
+/**
+ * Insert a copied layer above everything with a fresh ID. While another layer already sits at
+ * the same position it is offset by 20 px, so repeated pastes fan out instead of stacking.
+ */
+export function pasteLayer(overlay, source) {
+  if ((overlay.layers ?? []).length >= 100) throw new RangeError("An overlay supports at most 100 layers.");
+  const copy = clone(source);
+  const ordered = stack(overlay);
+  const ids = new Set(ordered.map(entry => entry.id));
+  do { copy.id = newId(); } while (ids.has(copy.id));
+  for (let step = 0; step < 50 && ordered.some(entry => entry.x === copy.x && entry.y === copy.y); step++) {
+    copy.x = Math.min(32768, (copy.x ?? 0) + 20);
+    copy.y = Math.min(32768, (copy.y ?? 0) + 20);
+  }
+  const highest = Math.max(-1, ...ordered.map(entry => entry.z ?? 0));
+  copy.z = highest >= 10000 ? ordered.length : highest + 1;
+  const result = validateLayer(copy, overlay.canvas);
+  if (highest >= 10000) ordered.forEach((entry, index) => { entry.z = index; });
+  overlay.layers.push(result);
+  return result;
+}
+
 /** Remove a layer from a draft without changing unrelated layers or widgets. */
 export function deleteLayer(overlay, id) {
   const index = (overlay.layers ?? []).findIndex(entry => entry.id === id);

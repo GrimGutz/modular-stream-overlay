@@ -52,8 +52,13 @@ export function shortcutCommand(event) {
   const target = event.target;
   if (target?.isContentEditable || target?.closest?.("input,textarea,select,[contenteditable]:not([contenteditable='false']),[role='textbox']")) return null;
   if (event.altKey) return null;
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") return { action: "duplicate" };
-  if (event.ctrlKey || event.metaKey) return null;
+  if (event.ctrlKey || event.metaKey) {
+    // Physical keys keep Ctrl+C/V/Z working with non-Latin keyboard layouts.
+    const key = event.code?.startsWith("Key") ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
+    if (key === "z") return { action: event.shiftKey ? "redo" : "undo" };
+    const actions = { d: "duplicate", c: "copy", x: "cut", v: "paste", y: "redo" };
+    return actions[key] && !event.shiftKey ? { action: actions[key] } : null;
+  }
   if (event.key === "Delete" || event.key === "Backspace") return { action: "delete" };
   const step = event.shiftKey ? 10 : 1;
   const directions = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };

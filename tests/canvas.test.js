@@ -175,3 +175,17 @@ test("failed rendering releases interaction blocking and destroying a pending re
   assert.equal(f.host.listeners.size,0);assert.equal(f.canvas.pendingRenderGeneration,null);
   f.canvas.keyDown(event(f.host,{key:"ArrowRight"}));assert.equal(f.layer.x,101);
 });
+
+test("paste, undo and redo shortcuts reach the editor without a selected layer while copy needs one",async()=>{
+  const f=fixture();await f.canvas.render(f.overlay);
+  const key=values=>({key:"v",code:"KeyV",ctrlKey:true,target:f.host,preventDefault(){this.prevented=true;},stopPropagation(){},...values});
+  const paste=key();f.canvas.keyDown(paste);
+  assert.deepEqual(f.commands,["paste"]);assert.equal(paste.prevented,true);
+  f.canvas.keyDown(key({key:"z",code:"KeyZ"}));f.canvas.keyDown(key({key:"z",code:"KeyZ",shiftKey:true}));
+  assert.deepEqual(f.commands,["paste","undo","redo"]);
+  f.canvas.keyDown(key({key:"c",code:"KeyC"}));
+  assert.equal(f.commands.length,3,"Copy without a selection does nothing");
+  f.canvas.select(f.layer.id);f.canvas.keyDown(key({key:"с",code:"KeyC"}));
+  assert.deepEqual(f.commands.at(-1),"copy");
+  f.canvas.destroy();
+});

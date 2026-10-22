@@ -1,8 +1,8 @@
 import { LayerCanvas } from "../editor/layer-canvas.js";
 import { uploadBackground } from "../core/background-upload.js";
 import { validateAssetPath, validateLayer, FONT_FAMILIES, FONT_WEIGHTS, OPTIONAL_LAYER_KEYS } from "../core/schema.js";
-import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, reorderLayer } from "../core/layers.js";
-import { safePortraitURL } from "../render/character-components.js";
+import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayer, reorderLayer } from "../core/layers.js";
+import { isCharacterComponent, safePortraitURL } from "../render/character-components.js";
 import { renderAnimationControls, renderAnimationTestControls } from "./animation-controls.js";
 import { DEMO_ACTOR_UUIDS } from "../demo/data.js";
 import { validateAnimationSettings, validateTriggerRules } from "../animation/schema.js";
@@ -14,6 +14,9 @@ const MODULE_ID = "modular-stream-overlay";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 let services = {};
 const editors = new Set();
+// One copied layer, shared by the overlay editor and widget designers in this browser.
+let layerClipboard = null;
+const HISTORY_LIMIT = 100, HISTORY_DELAY = 400;
 const L = (key, params = {}) => ({ key, params });
 const VIEWER_ROLES = { 1: "Template.RolePlayer", 2: "Template.RoleTrusted", 3: "Template.RoleAssistant", 4: "Template.RoleGamemaster" };
 const BOX_KEYS = ["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"];
@@ -160,6 +163,8 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   _loadDraft(overlay, revision = this.store.getState().revision) {
+    this._commitHistory();
+    const previousId = this._draft?.id;
     if (this._draft?.id !== overlay?.id) this._realActorAssignments.clear();
     this._carouselPanel = null;
     this._carouselLabelsGeneration = (this._carouselLabelsGeneration ?? 0) + 1;
@@ -170,6 +175,88 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     this._invalidInputs.clear();
     this._animationEdits.clear();
     if (!this._editingLayers().some(layer => layer.id === this._selectedLayerId)) this._selectedLayerId = null;
+    const snapshot = this._draft ? JSON.stringify(this._draft) : null;
+    // Saving the edited document keeps its undo history; anything else starts a new one.
+    if (this._history && previousId === this._draft?.id && snapshot === this._history.current) this._history.baseline = snapshot;
+    else this._history = { undo: [], redo: [], current: snapshot, baseline: snapshot };
+  }
+
+  /**
+   * One undo step per discrete action (add, paste, delete, reorder, …): earlier pending edits
+   * become their own step first, and the action is recorded as soon as it finishes.
+   */
+  async _historyStep(action) {
+    this._commitHistory();
+    try { return await action(); }
+    finally { this._commitHistory(); }
+  }
+
+  /** Record the draft once edits pause, so a drag or a typed value is one undo step. */
+  _scheduleHistory() {
+    clearTimeout(this._historyTimer);
+    this._historyTimer = setTimeout(() => this._commitHistory(), HISTORY_DELAY);
+    this._historyTimer?.unref?.();
+  }
+
+  _commitHistory() {
+    clearTimeout(this._historyTimer);
+    this._historyTimer = null;
+    if (!this._history || !this._draft) return;
+    const snapshot = JSON.stringify(this._draft);
+    if (snapshot === this._history.current) return;
+    this._history.undo.push(this._history.current);
+    if (this._history.undo.length > HISTORY_LIMIT) this._history.undo.shift();
+    this._history.current = snapshot;
+    this._history.redo = [];
+  }
+
+  async _undo() { return this._stepHistory("undo", "redo"); }
+  async _redo() { return this._stepHistory("redo", "undo"); }
+
+  async _stepHistory(from, to) {
+    this._commitHistory();
+    const history = this._history;
+    if (!history?.[from].length || !this._draft) return;
+    history[to].push(history.current);
+    history.current = history[from].pop();
+    // Keep the draft object: the canvas and open panels hold references to it.
+    const restored = JSON.parse(history.current);
+    for (const key of Object.keys(this._draft)) delete this._draft[key];
+    Object.assign(this._draft, restored);
+    this._scopeProjection = null;
+    this._invalidInputs.clear();
+    this._animationEdits.clear();
+    if (!this._allLayers().some(layer => layer.id === this._selectedLayerId)) this._selectedLayerId = null;
+    this._dirty = history.current !== history.baseline;
+    if (this.rendered) await this.render({ force: true });
+  }
+
+  /** Canvas shortcuts beyond single-layer commands. */
+  async _canvasCommand(command) {
+    if (command === "undo" || command === "redo") return this[`_${command}`]();
+    if (command === "copy" || command === "cut") {
+      const layer = this._editingLayers().find(entry => entry.id === this._selectedLayerId);
+      if (!layer) return;
+      layerClipboard = clone(layer);
+      if (command === "cut") return this._layerCommand("delete");
+      return;
+    }
+    if (command === "paste") return this._pasteLayer();
+    return this._layerCommand(command);
+  }
+
+  async _pasteLayer() { return this._historyStep(() => this._pasteClipboard()); }
+
+  async _pasteClipboard() {
+    if (!layerClipboard || !this._draft) return;
+    // Widget designs cannot hold widget instances; overlays have no character components.
+    if (this.widgetMode ? layerClipboard.type === "character-widget" : isCharacterComponent(layerClipboard.type)) throw editorError("Editor.PasteUnsupported");
+    if (this._allLayers().length >= 100) throw new Error(t("Editor.ComponentLimit"));
+    const layer = pasteLayer(this._editingOverlay(), layerClipboard);
+    this._selectedLayerId = layer.id;
+    this._markDirty();
+    await this._updatePreview();
+    this._selectLayer(layer.id);
   }
 
   /** Call after persistent settings change. Never silently replace an edited draft. */
@@ -269,7 +356,7 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         getOverlay: () => this._editingOverlay(),
         onChange: layer => { this._markDirty(); this._syncLayerFields(layer); },
         onSelect: id => this._selectLayer(id, { canvas: false }),
-        onCommand: command => { void this._draftOperation(() => this._layerCommand(command)); },
+        onCommand: command => { void this._draftOperation(() => this._canvasCommand(command)); },
         isBlocked: () => this._canvasBlocked()
       });
       this._preview.setZoom(this._zoom);
@@ -530,7 +617,9 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     });
   }
 
-  async _addLayer(type) {
+  async _addLayer(type) { return this._historyStep(() => this._insertLayer(type)); }
+
+  async _insertLayer(type) {
     if (!this._draft) return;
     if (this._allLayers().length >= 100) throw new Error(t("Editor.ComponentLimit"));
     const composition = this._editingOverlay();
@@ -548,7 +637,9 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     this._selectLayer(layer.id);
   }
 
-  async _layerCommand(command, id = this._selectedLayerId) {
+  async _layerCommand(command, id = this._selectedLayerId) { return this._historyStep(() => this._applyLayerCommand(command, id)); }
+
+  async _applyLayerCommand(command, id) {
     const composition = this._editingOverlay();
     const layer = composition?.layers?.find(entry => entry.id === id);
     if (!layer) return;
@@ -1373,6 +1464,7 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _markDirty() {
     this._dirty = true;
+    this._scheduleHistory();
     const status = this.element.querySelector("[data-save-status]");
     if (status) writeText(status, L("Editor.UnsavedChanges"));
     if (!this._uploading) this.element.querySelector('[data-action="saveOverlay"]')?.removeAttribute("disabled");

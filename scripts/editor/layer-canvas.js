@@ -253,11 +253,14 @@ export class LayerCanvas {
   }
 
   keyDown(event) {
-    if (this.disposed || this.pendingRenderGeneration !== null || this.isBlocked() || !this.selectedId) return;
+    if (this.disposed || this.pendingRenderGeneration !== null || this.isBlocked()) return;
     if (event.key === "Escape" && this.gesture) { event.preventDefault(); event.stopPropagation(); this.cancelGesture(); return; }
     if (this.gesture) return;
     const command = shortcutCommand(event);
     if (!command) return;
+    // Paste, undo and redo need no selected layer.
+    if (["paste", "undo", "redo"].includes(command.action)) { event.preventDefault(); event.stopPropagation(); this.onCommand(command.action); return; }
+    if (!this.selectedId) return;
     const overlay = this.getOverlay?.() ?? this.overlay;
     const layer = overlay?.layers.find(value => value.id === this.selectedId);
     if (!layer || (command.action === "move" && layer.locked)) return;
