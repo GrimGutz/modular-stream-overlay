@@ -8,6 +8,13 @@ import { ActorCarousel } from "./actor-carousel.js";
 import { resolveCarouselSettings } from "../carousel/schema.js";
 import { applyBoxStyle, createTextElement, markupLines, usesSpans, writeTextContent } from "./text.js";
 
+/** A layer's own cleanup list that also records into the scene's pending list as it grows. */
+function trackedList(sink) {
+  const list = [];
+  list.push = (...items) => { sink.push(...items); return Array.prototype.push.apply(list, items); };
+  return list;
+}
+
 function coordinated(instance, preset, settings = resolveCarouselSettings(instance, preset)) {
   return settings.actors.length !== 1 || settings.settings.mode !== "information"
     || (preset.pages?.length > 0 && settings.pages.length === 0);
@@ -68,10 +75,16 @@ export class OverlayRenderer {
       this.layerElements.clear();
       this.compositions.clear();
       this.motions.clear(); this.rootMotion = null; this.carousel = null;
+      this.mounted = null; this.rootInstances = []; this.sceneKey = null;
       this.container.replaceChildren();
       return;
     }
 
+    // The same scene with changed layers: keep every unchanged layer running (carousels,
+    // images, animations) and rebuild or move only what changed.
+    if (this.canUpdateInPlace(overlay)) return this.renderChanges(overlay, previous, generation);
+
+    let backgroundElement = null;
     const root = document.createElement("div");
     root.className = "mso-stage";
     root.style.width = `${overlay.canvas.width}px`;
@@ -82,6 +95,7 @@ export class OverlayRenderer {
       background.className = "mso-background";
       background.style.opacity = String(overlay.background.opacity);
       root.append(background);
+      backgroundElement = background;
     }
 
     const elements = [
@@ -93,63 +107,35 @@ export class OverlayRenderer {
     const layerElements = new Map();
     const compositions = new Map();
     const motions = new Map();
-    let carousel = null;
+    const mounted = new Map();
+    // Closures below look the carousel up here, so it can be created after the layers.
+    const scene = { carousel: null };
     const rootMotion = new LayerMotion({ element: root, layer: { ...overlay, visible: true }, context: this.context,
-      resolveTarget: id => motions.get(id) ?? carousel?.findMotion(id) });
-    instances.push({ definition: { destroy: () => rootMotion.destroy(this.disposed ? "destroyed" : "render-interrupted") }, args: {} });
+      resolveTarget: id => motions.get(id) ?? scene.carousel?.findMotion(id) });
+    const rootInstances = [{ definition: { destroy: () => rootMotion.destroy(this.disposed ? "destroyed" : "render-interrupted") }, args: {} }];
+    instances.push(...rootInstances);
     for (const { kind, value } of elements) {
-      if (!value.visible && kind !== "layer") continue;
+      if (kind === "layer") {
+        const pendingMount = this.mountLayer(value, { overlay, rootMotion, motions, compositions, scene, sink: instances });
+        const mount = pendingMount instanceof Promise ? await pendingMount : pendingMount;
+        if (this.disposed || generation !== this.generation) { this.cleanup(instances); return; }
+        root.append(mount.element);
+        layerElements.set(value.id, mount.element);
+        motions.set(value.id, mount.motion);
+        if (mount.composition) compositions.set(value.id, mount.composition);
+        mounted.set(value.id, { key: this.layerKey(value), instances: mount.instances, element: mount.element });
+        continue;
+      }
+      if (!value.visible) continue;
       const element = document.createElement("div");
-      element.className = `mso-${kind}`;
+      element.className = "mso-widget";
       element.dataset.instanceId = value.id;
       applyGeometry(element, value);
       applyBoxStyle(element, value);
       root.append(element);
-      if (kind === "layer") {
-        layerElements.set(value.id, element);
-        let appearance = value;
-        if (value.type === "character-widget") {
-          try {
-            const preset = this.context.widgetPresets?.list().find(item => item.id === value.presetId);
-            appearance = { ...value, ...effectiveWidgetMotion(value, preset) };
-            if (preset && coordinated(value, preset)) appearance.triggers = [];
-          } catch { /* A bad library is isolated by the content renderer below. */ }
-        }
-        const motion = new LayerMotion({ element, layer: appearance, context: { ...this.context,
-          parentMotion: rootMotion,
-          inheritedTransition: this.context.inheritedTransition ?? overlay.animations.transition },
-          resolveTarget: id => value.type === "character-widget" ? compositions.get(value.id)?.findMotion(id)
-            : motions.get(id) ?? carousel?.findMotion(id) ?? this.context.resolveMotion?.(id) });
-        motions.set(value.id, motion);
-        instances.push({ definition: { destroy: () => motion.destroy(this.disposed ? "destroyed" : "render-interrupted") }, args: {} });
-        if (["image", "color", "text"].includes(value.type)) {
-          this.renderStaticLayer(element, value);
-          continue;
-        }
-        const start = instances.length;
-        try {
-          if (isCharacterComponent(value.type)) {
-            const binding = mountCharacterComponent({ element, layer: value, context: this.context, resolveAsset: this.resolveAsset, motion });
-            motion.numberAnimator = binding.animateNumber;
-            instances.push({ definition: { destroy: () => binding.destroy() }, args: {} });
-            await binding.ready;
-          } else if (value.type === "character-widget") {
-            const child = await this.renderCharacterWidget(element, value, instances, motion);
-            if (child) compositions.set(value.id, child);
-          } else {
-            // Extension types continue through the established widget registry below.
-            await this.renderRegisteredWidget(element, value, overlay, instances);
-          }
-        } catch (error) {
-          this.cleanup(instances.splice(start));
-          element.replaceChildren();
-          if (this.context.mode === "preview") element.textContent = "Widget content unavailable";
-          console.error(`Modular Stream Overlay | Layer ${value.id} failed`, error);
-        }
-        if (this.disposed || generation !== this.generation) { this.cleanup(instances); return; }
-        continue;
-      }
+      const start = instances.length;
       await this.renderRegisteredWidget(element, value, overlay, instances);
+      rootInstances.push(...instances.slice(start));
       if (this.disposed || generation !== this.generation) {
         this.cleanup(instances);
         return;
@@ -160,13 +146,15 @@ export class OverlayRenderer {
       return;
     }
     this.fit(root, overlay);
+    let carousel = null;
     if (overlay.pages.length) {
-      carousel = new WidgetCarousel({ root, overlay, context: this.context, parentMotion: rootMotion,
+      carousel = scene.carousel = new WidgetCarousel({ root, overlay, context: this.context, parentMotion: rootMotion,
         editing: this.pageEditing, resolveMotion: id => motions.get(id),
         createRenderer: (element, context) => new OverlayRenderer(element, { widgets: this.widgets,
           resolveAsset: this.resolveAsset, context, preview: this.context.mode === "preview",
           viewportSize: overlay.canvas }) });
-      instances.push({ definition: { destroy: () => carousel.destroy() }, args: {} });
+      const entry = { definition: { destroy: () => carousel.destroy() }, args: {} };
+      instances.push(entry); rootInstances.push(entry);
       await carousel.mount();
       if (this.disposed || generation !== this.generation) { this.cleanup(instances); return; }
     }
@@ -176,6 +164,11 @@ export class OverlayRenderer {
     this.cleanup(this.instances);
     this.pendingScenes.delete(generation);
     this.instances = instances;
+    this.rootInstances = rootInstances;
+    this.mounted = mounted;
+    this.scene = scene;
+    this.sceneKey = this.overlayKey(overlay);
+    this.backgroundElement = backgroundElement;
     this.root = root;
     this.overlay = overlay;
     this.layerElements = layerElements;
@@ -189,10 +182,158 @@ export class OverlayRenderer {
       if (motion.layer.visible && motion.settings.entrance) motion.enter({ fire: false });
     }
     // Saved live changes may fire intentional visibility events; cold data snapshots never do.
-    if (wasInitialized) for (const [id, motion] of motions) {
-      const before = previous?.id === overlay.id ? previous.layers.find(layer => layer.id === id) : null;
-      if (motion.layer.visible && !before?.visible) motion.enter();
-      else if (before && motion.layer.visible) this.transitionStyle(motion, before);
+    if (wasInitialized) for (const [id, motion] of motions) this.announceChange(motion, previous?.id === overlay.id ? previous.layers.find(layer => layer.id === id) : null);
+  }
+
+  /** A shown layer enters; a changed one transitions its opacity and color. */
+  announceChange(motion, before) {
+    if (motion.layer.visible && !before?.visible) motion.enter();
+    else if (before && motion.layer.visible) this.transitionStyle(motion, before);
+  }
+
+  /** What rebuilds the whole stage: the canvas, background, scene-wide motion, pages and legacy widgets. */
+  overlayKey(overlay) {
+    const { id, canvas, background, animations, triggers, pages, cycling, widgets } = overlay;
+    return JSON.stringify({ id, canvas, background, animations, triggers, pages, cycling, widgets });
+  }
+
+  /**
+   * What rebuilds one layer. Position, size, rotation, opacity and stacking update in place;
+   * editor-only fields (name, lock, group) never rebuild anything.
+   */
+  layerKey(value) {
+    const { x, y, width, height, rotation, opacity, z, name, locked, groupId, groupName, ...content } = value;
+    let preset = null;
+    if (value.type === "character-widget") {
+      try { preset = this.context.widgetPresets?.list?.().find(item => item.id === value.presetId) ?? null; }
+      catch { preset = { unreadable: (this.unreadableLibraries = (this.unreadableLibraries ?? 0) + 1) }; }
+    }
+    return JSON.stringify({ content, preset, previewActorUuid: this.context.previewActorUuid ?? null, actorUuid: this.context.actorUuid ?? null });
+  }
+
+  canUpdateInPlace(overlay) {
+    return !!(this.root && this.mounted && this.overlay && !this.overlay.widgets.length && !overlay.widgets.length && this.sceneKey === this.overlayKey(overlay));
+  }
+
+  /**
+   * Build one layer's element, motion and content off-stage. Static layers finish at once;
+   * loading content returns a promise.
+   */
+  mountLayer(value, { overlay, rootMotion, motions, compositions, scene, sink }) {
+    // Recorded in the scene's pending list at once, so clearing the output mid-load cleans it up.
+    const instances = trackedList(sink);
+    const element = document.createElement("div");
+    element.className = "mso-layer";
+    element.dataset.instanceId = value.id;
+    applyGeometry(element, value);
+    applyBoxStyle(element, value);
+    let appearance = value;
+    if (value.type === "character-widget") {
+      try {
+        const preset = this.context.widgetPresets?.list().find(item => item.id === value.presetId);
+        appearance = { ...value, ...effectiveWidgetMotion(value, preset) };
+        if (preset && coordinated(value, preset)) appearance.triggers = [];
+      } catch { /* A bad library is isolated by the content renderer below. */ }
+    }
+    const motion = new LayerMotion({ element, layer: appearance, context: { ...this.context,
+      parentMotion: rootMotion,
+      inheritedTransition: this.context.inheritedTransition ?? overlay.animations.transition },
+      resolveTarget: id => value.type === "character-widget" ? compositions.get(value.id)?.findMotion(id)
+        : motions.get(id) ?? scene.carousel?.findMotion(id) ?? this.context.resolveMotion?.(id) });
+    instances.push({ definition: { destroy: () => motion.destroy(this.disposed ? "destroyed" : "render-interrupted") }, args: {} });
+    if (["image", "color", "text"].includes(value.type)) {
+      this.renderStaticLayer(element, value);
+      return { element, motion, composition: null, instances };
+    }
+    return this.mountContent(value, overlay, { element, motion, instances });
+  }
+
+  async mountContent(value, overlay, { element, motion, instances }) {
+    let composition = null;
+    try {
+      if (isCharacterComponent(value.type)) {
+        const binding = mountCharacterComponent({ element, layer: value, context: this.context, resolveAsset: this.resolveAsset, motion });
+        motion.numberAnimator = binding.animateNumber;
+        instances.push({ definition: { destroy: () => binding.destroy() }, args: {} });
+        await binding.ready;
+      } else if (value.type === "character-widget") {
+        composition = await this.renderCharacterWidget(element, value, instances, motion);
+      } else {
+        // Extension types continue through the established widget registry below.
+        await this.renderRegisteredWidget(element, value, overlay, instances);
+      }
+    } catch (error) {
+      this.cleanup(instances.splice(1));
+      element.replaceChildren();
+      if (this.context.mode === "preview") element.textContent = "Widget content unavailable";
+      console.error(`Modular Stream Overlay | Layer ${value.id} failed`, error);
+    }
+    return { element, motion, composition, instances };
+  }
+
+  /**
+   * Update the mounted scene: rebuild changed layers off-stage, then swap them in, drop removed
+   * layers, and apply position, size, rotation, opacity and order to the rest.
+   */
+  async renderChanges(overlay, previous, generation) {
+    const pending = [];
+    this.pendingScenes.set(generation, pending);
+    const prepared = new Map();
+    for (const value of overlay.layers) {
+      if (this.mounted.get(value.id)?.key === this.layerKey(value)) continue;
+      const pendingMount = this.mountLayer(value, { overlay, rootMotion: this.rootMotion, motions: this.motions, compositions: this.compositions, scene: this.scene, sink: pending });
+      const mount = pendingMount instanceof Promise ? await pendingMount : pendingMount;
+      if (this.disposed || generation !== this.generation) { this.cleanup(pending); return; }
+      prepared.set(value.id, mount);
+    }
+    await Promise.all([...prepared.values()].map(mount => mount.motion.start()));
+    if (this.disposed || generation !== this.generation) { this.cleanup(pending); return; }
+    const present = new Set(overlay.layers.map(layer => layer.id));
+    for (const [id, mount] of this.mounted) {
+      if (present.has(id) && !prepared.has(id)) continue;
+      this.cleanup(mount.instances);
+      mount.element.remove?.();
+      this.mounted.delete(id); this.motions.delete(id); this.compositions.delete(id); this.layerElements.delete(id);
+    }
+    for (const [id, mount] of prepared) {
+      this.mounted.set(id, { key: this.layerKey(overlay.layers.find(layer => layer.id === id)), instances: mount.instances, element: mount.element });
+      this.motions.set(id, mount.motion);
+      if (mount.composition) this.compositions.set(id, mount.composition);
+      this.layerElements.set(id, mount.element);
+    }
+    const ordered = [...overlay.layers].sort((a, b) => a.z - b.z), desired = ordered.map(value => this.layerElements.get(value.id));
+    for (const value of ordered) {
+      const element = this.layerElements.get(value.id);
+      applyGeometry(element, value);
+      applyBoxStyle(element, value);
+      if (prepared.has(value.id)) continue;
+      const motion = this.motions.get(value.id);
+      if (motion) Object.assign(motion.layer, { x: value.x, y: value.y, width: value.width, height: value.height, rotation: value.rotation, opacity: value.opacity, z: value.z });
+      const composition = this.compositions.get(value.id);
+      if (composition && (composition.viewportSize?.width !== value.width || composition.viewportSize?.height !== value.height)) {
+        composition.viewportSize = { width: value.width, height: value.height };
+        composition.fit();
+      }
+    }
+    // Layers sit after the background and before page content, in stacking order. Unchanged
+    // stacking moves nothing, so running effects inside the layers are not disturbed.
+    const elements = new Set(desired), children = [...this.root.children];
+    const current = children.filter(child => elements.has(child));
+    if (current.length !== desired.length || current.some((element, index) => element !== desired[index])) {
+      const rest = children.filter(child => child !== this.backgroundElement && !elements.has(child) && child.className !== "mso-layer");
+      this.root.replaceChildren(...(this.backgroundElement ? [this.backgroundElement] : []), ...desired, ...rest);
+    }
+    this.root.setAttribute("aria-label", overlay.name);
+    this.pendingScenes.delete(generation);
+    this.overlay = overlay;
+    this.instances = [...this.rootInstances, ...[...this.mounted.values()].flatMap(mount => mount.instances)];
+    this.fit();
+    for (const value of overlay.layers) {
+      const before = previous?.layers.find(layer => layer.id === value.id);
+      const motion = this.motions.get(value.id);
+      if (!motion) continue;
+      if (prepared.has(value.id)) this.announceChange(motion, before);
+      else if (before && before.opacity !== value.opacity && motion.layer.visible) this.transitionStyle(motion, before);
     }
   }
 
@@ -475,6 +616,7 @@ export class OverlayRenderer {
     this.layerElements.clear();
     this.compositions.clear();
     this.motions.clear(); this.rootMotion = null; this.carousel = null;
+    this.mounted = null; this.rootInstances = []; this.sceneKey = null;
   }
 }
 

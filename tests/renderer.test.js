@@ -209,3 +209,35 @@ test("registered future layers share widget rendering and hidden text stays invi
   renderer.destroy();
   assert.equal(cleaned, 1);
 });
+
+test("re-rendering the same scene keeps unchanged layers running and rebuilds only what changed", async () => {
+  const widgets = new WidgetRegistry();
+  let mounts = 0, destroyed = 0;
+  widgets.register({ id: "clock", label: "Clock", render: () => { mounts++; }, destroy: () => { destroyed++; } });
+  const { container, renderer, overlay } = fixture(widgets);
+  overlay.layers.push(
+    { id: "clock", type: "clock", name: "Clock", x: 0, y: 0, width: 100, height: 100, z: 0, config: { zone: "UTC" } },
+    { id: "label", type: "text", name: "Label", x: 0, y: 200, width: 300, height: 60, z: 1, text: "Hello" });
+  await renderer.render(overlay);
+  const stage = container.children[0], [clock, label] = stage.children;
+  assert.equal(mounts, 1);
+  // Moving, resizing, renaming or locking a layer updates it in place.
+  await renderer.render({ ...overlay, layers: [{ ...overlay.layers[0], x: 50, width: 120, name: "Renamed", locked: true, groupId: "group-1" }, overlay.layers[1]] });
+  assert.equal(container.children[0], stage, "The stage is kept");
+  assert.deepEqual(stage.children, [clock, label], "The same layer elements stay");
+  assert.equal(clock.style.left, "50px"); assert.equal(clock.style.width, "120px");
+  assert.deepEqual([mounts, destroyed], [1, 0], "The running widget is not restarted");
+  // Changing the text rebuilds only that layer; reordering moves the elements.
+  await renderer.render({ ...overlay, layers: [{ ...overlay.layers[0], z: 5 }, { ...overlay.layers[1], text: "Bye" }] });
+  assert.equal(stage.children[1], clock, "The widget now draws on top");
+  assert.notEqual(stage.children[0], label, "The changed text layer is new");
+  assert.equal(stage.children[0].children[0].textContent, "Bye");
+  assert.deepEqual([mounts, destroyed], [1, 0]);
+  // Removing a layer cleans it up; a different canvas rebuilds the whole stage.
+  await renderer.render({ ...overlay, layers: [overlay.layers[1]] });
+  assert.equal(destroyed, 1); assert.equal(stage.children.length, 1);
+  await renderer.render({ ...overlay, canvas: { width: 1280, height: 720 } });
+  assert.notEqual(container.children[0], stage);
+  assert.equal(mounts, 2);
+  renderer.destroy();
+});

@@ -5,6 +5,7 @@ import { nativePoint, moveGeometry, resizeGeometry, shortcutCommand } from "./ge
 import { snapMove, snapResize, snapTargets } from "./snapping.js";
 import { boundsOf, containsBox } from "./arrange.js";
 import { CanvasRulers, RULER_SIZE } from "./rulers.js";
+import { measureDistances } from "./measure.js";
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 // Snapping reach in screen pixels, so it feels the same at every zoom level.
@@ -65,6 +66,8 @@ export class LayerCanvas {
     this.listen(host, "dragstart", event => event.preventDefault());
     this.listen(host, "scroll", () => this.drawRulers());
     this.listen(keyboardRoot, "keydown", event => this.keyDown(event), true);
+    this.listen(keyboardRoot, "keyup", event => { if (event.key === "Alt") this.setMeasuring(false); }, true);
+    if (typeof globalThis.window?.addEventListener === "function") this.listen(globalThis.window, "blur", () => this.setMeasuring(false));
     // Clipboard events target the page body when no text is selected; only a canvas that is
     // waiting for one after its own shortcut reacts.
     const page = host.ownerDocument ?? globalThis.document;
@@ -91,6 +94,8 @@ export class LayerCanvas {
       this.layout();
       await this.renderer.render(overlay);
       if (this.disposed || generation !== this.renderGeneration) return;
+      // The renderer may keep its stage, so the previous controls are still attached.
+      this.controls?.remove?.();
       const present = new Set(this.layers().map(layer => layer.id));
       this.selectedIds = this.selectedIds.filter(id => present.has(id));
       if (!this.selectedIds.includes(this.primaryId)) this.primaryId = this.selectedIds.at(-1) ?? null;
@@ -214,25 +219,15 @@ export class LayerCanvas {
       selection.className = `mso-layer-selection${layer.locked ? " locked" : ""}`;
       selection.dataset.layerId = layer.id;
       this.boxGeometry(selection, layer);
-      if (chosen.length === 1 && !layer.locked) {
-        for (const direction of HANDLES) {
-          const handle = document.createElement("span");
-          handle.className = `mso-resize-handle mso-handle-${direction}`;
-          handle.dataset.resizeHandle = direction;
-          selection.append(handle);
-        }
-        const rotate = document.createElement("span");
-        rotate.className = "mso-rotate-handle";
-        rotate.dataset.rotateHandle = "";
-        setAttr(rotate, "title", "Canvas.RotateHandle");
-        selection.append(rotate);
-      }
+      if (chosen.length === 1 && !layer.locked) this.appendHandles(selection, "");
       this.controls.append(selection);
     }
     if (chosen.length > 1) {
       const group = document.createElement("div");
       group.className = "mso-group-selection";
       group.dataset.groupBounds = "";
+      // The whole selection resizes and turns together from its own frame.
+      if (chosen.some(layer => !layer.locked)) this.appendHandles(group, "group");
       this.controls.append(group);
       this.groupGeometry(group, chosen);
     }
@@ -257,6 +252,63 @@ export class LayerCanvas {
       this.controls.append(marquee);
     }
     this.layoutControls(this.renderer.layout ?? { width: overlay.canvas.width, height: overlay.canvas.height, left: 0, top: 0, scale: 1 });
+    this.drawMeasurements();
+  }
+
+  /** Resize handles and a rotation handle; `scope` "group" marks the selection's own frame. */
+  appendHandles(parent, scope) {
+    for (const direction of HANDLES) {
+      const handle = document.createElement("span");
+      handle.className = `mso-resize-handle mso-handle-${direction}`;
+      handle.dataset[scope ? "groupHandle" : "resizeHandle"] = direction;
+      parent.append(handle);
+    }
+    const rotate = document.createElement("span");
+    rotate.className = "mso-rotate-handle";
+    rotate.dataset[scope ? "groupRotate" : "rotateHandle"] = "";
+    setAttr(rotate, "title", "Canvas.RotateHandle");
+    parent.append(rotate);
+  }
+
+  /**
+   * Alt shows distances from the selection to its nearest neighbours and the canvas edges.
+   * Hovering another layer measures to it instead, or to its inner edges when it contains
+   * the selection.
+   */
+  setMeasuring(enabled, hoverId = this.hoverId) {
+    const measuring = enabled === true && this.selectedIds.length > 0;
+    if (measuring === this.measuring && hoverId === this.hoverId && !measuring) return;
+    this.measuring = measuring;
+    this.hoverId = hoverId ?? null;
+    this.drawMeasurements();
+  }
+
+  drawMeasurements() {
+    this.measureLayer?.remove?.();
+    this.measureLayer = null;
+    const overlay = this.getOverlay?.() ?? this.overlay;
+    if (!this.measuring || !this.controls || !overlay) return;
+    const selected = new Set(this.selectedIds);
+    const chosen = overlay.layers.filter(layer => selected.has(layer.id) && layer.visible);
+    if (!chosen.length) return;
+    const box = boundsOf(chosen);
+    const hovered = overlay.layers.find(layer => layer.id === this.hoverId && !selected.has(layer.id) && layer.visible);
+    let frame = { x: 0, y: 0, width: overlay.canvas.width, height: overlay.canvas.height };
+    let others = overlay.layers.filter(layer => layer.visible && !selected.has(layer.id));
+    if (hovered && containsBox(hovered, box)) { frame = hovered; others = []; }
+    else if (hovered) others = [hovered];
+    this.measureLayer = document.createElement("div");
+    this.measureLayer.className = "mso-measure";
+    for (const segment of measureDistances(box, others, frame)) {
+      const line = document.createElement("div");
+      line.className = `mso-measure-line mso-measure-${segment.axis}`;
+      Object.assign(line.style, segment.axis === "x"
+        ? { left: `${segment.from}px`, top: `${segment.cross}px`, width: `${segment.to - segment.from}px` }
+        : { top: `${segment.from}px`, left: `${segment.cross}px`, height: `${segment.to - segment.from}px` });
+      const label = document.createElement("span"); label.textContent = String(segment.size); line.append(label);
+      this.measureLayer.append(line);
+    }
+    this.controls.append(this.measureLayer);
   }
 
   boxGeometry(box, layer) {
@@ -295,6 +347,9 @@ export class LayerCanvas {
     const guide = event.target.closest?.("[data-guide-axis]");
     this.host.focus({ preventScroll: true });
     if (ruler || guide) { this.startGuide(event, ruler?.dataset.ruler ?? guide.dataset.guideAxis, guide ? Number(guide.dataset.guideIndex) : null); return; }
+    const groupHandle = event.target.closest?.("[data-group-handle]")?.dataset.groupHandle;
+    const groupRotate = event.target.closest?.("[data-group-rotate]");
+    if (groupHandle || groupRotate) { this.startGroupTransform(event, groupHandle ?? null); return; }
     const box = event.target.closest?.("[data-layer-id]");
     const handle = event.target.closest?.("[data-resize-handle]")?.dataset.resizeHandle;
     const rotate = event.target.closest?.("[data-rotate-handle]");
@@ -335,6 +390,79 @@ export class LayerCanvas {
   capture(event) {
     this.host.setPointerCapture(event.pointerId);
     this.host.classList.add("mso-manipulating");
+  }
+
+  /**
+   * Resize (by a handle) or turn (handle null) every unlocked selected layer together. Resizing
+   * scales positions and sizes from the selection's frame (Shift keeps its proportions; layers
+   * with a locked aspect keep theirs); turning moves each layer around the frame's center.
+   */
+  startGroupTransform(event, handle) {
+    const overlay = this.getOverlay?.() ?? this.overlay;
+    const selected = new Set(this.selectedIds);
+    const movable = overlay.layers.filter(layer => selected.has(layer.id) && layer.visible && !layer.locked);
+    if (!movable.length || !this.controls) return;
+    event.preventDefault(); event.stopPropagation();
+    const bounds = boundsOf(movable), rect = this.controls.getBoundingClientRect(), scale = this.renderer.layout?.scale ?? 1;
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const point = nativePoint(event.clientX, event.clientY, rect, scale);
+    this.gesture = { pointerId: event.pointerId, overlay, moved: false, starts: new Map(movable.map(layer => [layer.id, clone(layer)])),
+      clientX: event.clientX, clientY: event.clientY, scale,
+      group: { handle, bounds, rect, center, angle: Math.atan2(point.y - center.y, point.x - center.x) } };
+    this.capture(event);
+  }
+
+  groupTransformMove(gesture, event) {
+    const { handle, bounds, rect, center, angle } = gesture.group;
+    const clampSize = value => Math.max(1, Math.min(7680, value));
+    let place;
+    if (handle) {
+      const delta = nativePoint(event.clientX, event.clientY, { left: gesture.clientX, top: gesture.clientY }, gesture.scale);
+      const frame = resizeGeometry({ ...bounds, rotation: 0 }, handle, delta, { aspectLocked: event.shiftKey });
+      if (this.snapping && !event.altKey && !event.shiftKey) {
+        const targets = snapTargets(gesture.overlay.layers ?? [], new Set(gesture.starts.keys()));
+        const snapped = snapResize({ ...frame }, handle, targets, gesture.overlay.canvas, SNAP_DISTANCE / gesture.scale, this.snapOptions());
+        Object.assign(frame, { x: snapped.x, y: snapped.y, width: snapped.width, height: snapped.height });
+        this.showGuides(snapped.guides);
+      } else this.showGuides([]);
+      const sx = frame.width / bounds.width, sy = frame.height / bounds.height;
+      place = start => {
+        const uniform = start.lockAspectRatio ? Math.min(sx, sy) : null;
+        const width = clampSize(start.width * (uniform ?? sx)), height = clampSize(start.height * (uniform ?? sy));
+        const cx = frame.x + (start.x + start.width / 2 - bounds.x) * sx, cy = frame.y + (start.y + start.height / 2 - bounds.y) * sy;
+        return { x: cx - width / 2, y: cy - height / 2, width, height };
+      };
+    } else {
+      const point = nativePoint(event.clientX, event.clientY, rect, gesture.scale);
+      let turned = (Math.atan2(point.y - center.y, point.x - center.x) - angle) * 180 / Math.PI;
+      turned = event.shiftKey ? Math.round(turned / 15) * 15 : Math.round(turned * 10) / 10;
+      const radians = turned * Math.PI / 180, cos = Math.cos(radians), sin = Math.sin(radians);
+      place = start => {
+        const cx = start.x + start.width / 2 - center.x, cy = start.y + start.height / 2 - center.y;
+        const x = center.x + cx * cos - cy * sin, y = center.y + cx * sin + cy * cos;
+        return { x: x - start.width / 2, y: y - start.height / 2, rotation: normalizeAngle((start.rotation ?? 0) + turned) };
+      };
+      this.angleLabel ??= document.createElement("div");
+      this.angleLabel.className = "mso-angle-label";
+      this.angleLabel.textContent = `${normalizeAngle(turned)}°`;
+      Object.assign(this.angleLabel.style, { left: `${center.x}px`, top: `${center.y}px` });
+      if (this.angleLabel.parentElement !== this.controls) this.controls.append(this.angleLabel);
+    }
+    const changed = [];
+    for (const [id, start] of gesture.starts) {
+      const layer = gesture.overlay.layers.find(value => value.id === id);
+      if (!layer || layer.locked) continue;
+      const next = place(start);
+      for (const key of ["x", "y"]) next[key] = Math.max(-32768, Math.min(32768, Math.round(next[key] * 100) / 100));
+      if (Object.entries(next).every(([key, value]) => layer[key] === value)) continue;
+      Object.assign(layer, next);
+      this.renderer.updateLayer(layer);
+      changed.push(layer);
+    }
+    if (!changed.length) return;
+    gesture.moved = true;
+    this.updateBoxes(changed);
+    for (const layer of changed) this.onChange(layer);
   }
 
   /** Turn the layer around its center by dragging the handle above it. */
@@ -408,9 +536,12 @@ export class LayerCanvas {
   pointerMove(event) {
     if (this.marquee && event.pointerId === this.marquee.pointerId) { this.marqueeMove(event); return; }
     const gesture = this.gesture;
-    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    // Hovering with Alt measures from the selection to the layer under the pointer.
+    if (!gesture) { this.setMeasuring(!!event.altKey, event.target?.closest?.("[data-layer-id]")?.dataset.layerId ?? null); return; }
+    if (event.pointerId !== gesture.pointerId) return;
     if (this.pendingRenderGeneration !== null || this.isBlocked() || (this.getOverlay?.() ?? this.overlay) !== gesture.overlay) { this.cancelGesture(); return; }
     if (gesture.guide) { event.preventDefault(); event.stopPropagation(); this.guideMove(event); return; }
+    if (gesture.group) { event.preventDefault(); event.stopPropagation(); this.groupTransformMove(gesture, event); this.setMeasuring(!!event.altKey, null); return; }
     const layer = gesture.overlay.layers.find(value => value.id === gesture.layerId);
     if (!layer || layer.locked || !layer.visible) { this.cancelGesture(); return; }
     event.preventDefault(); event.stopPropagation();
@@ -428,6 +559,7 @@ export class LayerCanvas {
       return;
     }
     const offset = this.snapGroup(gesture, delta, event);
+    this.setMeasuring(!!event.altKey, null);
     const changed = [];
     for (const [id, start] of gesture.starts) {
       const target = gesture.overlay.layers.find(value => value.id === id);
@@ -576,6 +708,13 @@ export class LayerCanvas {
 
   keyDown(event) {
     if (this.disposed || this.pendingRenderGeneration !== null || this.isBlocked()) return;
+    if (event.key === "Alt") {
+      if (!this.selectedIds.length || event.target?.closest?.("input,textarea,select,[contenteditable]")) return;
+      // Keeps the browser or app menu from taking Alt while it measures.
+      event.preventDefault();
+      this.setMeasuring(true, null);
+      return;
+    }
     if (event.key === "Escape" && (this.gesture || this.marquee)) { event.preventDefault(); event.stopPropagation(); this.cancelGesture(); return; }
     if (this.gesture || this.marquee) return;
     const command = shortcutCommand(event);

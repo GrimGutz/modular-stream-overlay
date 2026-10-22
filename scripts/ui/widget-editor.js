@@ -307,8 +307,10 @@ export class WidgetPresetEditor extends OverlayEditor {
     if (!this._draft) return;
     this._validateInputs();
     const preset = overlayToWidgetPreset(this._draft, { id: this._draft.id, name: this._draft.name });
+    const before = this._savedDocument();
     const saved = await this.widgetPresets.save(preset, { expectedRevision: this._loadedRevision });
     this._loadDraft(widgetPresetToOverlay(saved));
+    await this._recordVersions(before, this._draft);
     ui.notifications.info(t("Widgets.DesignSaved"));
   }
   async _addComponent(target) {

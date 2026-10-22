@@ -1,6 +1,7 @@
 /**
  * The Layers panel: rows in stacking order (top first), groups with their members, visibility
- * and lock toggles, and drag and drop that restacks layers or moves them into or out of groups.
+ * and lock toggles, a name search, renaming by double-click, and drag and drop that restacks
+ * layers or moves them into or out of groups.
  * Groups are layers sharing a group ID; they move, hide and lock together.
  */
 import { layerOrder, groupLayers, ungroupLayers, renameGroup, moveLayers } from "../core/layers.js";
@@ -31,30 +32,96 @@ export const LayerList = Base => class extends Base {
   _groupMembers(groupId) { return this._layerOrder().filter(layer => layer.groupId === groupId); }
 
   _renderLayerPanel() {
+    this._renderLayerList();
+    this._renderLayerProperties();
+  }
+
+  /**
+   * Rows in stacking order. With a search, only layers whose name, or whose group's name,
+   * contains it are listed, and matching groups show open.
+   */
+  _renderLayerList() {
     const list = this.element?.querySelector("[data-layer-list]");
-    if (!list) return;
+    // A rename in progress keeps its field; the list redraws when it ends.
+    if (!list || this._renaming) return;
     list.replaceChildren();
     const order = this._layerOrder();
-    if (!order.length) {
+    const query = (this._layerFilter ?? "").trim().toLocaleLowerCase();
+    const named = (value, text) => !!value && value.toLocaleLowerCase().includes(text);
+    const matches = layer => !query || named(layer.name, query) || named(layer.groupName, query);
+    if (!order.length || !order.some(matches)) {
       const message = document.createElement("p");
       message.className = "mso-help";
-      setText(message, "Editor.EmptyLayers");
+      setText(message, order.length ? "Editor.NoMatchingLayers" : "Editor.EmptyLayers");
       list.append(message);
     }
     const selected = new Set(this._selectedLayerIds);
     this._collapsedGroups ??= new Set();
     const shown = new Set();
     for (const layer of order) {
-      if (!layer.groupId) { list.append(this._layerRow(layer, selected)); continue; }
+      if (!layer.groupId) { if (matches(layer)) list.append(this._layerRow(layer, selected)); continue; }
       if (shown.has(layer.groupId)) continue;
       shown.add(layer.groupId);
       const members = order.filter(entry => entry.groupId === layer.groupId);
+      const visible = members.filter(matches);
+      if (!visible.length) continue;
       list.append(this._groupRow(layer.groupId, members, selected));
-      if (!this._collapsedGroups.has(layer.groupId)) for (const member of members) list.append(this._layerRow(member, selected, true));
+      if (query || !this._collapsedGroups.has(layer.groupId)) for (const member of visible) list.append(this._layerRow(member, selected, true));
     }
     const count = this.element.querySelector("[data-layer-count]");
-    if (count) count.textContent = String(order.length);
-    this._renderLayerProperties();
+    if (count) count.textContent = query ? `${order.filter(matches).length}/${order.length}` : String(order.length);
+  }
+
+  /** The search field above the list keeps its text across renders; Esc clears it. */
+  _bindLayerSearch() {
+    const input = this.element?.querySelector("[data-layer-search]");
+    if (!input) return;
+    input.value = this._layerFilter ?? "";
+    input.addEventListener("input", () => { this._layerFilter = input.value; this._renderLayerList(); });
+    input.addEventListener("keydown", event => {
+      if (event.key !== "Escape" || !input.value) return;
+      event.preventDefault(); event.stopPropagation();
+      input.value = ""; this._layerFilter = ""; this._renderLayerList();
+    });
+  }
+
+  /** Swap a row's name button for a text field; Enter or leaving it saves, Esc cancels. */
+  _startRename(row, button, current, commit) {
+    if (this._uploading || this._busy) return;
+    const input = document.createElement("input");
+    input.type = "text"; input.className = "mso-rename-input"; input.value = current; input.maxLength = 80;
+    setAttr(input, "aria-label", "Editor.RenameLayer");
+    row.draggable = false;
+    this._renaming = true;
+    button.replaceWith(input);
+    input.focus(); input.select?.();
+    let done = false;
+    const finish = save => {
+      if (done) return;
+      done = true;
+      this._renaming = false;
+      const value = input.value.trim();
+      if (save && value && value !== current) void this._draftOperation(() => commit(value)).then(() => this._renderLayerList());
+      else this._renderLayerList();
+    };
+    input.addEventListener("keydown", event => {
+      event.stopPropagation();
+      if (event.key === "Enter") { event.preventDefault(); finish(true); }
+      else if (event.key === "Escape") { event.preventDefault(); finish(false); }
+    });
+    input.addEventListener("blur", () => finish(true));
+  }
+
+  async _renameLayer(id, name) {
+    const layer = this._editingLayers().find(entry => entry.id === id);
+    const value = String(name ?? "").trim();
+    if (!layer || !value || value.length > 80 || /[\u0000-\u001f\u007f]/.test(value)) return false;
+    await this._historyStep(async () => {
+      layer.name = value;
+      this._markDirty();
+      this._syncLayerFields(layer);
+    });
+    return true;
   }
 
   _layerRow(layer, selected, member = false) {
@@ -72,6 +139,7 @@ export const LayerList = Base => class extends Base {
     name.dataset.layerName = "";
     name.textContent = layer.name;
     select.append(icon, name);
+    select.addEventListener("dblclick", event => { event.preventDefault(); this._startRename(row, select, layer.name, value => this._renameLayer(layer.id, value)); });
     const visible = this._layerButton(layer.visible ? L("Editor.Visible") : L("Editor.Hidden"), "visible", layer.id, { pressed: layer.visible });
     visible.className = "mso-layer-toggle";
     const locked = this._layerButton(layer.locked ? L("Editor.Locked") : L("Editor.Unlocked"), "locked", layer.id, { pressed: !!layer.locked });
@@ -113,6 +181,7 @@ export const LayerList = Base => class extends Base {
     count.className = "mso-muted"; count.textContent = ` ${members.length}`;
     select.append(icon, name, count);
     select.title = name.textContent;
+    select.addEventListener("dblclick", event => { event.preventDefault(); this._startRename(row, select, name.textContent, value => this._renameGroup(groupId, value)); });
     select.disabled = this._uploading;
     select.addEventListener("click", event => {
       event.preventDefault();

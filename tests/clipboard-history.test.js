@@ -106,16 +106,18 @@ test("undo keeps only the last 100 steps", async () => {
   assert.equal(editor._draft.layers[0].x, 5, "The oldest steps beyond 100 are dropped");
 });
 
-test("several undo steps in a row keep the keyboard focus on the canvas after each re-render", async () => {
+test("undo and redo refresh the open window in place, so the canvas, focus and panels stay put", async () => {
   const editor = editorFixture();
-  const focused = [];
+  let renders = 0;
   editor.rendered = true;
-  editor.render = async () => { editor._previewElement = { focus: () => focused.push(editor._draft.layers.length) }; };
+  editor.render = async () => { renders++; };
   const layer = createLayer("text", editor._draft.canvas);
   for (let count = 1; count <= 3; count++) { editor._draft.layers.push({ ...layer, id: `layer-${count}` }); editor._markDirty(); editor._commitHistory(); }
   await editor._canvasCommand("undo"); await editor._canvasCommand("undo"); await editor._canvasCommand("undo");
   assert.equal(editor._draft.layers.length, 0, "Three Ctrl+Z steps undo three changes");
-  assert.deepEqual(focused, [2, 1, 0], "Focus returns to the canvas after every step");
+  await editor._canvasCommand("redo");
+  assert.equal(editor._draft.layers.length, 1);
+  assert.equal(renders, 0, "The window is never re-rendered");
 });
 
 function twoLayers(editor) {

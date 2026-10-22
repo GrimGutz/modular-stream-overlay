@@ -15,6 +15,7 @@ class Element {
   get className() { return this._className; }
   append(...children) { children.forEach(child => { child.parent=this; this.children.push(child); }); }
   replaceChildren(...children) { this.children=[]; this.append(...children); }
+  remove() { if(this.parent) this.parent.children=this.parent.children.filter(child=>child!==this); }
   setAttribute(key,value) { this.attributes[key]=value; }
   addEventListener(name,fn) { this.listeners.set(name,fn); }
   removeEventListener(name,fn) { if(this.listeners.get(name)===fn)this.listeners.delete(name); }
@@ -24,7 +25,7 @@ class Element {
   releasePointerCapture(id) { this.captures.delete(id); }
   focus() { this.focused=true; }
   closest(selector) {
-    const key = { "[data-layer-id]": "layerId", "[data-resize-handle]": "resizeHandle", "[data-rotate-handle]": "rotateHandle", "[data-guide-axis]": "guideAxis", "[data-ruler]": "ruler" }[selector] ?? null;
+    const key = { "[data-layer-id]": "layerId", "[data-resize-handle]": "resizeHandle", "[data-rotate-handle]": "rotateHandle", "[data-guide-axis]": "guideAxis", "[data-ruler]": "ruler", "[data-group-handle]": "groupHandle", "[data-group-rotate]": "groupRotate" }[selector] ?? null;
     return key && this.dataset[key] !== undefined ? this : this.parent?.closest(selector) ?? null;
   }
 }
@@ -216,7 +217,9 @@ test("Shift/Ctrl-click builds a selection and dragging one selected layer moves 
   assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id]);assert.equal(f.canvas.selectedId,f.second.id);
   assert.deepEqual(f.selections.at(-1),[f.second.id,[f.layer.id,f.second.id]]);
   assert.equal(f.canvas.controls.children.filter(node=>node.className==="mso-group-selection").length,1);
-  assert(f.canvas.controls.children.every(node=>!node.children?.length),"Several selected layers show no resize handles");
+  const frame=f.canvas.controls.children.find(node=>node.className==="mso-group-selection");
+  assert.equal(frame.children.filter(node=>node.dataset.groupHandle).length,8,"The selection frame has its own handles");
+  assert(f.canvas.controls.children.filter(node=>node.className==="mso-layer-selection").every(node=>!node.children.length),"Single-layer handles are hidden");
   f.canvas.pointerDown(event(hit(f.layer.id)));f.canvas.pointerMove(event(hit(f.layer.id),{clientX:40,clientY:50}));f.canvas.pointerUp(event(hit(f.layer.id),{clientX:40,clientY:50}));
   assert.deepEqual([f.layer.x,f.layer.y,f.second.x,f.second.y],[130,110,930,110]);assert.deepEqual(f.locked.x,0);
   assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id],"Dragging keeps the selection");
@@ -318,5 +321,42 @@ test("the grid draws and snaps edges to its lines",async()=>{
   f.canvas.pointerDown(event(box,{clientX:10,clientY:20}));f.canvas.pointerMove(event(box,{clientX:57,clientY:20}));f.canvas.pointerUp(event(box,{clientX:57,clientY:20}));
   assert.equal(f.layer.x,150,"147 snaps to the grid line at 150");
   f.canvas.setGrid(0);assert(!f.canvas.controls.children.some(node=>node.className==="mso-grid"));
+  f.canvas.destroy();
+});
+
+test("the selection frame resizes and turns every selected layer together",async()=>{
+  const f=group();await f.canvas.render(f.overlay);f.canvas.setZoom(1);f.canvas.setSnapping(false);
+  // layer 100,80 640×360 and second 900,80 200×100: frame 100,80 → 1100,440.
+  f.canvas.setSelection([f.layer.id,f.second.id]);
+  const frame=()=>f.canvas.controls.children.find(node=>node.className==="mso-group-selection");
+  const handle=direction=>frame().children.find(node=>node.dataset.groupHandle===direction);
+  f.canvas.pointerDown(event(handle("e"),{clientX:1100,clientY:200}));f.canvas.pointerMove(event(handle("e"),{clientX:1600,clientY:200}));
+  // The frame grows from 1000 to 1500 wide: ×1.5 horizontally from its left edge.
+  assert.deepEqual([f.second.x,f.second.width,f.second.y,f.second.height],[1300,300,80,100]);
+  assert.deepEqual([f.layer.x,f.layer.width],[260,640],"The aspect-locked image keeps its size (×1 vertically) while its center moves");
+  assert.equal(frame().style.width,"1340px","The frame follows the layers");
+  f.canvas.keyDown(event(f.host,{key:"Escape"}));
+  assert.deepEqual([f.second.x,f.second.width],[900,200],"Escape restores every layer");
+  // Turning by 90° around the frame center (600, 260).
+  const rotate=frame().children.find(node=>node.dataset.groupRotate!==undefined);
+  f.canvas.pointerDown(event(rotate,{clientX:600,clientY:60}));f.canvas.pointerMove(event(rotate,{clientX:800,clientY:260,shiftKey:true}));
+  assert.deepEqual([f.layer.rotation,f.second.rotation],[90,90]);
+  assert.deepEqual([Math.round(f.second.x+f.second.width/2),Math.round(f.second.y+f.second.height/2)],[730,660],"Each layer's center turns around the frame center");
+  f.canvas.pointerUp(event(rotate,{clientX:800,clientY:260,shiftKey:true}));
+  assert(f.changes.length>0);assert.equal(f.locked.rotation,0,"Locked layers stay put");
+  f.canvas.destroy();
+});
+
+test("Alt shows distances to the nearest layers and canvas edges, or to a hovered layer",async()=>{
+  const f=group();await f.canvas.render(f.overlay);f.canvas.setZoom(1);f.canvas.select(f.layer.id);
+  const sizes=()=>f.canvas.controls.children.find(node=>node.className==="mso-measure")?.children.map(node=>`${node.className.split(" ")[1]}:${node.children[0].textContent}`)??[];
+  f.canvas.keyDown(event(f.host,{key:"Alt"}));
+  // Layer 100,80 640×360; the text layer at 900 is 160 px to the right; above and below run to the canvas edges.
+  assert.deepEqual(sizes(),["mso-measure-x:100","mso-measure-x:160","mso-measure-y:80","mso-measure-y:640"]);
+  const hit=f.canvas.controls.children.find(node=>node.dataset.layerId===f.locked.id);
+  f.canvas.pointerMove(event(hit,{altKey:true}));
+  assert.deepEqual(sizes(),["mso-measure-x:100","mso-measure-x:1180","mso-measure-y:80","mso-measure-y:640"],"Inside a hovered container, to its inner edges");
+  f.canvas.host.listeners.get("keyup")?.({key:"Alt"});
+  assert.deepEqual(sizes(),[],"Releasing Alt hides them");
   f.canvas.destroy();
 });

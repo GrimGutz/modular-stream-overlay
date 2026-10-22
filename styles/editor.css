@@ -97,6 +97,15 @@
 .mso-editor .mso-arrange-buttons { display: flex; flex-wrap: wrap; gap: 3px; }
 .mso-editor .mso-selection-count { font-weight: 600; margin: 0 0 6px; }
 .mso-editor .mso-group-row { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.mso-editor .mso-fragments { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; border-top: 1px solid var(--mso-line); padding-top: 8px; }
+.mso-editor .mso-fragments h4 { margin: 0 0 2px; font-size: .78rem; color: var(--mso-muted); }
+.mso-editor .mso-fragment-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px; }
+.mso-editor .mso-fragment-insert { overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.mso-editor .mso-layer-search { margin-bottom: 6px; min-height: 28px; font-size: .75rem; }
+.mso-editor .mso-rename-input { min-height: 26px; font-size: .73rem; }
+.mso-editor .mso-version-list { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; }
+.mso-editor .mso-version, .mso-version { display: flex; align-items: center; gap: 8px; }
+.mso-version em { color: #94b7ff; font-size: .8em; }
 .mso-editor .mso-group-member { margin-left: 14px; }
 .mso-editor .mso-group-toggle { min-height: 26px; padding: 2px 6px; }
 .mso-editor .mso-layer-row.mso-drop-before { box-shadow: inset 0 2px 0 var(--mso-accent); }

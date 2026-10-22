@@ -154,7 +154,8 @@ test("rerender diagnostics preserve the interruption cause through parent visibi
   f.renderer.context.onDiagnostic = event => events.push(event);
   await f.renderer.render(f.overlay);
   f.renderer.handleAnimationCommand({ kind: "play", animation: { type: "pulse", duration: 1200 }, layerId: f.instance.id, overlayId: f.overlay.id });
-  await f.renderer.render(f.overlay);
+  // An unchanged layer keeps running across renders; a changed one is rebuilt and interrupted.
+  await f.renderer.render({ ...f.overlay, layers: f.overlay.layers.map(layer => layer.id === f.instance.id ? { ...layer, borderWidth: 1 } : layer) });
   const cancelled = events.find(event => event.layerId === f.instance.id && event.phase === "cancelled");
   assert.equal(cancelled.reason, "render-interrupted");
 });

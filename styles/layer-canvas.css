@@ -46,3 +46,10 @@
 .mso-ruler-top { top: 0; left: 18px; height: 18px; cursor: s-resize; }
 .mso-ruler-left { top: 18px; left: 0; width: 18px; cursor: e-resize; }
 .mso-ruler-corner { top: 0; left: 0; width: 18px; height: 18px; background: #1b1f27; border-right: 1px solid #39404f; border-bottom: 1px solid #39404f; box-sizing: border-box; }
+.mso-group-selection .mso-resize-handle, .mso-group-selection .mso-rotate-handle { pointer-events: auto; }
+.mso-measure { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.mso-measure-line { position: absolute; border: 0 solid #ff4d6d; }
+.mso-measure-x { height: 0; border-top-width: var(--mso-outline-size); }
+.mso-measure-y { width: 0; border-left-width: var(--mso-outline-size); }
+.mso-measure-line > span { position: absolute; left: 50%; top: 50%; padding: 0 .3em; font: 600 var(--mso-guide-font) / 1.3 sans-serif; color: #fff; background: #e0284f; border-radius: .3em; white-space: nowrap; transform: translate(-50%, -120%); }
+.mso-measure-y > span { transform: translate(15%, -50%); }

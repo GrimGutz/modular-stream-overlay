@@ -11,7 +11,7 @@ import { CharacterDataService, validateAdapterPreferences } from "./data/charact
 import { validateMappings } from "./data/mappings.js";
 import { validateCharacterProfiles } from "./data/profiles.js";
 import { OverlayRenderer } from "./render/renderer.js";
-import { OverlayEditor, configureEditor, refreshEditors } from "./ui/editor.js";
+import { OverlayEditor, configureEditor, refreshEditors, refreshFragmentLists } from "./ui/editor.js";
 import { WidgetPresetManager, configureWidgetEditor, openWidgetManager, openWidgetPreset, refreshWidgetEditors } from "./ui/widget-editor.js";
 import { isOverlayRequest, overlayURL, isViewerAllowed, viewerAccessMessage, watchForConnector } from "./integration/obs.js";
 import { defaultAnimationRegistry } from "./animation/playback.js";
@@ -162,6 +162,8 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "canvasRulers", { scope: "client", config: false, type: Boolean, default: true });
   game.settings.register(MODULE_ID, "canvasGrid", { scope: "client", config: false, type: Number, default: 0 });
   game.settings.register(MODULE_ID, "canvasGuides", { scope: "client", config: false, type: Object, default: {} });
+  // Saved layer fragments, shared by every GM of the world.
+  game.settings.register(MODULE_ID, "layerFragments", { scope: "world", config: false, restricted: true, type: Array, default: [], onChange: () => refreshFragmentLists() });
   game.settings.register(MODULE_ID, "viewerUserId", {
     name: "Overlay viewer account", scope: "world", config: false, type: String,
     default: "", onChange: settingsChanged

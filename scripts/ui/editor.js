@@ -5,7 +5,9 @@ import { alignPositions, boundsOf, distributePositions } from "../editor/arrange
 import { moveGeometry } from "../editor/geometry.js";
 import { uploadBackground } from "../core/background-upload.js";
 import { loadFoundryFonts } from "../integration/fonts.js";
-import { validateAssetPath, validateLayer } from "../core/schema.js";
+import { validateAssetPath, validateLayer, validateOverlay } from "../core/schema.js";
+import { VersionStore } from "../core/saved-versions.js";
+import { listFragments, saveFragment, deleteFragment } from "../core/fragments.js";
 import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayers, reorderLayer, reorderInGroup, stepLayer,
   moveLayers, groupLayers, layerOrder, dissolveSmallGroups } from "../core/layers.js";
 import { isCharacterComponent } from "../render/character-components.js";
@@ -22,6 +24,9 @@ const MODULE_ID = "modular-stream-overlay";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 let services = {};
 const editors = new Set();
+// Every open overlay editor and widget designer shows the shared fragment library.
+const fragmentViews = new Set();
+let defaultVersions;
 const VIEWER_ROLES = { 1: "Template.RolePlayer", 2: "Template.RoleTrusted", 3: "Template.RoleAssistant", 4: "Template.RoleGamemaster" };
 const GRID_STEPS = [10, 20, 25, 50, 100];
 onLanguageChange(() => { for (const editor of editors) editor.refreshLanguage(); });
@@ -29,6 +34,11 @@ onLanguageChange(() => { for (const editor of editors) editor.refreshLanguage();
 /** Supply dependencies without coupling the editor to storage or renderer internals. */
 export function configureEditor(configuration) {
   services = { ...services, ...configuration };
+}
+
+/** The fragment library changed (here or by another GM). */
+export function refreshFragmentLists() {
+  for (const editor of fragmentViews) editor._renderFragments();
 }
 
 /** Refresh API-opened and Foundry Settings menu instances alike. */
@@ -64,11 +74,13 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       "editOverlay", "createOverlay", "renameOverlay", "deleteOverlay", "saveOverlay", "reloadOverlay",
       "uploadBackground", "browseBackground", "removeBackground", "savePreset", "loadPreset", "renamePreset", "duplicatePreset",
       "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "installDemo", "resetDemo",
-      "toggleCanvasFullscreen"
+      "toggleCanvasFullscreen", "showVersions"
     ].map(action => [action, OverlayEditor.onAction]))
   };
 
-  static PARTS = { editor: { template: `modules/${MODULE_ID}/templates/editor.hbs` } };
+  // Scroll positions survive full renders, so panels do not jump back to the top.
+  static PARTS = { editor: { template: `modules/${MODULE_ID}/templates/editor.hbs`,
+    scrollable: [".mso-overlay-list", ".mso-main", ".mso-inspector", ".mso-layer-list"] } };
 
   constructor(options = {}) {
     super(options);
@@ -200,12 +212,38 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     this._pruneSelection(this._allLayers());
     this._dirty = history.dirty;
     if (!this.rendered) return;
-    await this.render({ force: true });
-    // The re-render replaces the focused canvas; without focus the next Ctrl+Z would reach
-    // Foundry instead of this editor, so only one step could be undone.
-    this._previewElement?.focus?.({ preventScroll: true });
-    // Any normalization during rendering must not become a phantom step for the next undo.
+    // Refresh in place: re-rendering the window would restart the preview and move the panels.
+    await this._refreshDraftViews();
+    // Any normalization while refreshing must not become a phantom step for the next undo.
     if (this._draft) history.current = JSON.stringify(this._draft);
+  }
+
+  /** Show a replaced draft (undo, redo) in the open window without re-rendering it. */
+  async _refreshDraftViews() {
+    await this._updatePreview();
+    this._selectLayers(this._selectedLayerIds, this._selectedLayerId);
+    this._renderSharedWidgetAnimations();
+    this._renderPagesPanel?.();
+    const draft = this._draft;
+    if (!draft || !this.element) return;
+    for (const input of this.element.querySelectorAll("[data-draft-field]")) {
+      if (input === document.activeElement) continue;
+      const [group, key] = input.dataset.draftField.split(".");
+      input.value = String(draft[group]?.[key] ?? "");
+      this._invalidInputs.delete(input.dataset.draftField);
+      setValidity(input, "");
+    }
+    const heading = this.element.querySelector(".mso-document-heading h2");
+    if (heading) heading.textContent = draft.name;
+    const output = this.element.querySelector("[data-opacity-output]");
+    if (output) output.textContent = `${Math.round(draft.background.opacity * 100)}%`;
+    const resolution = this.element.querySelector("[data-resolution]");
+    if (resolution) resolution.textContent = `${draft.canvas.width} × ${draft.canvas.height}`;
+    this._updateBackgroundThumbnail();
+    const status = this.element.querySelector("[data-save-status]");
+    if (status) writeText(status, L(this._dirty ? "Editor.UnsavedChanges" : "Template.AllSaved"));
+    const save = this.element.querySelector('[data-action="saveOverlay"]');
+    if (save) save.disabled = !this._dirty || this._uploading;
   }
 
   /**
@@ -246,7 +284,12 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     if (!this._draft) return;
     const content = typeof text === "string" ? text : "";
     const layers = parseLayers(content) ?? (content.trim() ? [this._textLayerFor(content)] : rememberedLayers());
-    if (!layers?.length) return;
+    return this._insertLayersData(layers);
+  }
+
+  /** Insert copied, pasted or fragment layers on top, checked like a paste. */
+  async _insertLayersData(layers) {
+    if (!layers?.length || !this._draft) return;
     const designs = new Set((this.widgetPresets?.list?.() ?? []).map(preset => preset.id));
     for (const layer of layers) {
       // Widget designs cannot hold widget instances; overlays have no character components.
@@ -402,11 +445,25 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     const heading = this.element.querySelector(".window-title");
     if (heading && !this.widgetMode) setText(heading, "Editor.Title");
     if (!this.widgetMode) editors.add(this);
-    this._preview?.destroy();
-    this._previewElement = this.element.querySelector("[data-preview]");
+    // A full window render keeps the live canvas: its carousels, images, animations, scroll
+    // and rulers go on, and only layers that changed are rebuilt.
+    const placeholder = this.element.querySelector("[data-preview]");
+    const keep = !!(this._preview && !this._preview.disposed && this._previewElement && placeholder && placeholder !== this._previewElement);
+    if (keep) placeholder.replaceWith(this._previewElement);
+    else {
+      this._preview?.destroy();
+      this._preview = null;
+      this._previewElement = placeholder;
+    }
     // Foundry fonts load with its game canvas, which may be off; text re-renders once they arrive.
     void loadFoundryFonts().catch(() => {});
-    if (this._previewElement) {
+    const hasFiles = event => [...(event.dataTransfer?.types ?? [])].includes("Files");
+    if (keep) {
+      this._preview.setGuides(this._guides());
+      await this._updatePreview();
+      this._preview.setSelection(this._selectedLayerIds, this._selectedLayerId, { notify: false });
+    }
+    else if (this._previewElement) {
       this._preview = new LayerCanvas({
         host: this._previewElement,
         keyboardRoot: this.element,
@@ -427,23 +484,15 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       this._preview.setGrid(this._grid());
       await this._updatePreview();
       this._preview.setSelection(this._selectedLayerIds, this._selectedLayerId, { notify: false });
+      this._listenForDrops(this._previewElement, { files: hasFiles });
     }
     this._renderLayerPanel();
+    this._bindLayerSearch();
+    fragmentViews.add(this);
+    this._renderFragments();
     this._renderSharedWidgetAnimations();
     this._renderAnimationTestPanel();
-    const hasFiles = event => [...(event.dataTransfer?.types ?? [])].includes("Files");
-    for (const host of [this._previewElement, this.element.querySelector("[data-layer-properties]")]) {
-      host?.addEventListener("dragover", event => {
-        // Image files dropped on the canvas become image layers.
-        if (host === this._previewElement && hasFiles(event)) { event.preventDefault(); return; }
-        const id = event.target.closest?.("[data-layer-id]")?.dataset.layerId;
-        if ((this._editingLayers().find(layer => layer.id === id) ?? this._selectedLayer())?.type === "character-widget") event.preventDefault();
-      });
-      host?.addEventListener("drop", event => {
-        if (host === this._previewElement && hasFiles(event)) { void this._dropImages(event); return; }
-        void this._dropActor(event);
-      });
-    }
+    this._listenForDrops(this.element.querySelector("[data-layer-properties]"));
     this.element.querySelectorAll("[data-draft-field]").forEach(input => {
       if (this._invalidInputs.has(input.dataset.draftField)) {
         input.value = this._invalidInputs.get(input.dataset.draftField);
@@ -507,6 +556,19 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       if (["cover", "contain", "stretch"].includes(option.value)) writeText(option, S(option.value[0].toUpperCase() + option.value.slice(1)));
     }
     localizeDOM(this.element);
+  }
+
+  /** Actors dropped on a widget assign it; image files dropped on the canvas become layers. */
+  _listenForDrops(host, { files } = {}) {
+    host?.addEventListener("dragover", event => {
+      if (files?.(event)) { event.preventDefault(); return; }
+      const id = event.target.closest?.("[data-layer-id]")?.dataset.layerId;
+      if ((this._editingLayers().find(layer => layer.id === id) ?? this._selectedLayer())?.type === "character-widget") event.preventDefault();
+    });
+    host?.addEventListener("drop", event => {
+      if (files?.(event)) { void this._dropImages(event); return; }
+      void this._dropActor(event);
+    });
   }
 
   /**
@@ -690,7 +752,11 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     const composition = this._editingOverlay();
     const layer = composition?.layers?.find(entry => entry.id === id);
     if (!layer) return;
-    if (command === "select") { this._selectLayer(id); return; }
+    if (command === "select") {
+      // Clicking the only selected layer again changes nothing, so a double-click can rename it.
+      if (!(this._selectedLayerIds.length === 1 && this._selectedLayerId === id)) this._selectLayer(id);
+      return;
+    }
     if (command === "duplicate") {
       if (this._allLayers().length >= 100) throw new Error(t("Editor.ComponentLimit"));
       const copy = duplicateLayer(composition, id);
@@ -853,7 +919,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       this._uploadBackground();
       return;
     }
-    if (["addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "addComponent", "choosePreviewActor", "chooseDemoPreviewActor"].includes(target.dataset.action)) {
+    if (["addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "addComponent", "choosePreviewActor", "chooseDemoPreviewActor", "showVersions"].includes(target.dataset.action)) {
       void this._draftOperation(() => this[`_${target.dataset.action}`](target));
       return;
     }
@@ -986,9 +1052,74 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   async _saveOverlay() {
     if (!this._draft) return;
     this._validateInputs();
+    const before = this._savedDocument();
     const saved = await this.store.saveOverlay(clone(this._draft), { expectedRevision: this._loadedRevision });
     this._loadDraft(saved);
+    await this._recordVersions(before, saved);
     ui.notifications.info(t("Editor.Saved"));
+  }
+
+  _versions() { return services.versions ?? (defaultVersions ??= new VersionStore()); }
+  _versionKey(id = this._draft?.id) { return `${game.world?.id ?? "world"}/${this.widgetMode ? "design" : "overlay"}/${id}`; }
+  /** The saved form of the document being edited, as the editor loads it. */
+  _savedDocument() { return this.store.getState().overlays.find(overlay => overlay.id === this._draft?.id) ?? null; }
+
+  /**
+   * Keep a version of each save in this browser. The first time, the version saved before is
+   * kept too, so there is always something to go back to. Saving never fails because of this.
+   */
+  async _recordVersions(before, saved) {
+    try {
+      const store = this._versions(), key = this._versionKey(saved.id);
+      if (before && !(await store.list(key)).length) await store.add(key, before);
+      await store.add(key, saved);
+    } catch (error) { console.warn(`${MODULE_ID} | Could not keep a saved version`, error); }
+  }
+
+  /** Choose a saved version; restoring it makes it the draft, as one undoable unsaved change. */
+  async _showVersions() {
+    if (!this._draft) return;
+    const versions = await this._versions().list(this._versionKey());
+    const saved = JSON.stringify(this._savedDocument());
+    const content = document.createElement("div");
+    const root = document.createElement("div"); root.className = "mso-version-list";
+    const help = document.createElement("p"); help.className = "mso-help"; setText(help, versions.length ? "Editor.VersionsHelp" : "Editor.NoVersions"); root.append(help);
+    versions.forEach((version, index) => {
+      const label = document.createElement("label"); label.className = "mso-version";
+      const input = document.createElement("input"); input.type = "radio"; input.name = "version"; input.value = String(version.id);
+      if (index === Math.min(1, versions.length - 1)) input.setAttribute("checked", "");
+      const caption = document.createElement("span");
+      setText(caption, "Editor.VersionEntry", { date: new Date(version.savedAt).toLocaleString(game.i18n?.lang), count: version.document.layers?.length ?? 0 });
+      label.append(input, caption);
+      if (JSON.stringify(version.document) === saved) { const current = document.createElement("em"); setText(current, "Editor.VersionCurrent"); label.append(current); }
+      root.append(label);
+    });
+    content.append(root);
+    if (!versions.length) {
+      await DialogV2.prompt({ window: { title: t("Editor.VersionsTitle") }, content, modal: true, rejectClose: false,
+        render: (_event, dialog) => markDialog(dialog, L("Editor.VersionsTitle")) });
+      return;
+    }
+    const result = await DialogV2.input({ window: { title: t("Editor.VersionsTitle") }, content, modal: true, rejectClose: false,
+      ok: { label: t("Editor.RestoreVersion") }, render: (_event, dialog) => markDialog(dialog, L("Editor.VersionsTitle")) });
+    const version = versions.find(entry => String(entry.id) === String(result?.version));
+    if (version) await this._restoreVersion(version);
+  }
+
+  async _restoreVersion(version) {
+    const restored = validateOverlay({ ...version.document, id: this._draft.id });
+    await this._historyStep(async () => {
+      // Keep the draft object: the canvas and open panels hold references to it.
+      for (const key of Object.keys(this._draft)) delete this._draft[key];
+      Object.assign(this._draft, clone(restored));
+      this._scopeProjection = null;
+      this._invalidInputs.clear();
+      this._animationEdits.clear();
+      this._pruneSelection(this._allLayers());
+      this._markDirty();
+      await this._refreshDraftViews();
+    });
+    ui.notifications.info(t("Editor.VersionRestored", { date: new Date(version.savedAt).toLocaleString(game.i18n?.lang) }));
   }
 
   async _reloadOverlay() {
@@ -1280,8 +1411,58 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     }
   }
 
+  /** The tools panel's fragment list: insert with a click, save the selection, delete. */
+  _renderFragments() {
+    const host = this.element?.querySelector("[data-fragments]");
+    if (!host) return;
+    host.replaceChildren();
+    const heading = document.createElement("h4"); setText(heading, "Editor.Fragments"); host.append(heading);
+    const store = document.createElement("button");
+    store.type = "button"; store.className = "mso-fragment-save"; store.disabled = this._uploading;
+    setText(store, "Editor.SaveFragment"); setAttr(store, "title", "Editor.SaveFragmentHelp");
+    store.addEventListener("click", () => { void this._draftOperation(() => this._saveFragment()); });
+    host.append(store);
+    const fragments = listFragments();
+    if (!fragments.length) { const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.NoFragments"); host.append(help); }
+    for (const fragment of fragments) {
+      const row = document.createElement("div"); row.className = "mso-fragment-row";
+      const insert = document.createElement("button"); insert.type = "button"; insert.className = "mso-fragment-insert"; insert.disabled = this._uploading;
+      insert.textContent = fragment.name;
+      setAttr(insert, "title", "Editor.InsertFragment", { name: fragment.name, count: fragment.layers.length });
+      insert.addEventListener("click", () => { void this._draftOperation(() => this._insertFragment(fragment.id)); });
+      const remove = document.createElement("button"); remove.type = "button"; remove.className = "mso-icon-button"; remove.disabled = this._uploading;
+      remove.textContent = "✕"; setAttr(remove, "title", "Editor.DeleteFragment"); setAttr(remove, "aria-label", "Editor.DeleteFragment");
+      remove.addEventListener("click", () => { void this._draftOperation(() => this._deleteFragment(fragment.id)); });
+      row.append(insert, remove); host.append(row);
+    }
+  }
+
+  async _saveFragment() {
+    const layers = this._selectedLayers();
+    if (!layers.length) { ui.notifications.info(t("Editor.SelectForFragment")); return; }
+    const groups = new Set(layers.map(layer => layer.groupId));
+    const suggested = groups.size === 1 && layers[0].groupName ? layers[0].groupName : t("Editor.FragmentName", { index: listFragments().length + 1 });
+    const name = await this._name(L("Editor.SaveFragment"), suggested);
+    if (!name) return;
+    await saveFragment(name, layers);
+    ui.notifications.info(t("Editor.FragmentSaved", { name }));
+  }
+
+  async _insertFragment(id) {
+    const fragment = listFragments().find(entry => entry.id === id);
+    if (!fragment) return;
+    await this._historyStep(() => this._insertLayersData(clone(fragment.layers)));
+  }
+
+  async _deleteFragment(id) {
+    const fragment = listFragments().find(entry => entry.id === id);
+    if (!fragment || !await this._confirm(L("Editor.DeleteFragment"), L("Editor.DeleteFragmentPrompt", { name: fragment.name }), L("Editor.DeleteFragment"))) return;
+    await deleteFragment(id);
+  }
+
   async close(options = {}) {
     if (!await this._discardDraft()) return this;
+    fragmentViews.delete(this);
     this._toggleCanvasFullscreen(false);
     this._actorStatusUnsubscribe?.();
     this._actorStatusUnsubscribe = null;
