@@ -6,7 +6,11 @@ export const MODULE_ID = "modular-stream-overlay";
 export const SCHEMA_VERSION = 6;
 export const WIDGET_PRESET_SCHEMA_VERSION = 4;
 export const CHARACTER_FIELD_PATTERN = /^character(?:\.[A-Za-z][A-Za-z0-9_]{0,47}){1,5}$/;
+// Browser-safe families offered first; any other plain family name, such as a Foundry font, is also valid.
 export const FONT_FAMILIES = Object.freeze(["Arial", "Verdana", "Georgia", "Times New Roman", "Courier New", "Trebuchet MS"]);
+const FONT_NAME = /^[\p{L}\p{N}](?:[\p{L}\p{N} _.'-]{0,62}[\p{L}\p{N}])?$/u;
+/** A family name that is safe inside CSS quotes: letters, digits, spaces, `_ . ' -`, at most 64 characters. */
+export const isFontFamily = value => typeof value === "string" && FONT_NAME.test(value);
 export const FONT_WEIGHTS = Object.freeze(["400", "600", "700"]);
 export const WIDGET_DEFINITIONS = Object.freeze([
   Object.freeze({ type: "character-portrait", label: "Character portrait" }),
@@ -117,7 +121,7 @@ function color(value, label = "Color", transparent = false) {
 
 function textStyle(input) {
   const fontFamily = input.fontFamily ?? FONT_FAMILIES[0];
-  if (!FONT_FAMILIES.includes(fontFamily)) fail("Choose a supported font family.");
+  if (!isFontFamily(fontFamily)) fail("Choose a supported font family.");
   const fontWeight = input.fontWeight ?? "400";
   if (!FONT_WEIGHTS.includes(fontWeight)) fail("Font weight must be 400, 600, or 700.");
   const align = input.align ?? "left";
@@ -242,7 +246,7 @@ function instanceOverrides(input = {}) {
         safe[key] = candidate;
       }
       else if (key === "fontFamily") {
-        if (!FONT_FAMILIES.includes(candidate)) fail("Choose a supported override font family.");
+        if (!isFontFamily(candidate)) fail("Choose a supported override font family.");
         safe[key] = candidate;
       } else if (key === "fontWeight") {
         if (!FONT_WEIGHTS.includes(candidate)) fail("Choose a supported override font weight.");

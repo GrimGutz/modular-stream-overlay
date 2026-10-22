@@ -117,3 +117,79 @@ test("several undo steps in a row keep the keyboard focus on the canvas after ea
   assert.equal(editor._draft.layers.length, 0, "Three Ctrl+Z steps undo three changes");
   assert.deepEqual(focused, [2, 1, 0], "Focus returns to the canvas after every step");
 });
+
+function twoLayers(editor) {
+  const first = createLayer("text", editor._draft.canvas), second = createLayer("color", editor._draft.canvas);
+  Object.assign(first, { x: 10, y: 10, width: 100, height: 40, z: 1, name: "First" });
+  Object.assign(second, { x: 300, y: 200, width: 50, height: 50, z: 2, name: "Second" });
+  editor._draft.layers.push(first, second); editor._commitHistory();
+  editor._selectLayers([first.id, second.id]);
+  return [first, second];
+}
+
+test("several selected layers copy and paste together, keeping their spacing and order", async () => {
+  const editor = editorFixture();
+  const [first, second] = twoLayers(editor);
+  assert.deepEqual(editor._selectedLayerIds, [first.id, second.id]); assert.equal(editor._selectedLayerId, second.id);
+  await editor._canvasCommand("copy");
+  await editor._canvasCommand("paste");
+  const pasted = editor._draft.layers.slice(2);
+  assert.deepEqual(pasted.map(layer => [layer.name, layer.x, layer.y]), [["First", 30, 30], ["Second", 320, 220]]);
+  assert(pasted[0].z < pasted[1].z && pasted[0].z > second.z, "Pasted above everything in their own order");
+  assert.deepEqual(editor._selectedLayerIds, pasted.map(layer => layer.id), "The pasted layers become the selection");
+  await editor._canvasCommand("undo");
+  assert.equal(editor._draft.layers.length, 2, "One undo step removes the whole paste");
+});
+
+test("clipboard text carries layers to another editor or world; other text becomes a text layer", async () => {
+  const source = editorFixture();
+  twoLayers(source);
+  const text = source._copySelection();
+  assert.match(text, /"format":"modular-stream-overlay\/layers"/);
+  const target = editorFixture();
+  await target._canvasCommand("paste", { text });
+  assert.deepEqual(target._draft.layers.map(layer => [layer.name, layer.x]), [["First", 10], ["Second", 300]], "Another overlay keeps the positions");
+  await target._canvasCommand("paste", { text: "  ПОЗЫВНОЙ\nSecond line" });
+  const note = target._draft.layers.at(-1);
+  assert.deepEqual([note.type, note.name, note.text], ["text", "ПОЗЫВНОЙ", "  ПОЗЫВНОЙ\nSecond line"]);
+  await target._canvasCommand("paste", { text: '{"format":"modular-stream-overlay/layers","version":1,"layers":[{"type":"text","x":"bad"}]}' }).then(
+    () => assert.fail("Invalid clipboard layers are rejected"), error => assert.match(error.message, /X|number|position/i));
+  const widget = { ...createLayer("text", target._draft.canvas), type: "character-widget", presetId: "design-elsewhere" };
+  await assert.rejects(target._canvasCommand("paste", { text: JSON.stringify({ format: "modular-stream-overlay/layers", version: 1, layers: [widget] }) }), /design/);
+});
+
+test("delete, duplicate and stacking apply to every selected layer, and locked layers stay", async () => {
+  const editor = editorFixture();
+  const [first, second] = twoLayers(editor);
+  await editor._canvasCommand("duplicate");
+  assert.equal(editor._draft.layers.length, 4);
+  assert.deepEqual(editor._selectedLayers().map(layer => layer.name), ["First copy", "Second copy"]);
+  editor._selectLayers([first.id, second.id]);
+  await editor._canvasCommand("back");
+  assert(first.z < second.z && second.z < Math.min(...editor._draft.layers.slice(2).map(layer => layer.z)), "Sent back together, still in order");
+  second.locked = true; editor._commitHistory();
+  await editor._canvasCommand("delete");
+  assert.deepEqual(editor._draft.layers.map(layer => layer.name), ["Second", "First copy", "Second copy"]);
+  assert.deepEqual(editor._selectedLayerIds, [second.id], "The locked layer stays selected");
+  await editor._canvasCommand("undo");
+  assert.equal(editor._draft.layers.length, 4, "One undo brings the deleted layers back");
+});
+
+test("align and distribute move the selected layers; one layer aligns to the canvas", async () => {
+  const editor = editorFixture();
+  const [first, second] = twoLayers(editor);
+  await editor._arrange("top");
+  assert.deepEqual([first.y, second.y], [10, 10]);
+  const third = createLayer("color", editor._draft.canvas); Object.assign(third, { x: 100, y: 10, width: 20, height: 20, z: 3 });
+  editor._draft.layers.push(third); editor._selectLayers([first.id, second.id, third.id]);
+  await editor._arrange("distribute-x");
+  assert.deepEqual([first.x, third.x, second.x], [10, 195, 300], "Equal 85 px gaps between 10..350");
+  second.locked = true;
+  await editor._arrange("left");
+  assert.deepEqual([first.x, third.x, second.x], [10, 10, 300], "A locked layer counts for the bounds but stays");
+  editor._selectLayers([third.id]);
+  await editor._arrange("center"); await editor._arrange("bottom");
+  assert.deepEqual([third.x, third.y], [950, 1060], "One layer aligns to the 1920 × 1080 canvas");
+  await editor._canvasCommand("undo");
+  assert.deepEqual(Object.values((({ x, y }) => ({ x, y }))(editor._draft.layers.find(layer => layer.id === third.id))), [950, 10], "Each arrangement is one undo step");
+});

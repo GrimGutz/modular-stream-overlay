@@ -36,9 +36,9 @@ beforeEach(() => {
 function fixture(widgets) {
   const overlay=createOverlay(); const layer=createLayer("image",overlay.canvas); layer.x=100;layer.y=80;
   overlay.layers.push(layer);
-  const host=new Element("main"); const changes=[], selections=[], commands=[]; let blocked=false;
-  const canvas=new LayerCanvas({host,widgets,getOverlay:()=>overlay,onChange:value=>changes.push({...value}),onSelect:id=>selections.push(id),onCommand:action=>commands.push(action),isBlocked:()=>blocked});
-  return {overlay,layer,host,canvas,changes,selections,commands,block:()=>{blocked=true;}};
+  const host=new Element("main"); const changes=[], selections=[], commands=[], payloads=[]; let blocked=false;
+  const canvas=new LayerCanvas({host,widgets,getOverlay:()=>overlay,onChange:value=>changes.push({...value}),onSelect:(id,ids)=>selections.push(ids?[id,ids]:id),onCommand:(action,payload)=>{commands.push(action);payloads.push(payload);},copyText:()=>"COPIED",isBlocked:()=>blocked});
+  return {overlay,layer,host,canvas,changes,selections,commands,payloads,block:()=>{blocked=true;}};
 }
 const event=(target, values={})=>({target,button:0,pointerId:1,clientX:10,clientY:20,preventDefault(){},stopPropagation(){},...values});
 
@@ -176,16 +176,81 @@ test("failed rendering releases interaction blocking and destroying a pending re
   f.canvas.keyDown(event(f.host,{key:"ArrowRight"}));assert.equal(f.layer.x,101);
 });
 
-test("paste, undo and redo shortcuts reach the editor without a selected layer while copy needs one",async()=>{
+
+const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+const shortcut=(f,values)=>({key:"v",code:"KeyV",ctrlKey:true,target:f.host,preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;},...values});
+const clipboardEvent=(type,data={})=>({type,clipboardData:{getData:()=>data.text??"",setData(kind,value){data[kind]=value;}},preventDefault(){this.prevented=true;},stopPropagation(){}});
+
+test("copy, cut and paste wait for the browser's clipboard event so the system clipboard is used",async()=>{
   const f=fixture();await f.canvas.render(f.overlay);
-  const key=values=>({key:"v",code:"KeyV",ctrlKey:true,target:f.host,preventDefault(){this.prevented=true;},stopPropagation(){},...values});
-  const paste=key();f.canvas.keyDown(paste);
-  assert.deepEqual(f.commands,["paste"]);assert.equal(paste.prevented,true);
-  f.canvas.keyDown(key({key:"z",code:"KeyZ"}));f.canvas.keyDown(key({key:"z",code:"KeyZ",shiftKey:true}));
-  assert.deepEqual(f.commands,["paste","undo","redo"]);
-  f.canvas.keyDown(key({key:"c",code:"KeyC"}));
-  assert.equal(f.commands.length,3,"Copy without a selection does nothing");
-  f.canvas.select(f.layer.id);f.canvas.keyDown(key({key:"с",code:"KeyC"}));
-  assert.deepEqual(f.commands.at(-1),"copy");
+  const paste=shortcut(f);f.canvas.keyDown(paste);
+  assert.equal(paste.prevented,undefined,"The browser still raises its paste event");assert.equal(paste.stopped,true,"Foundry does not see the key");
+  assert.deepEqual(f.commands,[]);
+  const pasted=clipboardEvent("paste",{text:"from another world"});f.canvas.clipboardEvent(pasted);
+  assert.deepEqual(f.commands,["paste"]);assert.deepEqual(f.payloads[0],{text:"from another world"});assert.equal(pasted.prevented,true);
+  f.canvas.keyDown(shortcut(f,{key:"c",code:"KeyC"}));await tick();
+  assert.equal(f.commands.length,1,"Copy without a selection does nothing");
+  f.canvas.select(f.layer.id);f.canvas.keyDown(shortcut(f,{key:"с",code:"KeyC"}));
+  const data={};f.canvas.clipboardEvent(clipboardEvent("copy",data));
+  assert.equal(data["text/plain"],"COPIED");assert.deepEqual([f.commands.at(-1),f.payloads.at(-1)],["copy",{copied:true}]);
+  f.canvas.clipboardEvent(clipboardEvent("copy",{}));assert.equal(f.commands.length,2,"A copy event the canvas did not ask for is ignored");
+  f.canvas.keyDown(shortcut(f,{key:"x",code:"KeyX"}));await tick();
+  assert.deepEqual([f.commands.at(-1),f.payloads.at(-1)],["cut",undefined],"Without a clipboard event the editor falls back to its own copy");
+  f.canvas.keyDown(shortcut(f,{key:"z",code:"KeyZ"}));f.canvas.keyDown(shortcut(f,{key:"z",code:"KeyZ",shiftKey:true}));
+  assert.deepEqual(f.commands.slice(-2),["undo","redo"]);
   f.canvas.destroy();
+});
+
+function group(){
+  const f=fixture();const second=createLayer("text",f.overlay.canvas);Object.assign(second,{x:900,y:80,width:200,height:100,z:5});
+  const locked=createLayer("color",f.overlay.canvas);Object.assign(locked,{x:0,y:0,width:1920,height:1080,z:-1,locked:true});
+  f.overlay.layers.push(second,locked);return {...f,second,locked};
+}
+
+test("Shift/Ctrl-click builds a selection and dragging one selected layer moves them all",async()=>{
+  const f=group();await f.canvas.render(f.overlay);f.canvas.setZoom(1);f.canvas.setSnapping(false);
+  const hit=id=>f.canvas.controls.children.find(node=>node.dataset.layerId===id&&node.className==="mso-layer-hit");
+  f.canvas.pointerDown(event(hit(f.layer.id)));f.canvas.pointerUp(event(hit(f.layer.id)));
+  f.canvas.pointerDown(event(hit(f.second.id),{shiftKey:true}));
+  assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id]);assert.equal(f.canvas.selectedId,f.second.id);
+  assert.deepEqual(f.selections.at(-1),[f.second.id,[f.layer.id,f.second.id]]);
+  assert.equal(f.canvas.controls.children.filter(node=>node.className==="mso-group-selection").length,1);
+  assert(f.canvas.controls.children.every(node=>!node.children?.length),"Several selected layers show no resize handles");
+  f.canvas.pointerDown(event(hit(f.layer.id)));f.canvas.pointerMove(event(hit(f.layer.id),{clientX:40,clientY:50}));f.canvas.pointerUp(event(hit(f.layer.id),{clientX:40,clientY:50}));
+  assert.deepEqual([f.layer.x,f.layer.y,f.second.x,f.second.y],[130,110,930,110]);assert.deepEqual(f.locked.x,0);
+  assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id],"Dragging keeps the selection");
+  f.canvas.keyDown(event(f.host,{key:"ArrowLeft",shiftKey:true}));assert.deepEqual([f.layer.x,f.second.x],[120,920]);
+  f.canvas.pointerDown(event(hit(f.second.id)));f.canvas.pointerUp(event(hit(f.second.id)));
+  assert.deepEqual(f.canvas.selectedIds,[f.second.id],"A click without dragging selects just that layer");
+  f.canvas.pointerDown(event(hit(f.second.id),{ctrlKey:true}));assert.deepEqual(f.canvas.selectedIds,[]);
+  f.canvas.destroy();
+});
+
+test("dragging on empty space or a locked background selects the layers inside the rectangle",async()=>{
+  const f=group();await f.canvas.render(f.overlay);f.canvas.setZoom(1);
+  const background=f.canvas.controls.children.find(node=>node.dataset.layerId===f.locked.id);
+  f.canvas.pointerDown(event(background,{clientX:90,clientY:70}));
+  assert.deepEqual(f.canvas.selectedIds,[f.locked.id],"Pressing a locked layer selects it");
+  f.canvas.pointerMove(event(background,{clientX:760,clientY:460}));
+  assert.deepEqual(f.canvas.selectedIds,[f.layer.id],"Only layers fully inside; the locked background stays out");
+  assert.equal(f.canvas.controls.children.at(-1).className,"mso-marquee");
+  f.canvas.pointerUp(event(background,{clientX:1200,clientY:460}));
+  assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id]);assert.deepEqual(f.selections.at(-1),[f.second.id,[f.layer.id,f.second.id]]);
+  assert.equal(f.host.captures.size,0);assert(!f.canvas.controls.children.some(node=>node.className==="mso-marquee"));
+  assert.equal(f.changes.length,0,"Selecting never edits the draft");
+  f.canvas.keyDown(event(f.host,{key:"Escape"}));assert.deepEqual(f.canvas.selectedIds,[]);
+  f.canvas.keyDown(event(f.host,{key:"a",code:"KeyA",ctrlKey:true}));
+  assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id],"Ctrl+A selects every visible unlocked layer");
+  f.canvas.pointerDown(event(background,{clientX:5,clientY:5}));f.canvas.pointerMove(event(background,{clientX:50,clientY:50}));
+  f.canvas.keyDown(event(f.host,{key:"Escape"}));assert.deepEqual(f.canvas.selectedIds,[f.locked.id],"Escape restores the selection before the rectangle");
+  f.canvas.destroy();
+});
+
+test("copy raised by the key press itself writes the clipboard once, with no fallback afterwards",async()=>{
+  const f=fixture();await f.canvas.render(f.overlay);f.canvas.select(f.layer.id);
+  const data={};document.execCommand=action=>{f.canvas.clipboardEvent(clipboardEvent(action,data));return true;};
+  const copy=shortcut(f,{key:"c",code:"KeyC"});f.canvas.keyDown(copy);await tick();
+  assert.equal(data["text/plain"],"COPIED");assert.equal(copy.prevented,true);
+  assert.deepEqual(f.commands,["copy"],"The fallback does not copy a second time");
+  delete document.execCommand;f.canvas.destroy();
 });

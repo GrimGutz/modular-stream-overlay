@@ -127,11 +127,12 @@ export function snapResize(box, handle, targets, canvas, threshold, { minSize = 
   return { x: result.x, y: result.y, width: result.width, height: result.height, guides };
 }
 
-/** Other visible, unrotated layers usable as snap targets. */
-export function snapTargets(layers, excludeId) {
+/** Other visible, unrotated layers usable as snap targets; `exclude` is one ID or a Set of the moved ones. */
+export function snapTargets(layers, exclude) {
+  const excluded = exclude instanceof Set ? exclude : new Set([exclude]);
   const seen = new Set(), result = [];
   for (const layer of layers) {
-    if (!layer || layer.id === excludeId || seen.has(layer.id) || layer.visible === false || ((layer.rotation ?? 0) % 360) !== 0) continue;
+    if (!layer || excluded.has(layer.id) || seen.has(layer.id) || layer.visible === false || ((layer.rotation ?? 0) % 360) !== 0) continue;
     seen.add(layer.id);
     result.push({ id: layer.id, x: layer.x, y: layer.y, width: layer.width, height: layer.height });
   }

@@ -63,26 +63,35 @@ export function duplicateLayer(overlay, id) {
 }
 
 /**
- * Insert a copied layer above everything with a fresh ID. While another layer already sits at
- * the same position it is offset by 20 px, so repeated pastes fan out instead of stacking.
+ * Insert copied layers above everything with fresh IDs, in their own stacking order and with
+ * their relative positions. While a copy would sit exactly on an existing layer the group is
+ * offset by 20 px, so repeated pastes fan out instead of stacking.
  */
-export function pasteLayer(overlay, source) {
-  if ((overlay.layers ?? []).length >= 100) throw new RangeError("An overlay supports at most 100 layers.");
-  const copy = clone(source);
+export function pasteLayers(overlay, sources) {
+  if ((overlay.layers ?? []).length + sources.length > 100) throw new RangeError("An overlay supports at most 100 layers.");
+  const copies = [...sources].sort((a, b) => (a.z ?? 0) - (b.z ?? 0)).map(clone);
   const ordered = stack(overlay);
   const ids = new Set(ordered.map(entry => entry.id));
-  do { copy.id = newId(); } while (ids.has(copy.id));
-  for (let step = 0; step < 50 && ordered.some(entry => entry.x === copy.x && entry.y === copy.y); step++) {
-    copy.x = Math.min(32768, (copy.x ?? 0) + 20);
-    copy.y = Math.min(32768, (copy.y ?? 0) + 20);
+  for (const copy of copies) {
+    do { copy.id = newId(); } while (ids.has(copy.id));
+    ids.add(copy.id);
   }
+  let shift = 0;
+  const collides = offset => copies.some(copy => ordered.some(entry => entry.x === (copy.x ?? 0) + offset && entry.y === (copy.y ?? 0) + offset));
+  for (let step = 0; step < 50 && collides(shift); step++) shift += 20;
   const highest = Math.max(-1, ...ordered.map(entry => entry.z ?? 0));
-  copy.z = highest >= 10000 ? ordered.length : highest + 1;
-  const result = validateLayer(copy, overlay.canvas);
-  if (highest >= 10000) ordered.forEach((entry, index) => { entry.z = index; });
-  overlay.layers.push(result);
-  return result;
+  const results = copies.map((copy, index) => {
+    copy.x = Math.min(32768, (copy.x ?? 0) + shift);
+    copy.y = Math.min(32768, (copy.y ?? 0) + shift);
+    copy.z = highest + copies.length > 10000 ? ordered.length + index : highest + 1 + index;
+    return validateLayer(copy, overlay.canvas);
+  });
+  if (highest + copies.length > 10000) ordered.forEach((entry, index) => { entry.z = index; });
+  overlay.layers.push(...results);
+  return results;
 }
+
+export function pasteLayer(overlay, source) { return pasteLayers(overlay, [source])[0]; }
 
 /** Remove a layer from a draft without changing unrelated layers or widgets. */
 export function deleteLayer(overlay, id) {

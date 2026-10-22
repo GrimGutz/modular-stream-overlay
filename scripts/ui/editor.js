@@ -1,78 +1,26 @@
 import { LayerCanvas } from "../editor/layer-canvas.js";
+import { DraftHistory, HISTORY_DELAY } from "../editor/history.js";
+import { serializeLayers, parseLayers, rememberLayers, rememberedLayers } from "../editor/clipboard.js";
+import { alignPositions, boundsOf, distributePositions } from "../editor/arrange.js";
+import { moveGeometry } from "../editor/geometry.js";
 import { uploadBackground } from "../core/background-upload.js";
-import { validateAssetPath, validateLayer, FONT_FAMILIES, FONT_WEIGHTS, OPTIONAL_LAYER_KEYS } from "../core/schema.js";
-import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayer, reorderLayer } from "../core/layers.js";
-import { isCharacterComponent, safePortraitURL } from "../render/character-components.js";
-import { renderAnimationControls, renderAnimationTestControls } from "./animation-controls.js";
+import { loadFoundryFonts } from "../integration/fonts.js";
+import { validateAssetPath } from "../core/schema.js";
+import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayers, reorderLayer } from "../core/layers.js";
+import { isCharacterComponent } from "../render/character-components.js";
+import { renderAnimationTestControls } from "./animation-controls.js";
 import { DEMO_ACTOR_UUIDS } from "../demo/data.js";
-import { validateAnimationSettings, validateTriggerRules } from "../animation/schema.js";
-import { PAGE_TRANSITIONS, resolveCarouselSettings } from "../carousel/schema.js";
 import { fieldLabel, sortedFields } from "./field-settings.js";
 import { t, uiText, errorText, localizeDOM, setText, setAttr, onLanguageChange } from "./i18n.js";
+import { L, S, labelText, editorError, writeText, writeAttr, writeError, setValidity, markDialog, relabelEditorText } from "./editor-text.js";
+import { LayerInspector } from "./editor-inspector.js";
+import { CharacterPanels } from "./editor-characters.js";
 
 const MODULE_ID = "modular-stream-overlay";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 let services = {};
 const editors = new Set();
-// One copied layer, shared by the overlay editor and widget designers in this browser.
-let layerClipboard = null;
-const HISTORY_LIMIT = 100, HISTORY_DELAY = 400;
-const L = (key, params = {}) => ({ key, params });
 const VIEWER_ROLES = { 1: "Template.RolePlayer", 2: "Template.RoleTrusted", 3: "Template.RoleAssistant", 4: "Template.RoleGamemaster" };
-const BOX_KEYS = ["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "boxShadowColor"];
-const TEXT_KEYS = ["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize", "accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"];
-const DOT_KEYS = ["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "dotDirection"];
-const OPTIONAL_NUMBERS = ["borderWidth", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "lineHeight", "letterSpacing", "padding", "strongFontSize", "maxValue", "dotSize", "dotGap", "dotBorderWidth"];
-const S = literal => ({ literal });
-const labelText = label => label?.key ? t(label.key, label.params) : label?.literal !== undefined ? uiText(label.literal) : String(label ?? "");
-const errorNodes = new WeakMap();
-const validityMessages = new WeakMap();
-const editorErrors = new WeakMap();
-function editorError(key) {
-  const error = new Error(t(key));
-  editorErrors.set(error, L(key));
-  return error;
-}
-function writeText(element, label) {
-  if (label?.key) {
-    element.textContent = "";
-    setText(element, label.key, label.params);
-  }
-  else {
-    element.removeAttribute?.("data-i18n");
-    element.textContent = labelText(label);
-  }
-  if (element.dataset) {
-    if (label?.literal !== undefined) element.dataset.editorUiText = label.literal;
-    else delete element.dataset.editorUiText;
-  }
-}
-function writeAttr(element, attribute, label) {
-  if (label?.key) setAttr(element, attribute, label.key, label.params);
-  else element.setAttribute(attribute, labelText(label));
-}
-function writeError(element, error, prefixKey) {
-  errorNodes.set(element, { error, prefixKey });
-  if (element.dataset) element.dataset.editorError = "";
-  const message = editorErrors.has(error) ? labelText(editorErrors.get(error)) : errorText(error);
-  writeText(element, prefixKey ? L(prefixKey, { error: message }) : message);
-}
-function setValidity(input, message) {
-  validityMessages.set(input, message);
-  if (input.dataset) input.dataset.editorValidity = "";
-  input.setCustomValidity(message?.key ? labelText(message) : editorErrors.has(message) ? labelText(editorErrors.get(message)) : errorText(message));
-}
-function markDialog(dialog, title, affirmative) {
-  const heading = dialog.element?.querySelector(".window-title");
-  if (heading) writeText(heading, title);
-  const button = affirmative && dialog.element?.querySelector('[data-action="yes"]');
-  if (button) writeText(button, affirmative);
-  const ok = dialog.element?.querySelector('[data-action="ok"]');
-  if (ok) setText(ok, "Buttons.Confirm");
-  const no = dialog.element?.querySelector('[data-action="no"]');
-  if (no) setText(no, "Buttons.Cancel");
-  localizeDOM(dialog.element);
-}
 onLanguageChange(() => { for (const editor of editors) editor.refreshLanguage(); });
 
 /** Supply dependencies without coupling the editor to storage or renderer internals. */
@@ -87,8 +35,11 @@ export async function refreshEditors(options = {}) {
 
 const clone = value => foundry.utils.deepClone(value);
 
-/** The GM-only visual editor. Unsaved drafts are private to this application. */
-export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
+/**
+ * The GM-only visual editor. Unsaved drafts are private to this application. Layer properties
+ * and character widget panels come from the LayerInspector and CharacterPanels mixins.
+ */
+export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsApplicationMixin(ApplicationV2))) {
   static DEFAULT_OPTIONS = {
     id: "modular-stream-overlay-editor",
     classes: ["mso-editor"],
@@ -174,11 +125,11 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     this._conflict = false;
     this._invalidInputs.clear();
     this._animationEdits.clear();
-    if (!this._editingLayers().some(layer => layer.id === this._selectedLayerId)) this._selectedLayerId = null;
+    this._pruneSelection(this._editingLayers());
     const snapshot = this._draft ? JSON.stringify(this._draft) : null;
     // Saving the edited document keeps its undo history; anything else starts a new one.
     if (this._history && previousId === this._draft?.id && snapshot === this._history.current) this._history.baseline = snapshot;
-    else this._history = { undo: [], redo: [], current: snapshot, baseline: snapshot };
+    else this._history = new DraftHistory(snapshot);
   }
 
   /**
@@ -201,33 +152,26 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
   _commitHistory() {
     clearTimeout(this._historyTimer);
     this._historyTimer = null;
-    if (!this._history || !this._draft) return;
-    const snapshot = JSON.stringify(this._draft);
-    if (snapshot === this._history.current) return;
-    this._history.undo.push(this._history.current);
-    if (this._history.undo.length > HISTORY_LIMIT) this._history.undo.shift();
-    this._history.current = snapshot;
-    this._history.redo = [];
+    if (this._history && this._draft) this._history.record(JSON.stringify(this._draft));
   }
 
-  async _undo() { return this._stepHistory("undo", "redo"); }
-  async _redo() { return this._stepHistory("redo", "undo"); }
+  async _undo() { return this._stepHistory("undo"); }
+  async _redo() { return this._stepHistory("redo"); }
 
-  async _stepHistory(from, to) {
+  async _stepHistory(direction) {
     this._commitHistory();
     const history = this._history;
-    if (!history?.[from].length || !this._draft) return;
-    history[to].push(history.current);
-    history.current = history[from].pop();
+    const snapshot = this._draft ? history?.step(direction) : null;
+    if (!snapshot) return;
     // Keep the draft object: the canvas and open panels hold references to it.
-    const restored = JSON.parse(history.current);
+    const restored = JSON.parse(snapshot);
     for (const key of Object.keys(this._draft)) delete this._draft[key];
     Object.assign(this._draft, restored);
     this._scopeProjection = null;
     this._invalidInputs.clear();
     this._animationEdits.clear();
-    if (!this._allLayers().some(layer => layer.id === this._selectedLayerId)) this._selectedLayerId = null;
-    this._dirty = history.current !== history.baseline;
+    this._pruneSelection(this._allLayers());
+    this._dirty = history.dirty;
     if (!this.rendered) return;
     await this.render({ force: true });
     // The re-render replaces the focused canvas; without focus the next Ctrl+Z would reach
@@ -237,32 +181,62 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     if (this._draft) history.current = JSON.stringify(this._draft);
   }
 
-  /** Canvas shortcuts beyond single-layer commands. */
-  async _canvasCommand(command) {
+  /**
+   * Canvas shortcuts. Copy and cut apply to every selected layer; `payload.copied` says the
+   * canvas already wrote the system clipboard, and `payload.text` is pasted clipboard text.
+   */
+  async _canvasCommand(command, payload = {}) {
     if (command === "undo" || command === "redo") return this[`_${command}`]();
     if (command === "copy" || command === "cut") {
-      const layer = this._editingLayers().find(entry => entry.id === this._selectedLayerId);
-      if (!layer) return;
-      layerClipboard = clone(layer);
-      if (command === "cut") return this._layerCommand("delete");
+      if (!this._selectedLayers().length) return;
+      if (!payload.copied) this._copySelection({ system: true });
+      if (command === "cut") return this._selectionCommand("delete");
       return;
     }
-    if (command === "paste") return this._pasteLayer();
-    return this._layerCommand(command);
+    if (command === "paste") return this._pasteLayer(payload.text);
+    return this._selectionCommand(command);
   }
 
-  async _pasteLayer() { return this._historyStep(() => this._pasteClipboard()); }
+  /** Copy the selected layers; returns the clipboard text. Without a clipboard event, `system` writes it asynchronously. */
+  _copySelection({ system = false } = {}) {
+    const layers = this._selectedLayers().map(layer => clone(layer));
+    if (!layers.length) return null;
+    rememberLayers(layers);
+    const text = serializeLayers(layers);
+    if (system) void Promise.resolve(globalThis.navigator?.clipboard?.writeText?.(text)).catch(() => {});
+    return text;
+  }
 
-  async _pasteClipboard() {
-    if (!layerClipboard || !this._draft) return;
-    // Widget designs cannot hold widget instances; overlays have no character components.
-    if (this.widgetMode ? layerClipboard.type === "character-widget" : isCharacterComponent(layerClipboard.type)) throw editorError("Editor.PasteUnsupported");
-    if (this._allLayers().length >= 100) throw new Error(t("Editor.ComponentLimit"));
-    const layer = pasteLayer(this._editingOverlay(), layerClipboard);
-    this._selectedLayerId = layer.id;
+  async _pasteLayer(text) { return this._historyStep(() => this._pasteClipboard(text)); }
+
+  /**
+   * Paste copied layers, from clipboard text when the browser provides it, otherwise from this
+   * browser's last copy. Other text becomes a new text layer.
+   */
+  async _pasteClipboard(text) {
+    if (!this._draft) return;
+    const content = typeof text === "string" ? text : "";
+    const layers = parseLayers(content) ?? (content.trim() ? [this._textLayerFor(content)] : rememberedLayers());
+    if (!layers?.length) return;
+    const designs = new Set((this.widgetPresets?.list?.() ?? []).map(preset => preset.id));
+    for (const layer of layers) {
+      // Widget designs cannot hold widget instances; overlays have no character components.
+      if (this.widgetMode ? layer.type === "character-widget" : isCharacterComponent(layer.type)) throw editorError("Editor.PasteUnsupported");
+      if (layer.type === "character-widget" && !designs.has(layer.presetId)) throw editorError("Editor.PasteMissingDesign");
+    }
+    if (this._allLayers().length + layers.length > 100) throw new Error(t("Editor.ComponentLimit"));
+    const pasted = pasteLayers(this._editingOverlay(), layers);
     this._markDirty();
     await this._updatePreview();
-    this._selectLayer(layer.id);
+    this._selectLayers(pasted.map(layer => layer.id));
+  }
+
+  _textLayerFor(text) {
+    const layer = createLayer("text", this._draft.canvas);
+    layer.text = text.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").slice(0, 10000);
+    const name = layer.text.split("\n").find(line => line.trim())?.trim().slice(0, 80);
+    if (name) layer.name = name;
+    return layer;
   }
 
   /** Call after persistent settings change. Never silently replace an edited draft. */
@@ -281,18 +255,11 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const heading = this.element.querySelector(".window-title");
     if (heading && !this.widgetMode) setText(heading, "Editor.Title");
     localizeDOM(this.element);
-    for (const node of this.element.querySelectorAll("[data-editor-ui-text]")) node.textContent = uiText(node.dataset.editorUiText);
+    relabelEditorText(this.element);
     const fields = new Map(this._fieldDefinitions(this._selectedLayer()).map(field => [field.id, field]));
     for (const option of this.element.querySelectorAll("[data-editor-field-id]")) {
       const field = fields.get(option.dataset.editorFieldId);
       if (field) option.textContent = fieldLabel(field);
-    }
-    for (const node of this.element.querySelectorAll("[data-editor-error]")) {
-      const source = errorNodes.get(node);
-      if (source) writeError(node, source.error, source.prefixKey);
-    }
-    for (const input of this.element.querySelectorAll("[data-editor-validity]")) {
-      if (validityMessages.has(input)) setValidity(input, validityMessages.get(input));
     }
     this._syncInstanceCarouselPreview();
     this._syncPreviewActorLabel?.();
@@ -353,6 +320,8 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this.widgetMode) editors.add(this);
     this._preview?.destroy();
     this._previewElement = this.element.querySelector("[data-preview]");
+    // Foundry fonts load with its game canvas, which may be off; text re-renders once they arrive.
+    void loadFoundryFonts().catch(() => {});
     if (this._previewElement) {
       this._preview = new LayerCanvas({
         host: this._previewElement,
@@ -361,14 +330,15 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         context: this._previewContext(),
         getOverlay: () => this._editingOverlay(),
         onChange: layer => { this._markDirty(); this._syncLayerFields(layer); },
-        onSelect: id => this._selectLayer(id, { canvas: false }),
-        onCommand: command => { void this._draftOperation(() => this._canvasCommand(command)); },
+        onSelect: (id, ids) => this._selectLayers(ids ?? (id ? [id] : []), id, { canvas: false }),
+        onCommand: (command, payload) => { void this._draftOperation(() => this._canvasCommand(command, payload)); },
+        copyText: () => this._copySelection(),
         isBlocked: () => this._canvasBlocked()
       });
       this._preview.setZoom(this._zoom);
       this._preview.setSnapping(this._snapping());
       await this._updatePreview();
-      this._preview.select(this._selectedLayerId, { notify: false });
+      this._preview.setSelection(this._selectedLayerIds, this._selectedLayerId, { notify: false });
     }
     this._renderLayerPanel();
     this._renderSharedWidgetAnimations();
@@ -433,15 +403,48 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     localizeDOM(this.element);
   }
 
+  /**
+   * The primary selected layer: the last one clicked, shown in Properties. Assigning it selects
+   * only that layer; `_selectedLayerIds` lists every selected layer.
+   */
+  get _selectedLayerId() { return this._primaryLayerId ?? null; }
+  set _selectedLayerId(id) {
+    this._primaryLayerId = id ?? null;
+    this._selectedLayerIds = id ? [id] : [];
+  }
+
   _selectedLayer() { return this._editingLayers().find(layer => layer.id === this._selectedLayerId) ?? null; }
+  _selectedLayers() {
+    const ids = new Set(this._selectedLayerIds ?? []);
+    return this._editingLayers().filter(layer => ids.has(layer.id));
+  }
+
+  /** Drop selected IDs that are not among `layers`. */
+  _pruneSelection(layers) {
+    const present = new Set(layers.map(layer => layer.id));
+    const ids = (this._selectedLayerIds ?? []).filter(id => present.has(id));
+    this._primaryLayerId = ids.includes(this._primaryLayerId) ? this._primaryLayerId : ids.at(-1) ?? null;
+    this._selectedLayerIds = ids;
+  }
 
   /** Selection and property edits update their own DOM, leaving pointer capture and focus intact. */
-  _selectLayer(id, { canvas = true } = {}) {
-    this._selectedLayerId = this._editingLayers().some(layer => layer.id === id) ? id : null;
-    if (canvas) this._preview?.select(this._selectedLayerId, { notify: false });
+  _selectLayer(id, { canvas = true } = {}) { this._selectLayers(id ? [id] : [], id, { canvas }); }
+
+  _selectLayers(ids, primary = ids.at(-1), { canvas = true } = {}) {
+    const present = new Set(this._editingLayers().map(layer => layer.id));
+    const chosen = [...new Set(ids)].filter(id => present.has(id));
+    this._selectedLayerIds = chosen;
+    this._primaryLayerId = chosen.includes(primary) ? primary : chosen.at(-1) ?? null;
+    if (canvas) this._preview?.setSelection(chosen, this._primaryLayerId, { notify: false });
     this._renderLayerPanel();
     if (this._selectedLayer()?.type === "character-widget") this._testLayerId = this._selectedLayerId;
     this._renderAnimationTestPanel();
+  }
+
+  /** Shift/Ctrl/Cmd+click in the layer list adds or removes one layer. */
+  _toggleSelection(id) {
+    const ids = this._selectedLayerIds.includes(id) ? this._selectedLayerIds.filter(entry => entry !== id) : [...this._selectedLayerIds, id];
+    this._selectLayers(ids, ids.includes(id) ? id : undefined);
   }
 
   async _draftOperation(operation) {
@@ -460,6 +463,7 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
   _selectTool() { this._previewElement?.focus?.(); }
 
   async _manageWidgets() { return services.openWidgetManager?.(); }
+  async _openWidgetPreset(id) { return services.openWidgetPreset?.(id); }
   async _liveControls() { return (services.openLiveControls ?? this.api?.openLiveControls)?.(); }
 
   async _installDemo({ reset = false } = {}) {
@@ -554,75 +558,6 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     return layer;
   }
 
-  async _chooseActor() {
-    if (!this.characterData) throw new Error(t("Editor.CharacterDataNotReady"));
-    // DialogV2 accepts an attribute-free DIV, serializes its children, then rebuilds the form.
-    const content = document.createElement("div");
-    const picker = document.createElement("div"); picker.className = "mso-actor-picker";
-    const search = document.createElement("input"); search.type = "search"; setAttr(search, "placeholder", "Editor.SearchCharacters"); setAttr(search, "aria-label", "Editor.SearchCharacters");
-    const list = document.createElement("div"); list.className = "mso-actor-list"; list.setAttribute("role", "list");
-    const label = document.createElement("label"); setText(label, "Editor.ActorUUIDFoundryLink");
-    const reference = document.createElement("input"); reference.type = "text"; reference.name = "actorReference"; setAttr(reference, "placeholder", "Editor.ActorReferenceExample");
-    label.append(reference);
-    const help = document.createElement("p"); setText(help, "Editor.ChooseActorHelp");
-    picker.append(search, list, label, help); content.append(picker);
-    const entries = this.characterData.listActors?.() ?? this.characterData.accessibleActors?.() ?? [];
-    const actors = await Promise.resolve(entries);
-    const result = await DialogV2.input({ window: { title: t("Editor.AssignCharacter") }, content, modal: true, rejectClose: false,
-      render: (_event, dialog) => {
-        markDialog(dialog, L("Editor.AssignCharacter"));
-        const root = dialog.element.querySelector(".mso-actor-picker");
-        const search = root.querySelector('input[type="search"]');
-        const list = root.querySelector(".mso-actor-list");
-        const reference = root.querySelector('[name="actorReference"]');
-        const draw = () => {
-          list.replaceChildren();
-          for (const actor of actors.filter(entry => String(entry.name).toLocaleLowerCase().includes(search.value.toLocaleLowerCase()))) {
-            const button = document.createElement("button"); button.type = "button"; button.className = "mso-actor-choice"; button.setAttribute("role", "listitem");
-            const image = document.createElement("img"); image.alt = ""; image.src = safePortraitURL(actor.img ?? actor.portrait ?? "", path => foundry.utils.getRoute(path));
-            const name = document.createElement("span"); name.textContent = actor.name;
-            button.append(image, name);
-            button.addEventListener("click", () => { reference.value = actor.uuid; reference.focus(); });
-            list.append(button);
-          }
-          if (!list.children.length) { const empty = document.createElement("p"); setText(empty, "Editor.NoMatchingActors"); list.append(empty); }
-        };
-        search.addEventListener("input", draw); draw();
-      }
-    });
-    if (!result) return undefined;
-    if (!result.actorReference?.trim()) return null;
-    return this.characterData.resolveActor(result.actorReference.trim());
-  }
-
-  async _assignActor(reference) {
-    const layer = this._selectedLayer();
-    if (!layer || layer.type !== "character-widget") return;
-    const draft = this._draft;
-    const actor = reference === undefined ? await this._chooseActor() : reference ? await this.characterData.resolveActor(reference) : null;
-    if (actor === undefined) return;
-    if (this._draft !== draft || !this._allLayers().includes(layer)) return;
-    if (actor && layer.dataSource === "demo") this._changeCharacterDataSource(layer, "actors");
-    const remaining = this._assignedCharacters(layer).slice(1);
-    this._setCarouselCharacters(layer, actor ? [actor.uuid, ...remaining.filter(uuid => uuid !== actor.uuid)] : []);
-    await this._updatePreview(); this._renderLayerProperties();
-  }
-
-  async _dropActor(event) {
-    const id = event.target.closest?.("[data-layer-id]")?.dataset.layerId;
-    if (this._editingLayers().some(layer => layer.id === id && layer.type === "character-widget")) this._selectLayer(id);
-    const layer = this._selectedLayer();
-    if (!layer || layer.type !== "character-widget" || this._busy || this._uploading) return;
-    event.preventDefault(); event.stopPropagation();
-    await this._draftOperation(async () => {
-      const implementation = foundry.applications.ux?.TextEditor?.implementation;
-      const data = implementation?.getDragEventData(event) ?? {};
-      if (data.type !== "Actor" || !data.uuid) throw new Error(t("Editor.DragActor"));
-      if (event.target.closest?.("[data-assigned-characters]")?.dataset.assignedCharacters !== undefined) await this._addCarouselActor(data.uuid);
-      else await this._assignActor(data.uuid);
-    });
-  }
-
   async _addLayer(type) { return this._historyStep(() => this._insertLayer(type)); }
 
   async _insertLayer(type) {
@@ -657,10 +592,7 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     else if (command === "delete") {
       if (layer.locked) { ui.notifications.info(t("Editor.UnlockBeforeDelete")); return; }
-      deleteLayer(composition, id);
-      for (const key of this._invalidInputs.keys()) if (key.startsWith(`layer.${id}.`) || key.startsWith(`carousel.${id}.`)) this._invalidInputs.delete(key);
-      this._invalidInputs.delete(`animation.${id}`); this._animationEdits.delete(`animation.${id}`);
-      if (this._selectedLayerId === id) this._selectedLayerId = null;
+      this._removeLayer(composition, id);
     }
     else if (command === "visible") layer.visible = !layer.visible;
     else if (command === "locked") layer.locked = !layer.locked;
@@ -668,7 +600,69 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     else return;
     this._markDirty();
     await this._updatePreview();
-    this._selectLayer(this._selectedLayerId);
+    this._selectLayers(this._selectedLayerIds, this._selectedLayerId);
+  }
+
+  _removeLayer(composition, id) {
+    deleteLayer(composition, id);
+    for (const key of this._invalidInputs.keys()) if (key.startsWith(`layer.${id}.`) || key.startsWith(`carousel.${id}.`)) this._invalidInputs.delete(key);
+    this._invalidInputs.delete(`animation.${id}`); this._animationEdits.delete(`animation.${id}`);
+    this._pruneSelection(composition.layers);
+  }
+
+  /** Delete, duplicate and stacking commands apply to every selected layer. */
+  async _selectionCommand(command) {
+    const layers = this._selectedLayers();
+    if (layers.length <= 1) return this._layerCommand(command);
+    return this._historyStep(() => this._applySelectionCommand(command, layers));
+  }
+
+  async _applySelectionCommand(command, layers) {
+    const composition = this._editingOverlay();
+    // Visiting layers in the right order keeps the selected layers' own stacking when they move.
+    const ordered = [...layers].sort((a, b) => a.z - b.z);
+    let selection = layers.map(layer => layer.id);
+    if (command === "duplicate") {
+      if (this._allLayers().length + layers.length > 100) throw new Error(t("Editor.ComponentLimit"));
+      selection = ordered.map(layer => duplicateLayer(composition, layer.id).id);
+    }
+    else if (command === "delete") {
+      const locked = layers.filter(layer => layer.locked);
+      if (locked.length) ui.notifications.info(t("Editor.LockedLayersKept"));
+      for (const layer of layers) if (!layer.locked) this._removeLayer(composition, layer.id);
+      selection = locked.map(layer => layer.id);
+    }
+    else if (["front", "down"].includes(command)) for (const layer of ordered) reorderLayer(composition, layer.id, command);
+    else if (["back", "up"].includes(command)) for (const layer of [...ordered].reverse()) reorderLayer(composition, layer.id, command);
+    else return;
+    this._markDirty();
+    await this._updatePreview();
+    this._selectLayers(selection, selection.includes(this._selectedLayerId) ? this._selectedLayerId : undefined);
+  }
+
+  /**
+   * Align (left, center, right, top, middle, bottom) or distribute ("distribute-x"/"-y") the
+   * selected layers. Several layers align to their combined bounds, one layer to the canvas.
+   * Locked layers count for the bounds but stay where they are.
+   */
+  async _arrange(action) { return this._historyStep(() => this._applyArrangement(action)); }
+
+  async _applyArrangement(action) {
+    const layers = this._selectedLayers(), movable = layers.filter(layer => !layer.locked);
+    if (!movable.length || !this._draft) return;
+    let positions;
+    if (action === "distribute-x" || action === "distribute-y") {
+      if (movable.length < 3) return;
+      positions = distributePositions(movable, action.at(-1));
+    }
+    else positions = alignPositions(movable, action, layers.length > 1 ? boundsOf(layers) : { x: 0, y: 0, width: this._draft.canvas.width, height: this._draft.canvas.height });
+    for (const layer of movable) {
+      const { x, y } = positions.get(layer.id);
+      Object.assign(layer, moveGeometry(layer, { x: x - layer.x, y: y - layer.y }));
+    }
+    this._markDirty();
+    await this._updatePreview();
+    this._selectLayers(this._selectedLayerIds, this._selectedLayerId);
   }
 
   _layerButton(label, command, id, { disabled = false, pressed } = {}) {
@@ -682,7 +676,8 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     if (pressed !== undefined) button.setAttribute("aria-pressed", String(pressed));
     button.addEventListener("click", event => {
       event.preventDefault();
-      void this._draftOperation(() => this._layerCommand(command, id));
+      const toggle = command === "select" && (event.shiftKey || event.ctrlKey || event.metaKey);
+      void this._draftOperation(() => toggle ? this._toggleSelection(id) : this._layerCommand(command, id));
     });
     return button;
   }
@@ -698,11 +693,12 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       setText(message, "Editor.EmptyLayers");
       list.append(message);
     }
+    const selected = new Set(this._selectedLayerIds);
     for (const layer of sorted) {
       const row = document.createElement("div");
-      row.className = `mso-layer-row${layer.id === this._selectedLayerId ? " selected" : ""}`;
+      row.className = `mso-layer-row${selected.has(layer.id) ? " selected" : ""}${layer.id === this._selectedLayerId ? " primary" : ""}`;
       row.dataset.layerId = layer.id;
-      const select = this._layerButton(layer.name, "select", layer.id, { pressed: layer.id === this._selectedLayerId });
+      const select = this._layerButton(layer.name, "select", layer.id, { pressed: selected.has(layer.id) });
       select.className = "mso-layer-select";
       select.textContent = "";
       const icon = document.createElement("span");
@@ -723,720 +719,6 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const count = this.element.querySelector("[data-layer-count]");
     if (count) count.textContent = String(sorted.length);
     this._renderLayerProperties();
-  }
-
-  _layerField(host, layer, field, label, { type = "text", min, max, step, options, maxLength } = {}) {
-    const wrapper = document.createElement("label");
-    wrapper.className = `mso-layer-field${type === "checkbox" ? " mso-checkbox-field" : ""}`;
-    const title = document.createElement("span");
-    writeText(title, label);
-    const input = document.createElement(options ? "select" : type === "textarea" ? "textarea" : "input");
-    if (!options && type !== "textarea") input.type = type;
-    input.dataset.layerField = field;
-    writeAttr(input, "aria-label", label);
-    if (min !== undefined) input.min = String(min);
-    if (max !== undefined) input.max = String(max);
-    if (step !== undefined) input.step = String(step);
-    if (maxLength !== undefined) input.maxLength = maxLength;
-    if (options) {
-      for (const option of options) {
-        const entry = document.createElement("option");
-        entry.value = String(option.value ?? option);
-        writeText(entry, option.label ?? option);
-        if (option.fieldId) entry.dataset.editorFieldId = option.fieldId;
-        input.append(entry);
-      }
-    }
-    if (type === "checkbox") input.checked = !!layer[field];
-    else input.value = String(layer[field] ?? "");
-    const invalidKey = `layer.${layer.id}.${field}`;
-    if (this._invalidInputs.has(invalidKey)) {
-      if (type === "checkbox") input.checked = this._invalidInputs.get(invalidKey);
-      else input.value = this._invalidInputs.get(invalidKey);
-      setValidity(input, L("Editor.CorrectLayer"));
-    }
-    input.disabled = this._uploading;
-    input.addEventListener("input", event => this._onLayerInput(event));
-    if (type === "checkbox") wrapper.append(input, title);
-    else wrapper.append(title, input);
-    host.append(wrapper);
-    return input;
-  }
-
-  _renderLayerProperties() {
-    this._actorStatusUnsubscribe?.();
-    this._actorStatusUnsubscribe = null;
-    this._carouselPanel = null;
-    this._carouselLabelsGeneration = (this._carouselLabelsGeneration ?? 0) + 1;
-    const host = this.element?.querySelector("[data-layer-properties]");
-    if (!host) return;
-    host.replaceChildren();
-    const layer = this._selectedLayer();
-    const note = document.createElement("p");
-    note.className = "mso-help";
-    if (!layer) {
-      setText(note, "Editor.SelectLayerHelp");
-      host.append(note);
-      return;
-    }
-    this._layerField(host, layer, "name", L("Editor.LayerName"), { maxLength: 80 });
-    const geometry = document.createElement("div");
-    geometry.className = "mso-property-grid";
-    for (const [field, label, min, max] of [
-      ["x", "X", -32768, 32768], ["y", "Y", -32768, 32768],
-      ["width", L("Editor.Width"), 1, 7680], ["height", L("Editor.Height"), 1, 7680],
-      ["rotation", L("Editor.Rotation"), -360, 360], ["opacity", L("Editor.Opacity"), 0, 1]
-    ]) this._layerField(geometry, layer, field, label, { type: "number", min, max, step: field === "opacity" ? .01 : "any" });
-    host.append(geometry);
-    const toggles = document.createElement("div");
-    toggles.className = "mso-property-grid";
-    this._layerField(toggles, layer, "visible", L("Editor.Visible"), { type: "checkbox" });
-    this._layerField(toggles, layer, "locked", L("Editor.Locked"), { type: "checkbox" });
-    host.append(toggles);
-    if (layer.type === "image") {
-      this._layerField(host, layer, "src", L("Editor.ImageSource"), { maxLength: 4096 });
-      const images = document.createElement("div");
-      images.className = "mso-image-actions";
-      for (const [label, callback] of [[L("Editor.UploadImage"), () => this._uploadImage()], [L("Editor.BrowseExisting"), () => { void this._draftOperation(() => this._browseImage()); }]]) {
-        const button = document.createElement("button");
-        button.type = "button";
-        writeText(button, label);
-        button.disabled = this._uploading;
-        button.addEventListener("click", callback);
-        images.append(button);
-      }
-      host.append(images);
-      this._layerField(host, layer, "fit", L("Editor.ImageScaling"), { options: ["contain", "cover", "stretch"].map(value => ({ value, label: S(value) })) });
-      this._layerField(host, layer, "lockAspectRatio", L("Editor.LockAspect"), { type: "checkbox" });
-      if (!layer.src) {
-        const hint = document.createElement("p");
-        hint.className = "mso-help";
-        setText(hint, "Editor.EmptyImageHelp");
-        host.append(hint);
-      }
-    }
-    else if (layer.type === "text") {
-      this._layerField(host, layer, "text", L("Editor.TextContent"), { type: "textarea", maxLength: 10000 });
-      this._layerField(host, layer, "fontFamily", L("Editor.Font"), { options: FONT_FAMILIES });
-      const typography = document.createElement("div");
-      typography.className = "mso-property-grid";
-      this._layerField(typography, layer, "fontSize", L("Editor.FontSize"), { type: "number", min: 1, max: 512, step: "any" });
-      this._layerField(typography, layer, "fontWeight", L("Editor.FontWeight"), { options: FONT_WEIGHTS });
-      this._layerField(typography, layer, "color", L("Editor.TextColor"), { maxLength: 9 });
-      this._layerField(typography, layer, "align", L("Editor.Alignment"), { options: ["left", "center", "right"].map(value => ({ value, label: S(value) })) });
-      host.append(typography);
-      this._layerField(host, layer, "shadow", L("Editor.TextShadow"), { type: "checkbox" });
-    }
-    else if (layer.type === "color") this._layerField(host, layer, "color", L("Editor.Color"));
-    this._renderComponentProperties(host, layer);
-    this._renderStyleProperties(host, layer);
-    this._renderAnimationControls(host, layer);
-    const commands = document.createElement("div");
-    commands.className = "mso-layer-commands";
-    for (const [label, command] of [[L("Editor.MoveUp"), "up"], [L("Editor.MoveDown"), "down"], [L("Editor.BringFront"), "front"], [L("Editor.SendBack"), "back"], [L("Editor.Duplicate"), "duplicate"], [L("Editor.Delete"), "delete"]]) {
-      commands.append(this._layerButton(label, command, layer.id, { disabled: command === "delete" && layer.locked }));
-    }
-    host.append(commands);
-    setText(note, "Editor.KeyboardHelp");
-    host.append(note);
-  }
-
-  _renderAnimationControls(host, target, { wholeDesign = false } = {}) {
-    const preset = target.type === "character-widget" ? this.widgetPresets?.list().find(entry => entry.id === target.presetId) : null;
-    const targets = this._animationTargets(target, { wholeDesign, preset });
-    const controls = document.createElement("div");
-    controls.className = "mso-animation-controls";
-    const key = `animation.${wholeDesign ? "self" : target.id}`;
-    if (preset) {
-      const inheritLabel = document.createElement("label"); inheritLabel.className = "mso-layer-field mso-checkbox-field";
-      const inherit = document.createElement("input"); inherit.type = "checkbox"; inherit.dataset.animationControl = ""; inherit.checked = !target.animationOverrides; inherit.disabled = this._uploading;
-      const caption = document.createElement("span"); setText(caption, "Editor.InheritMotion");
-      inherit.addEventListener("change", () => {
-        if (this._uploading || this._busy) return;
-        target.animationOverrides = !inherit.checked;
-        if (target.animationOverrides) { target.animations = clone(preset.animations); target.triggers = clone(preset.triggers); }
-        this._invalidInputs.delete(key); this._animationEdits.delete(key); this._markDirty(); this._animationPreviewUpdate = this._updatePreview(); this._renderLayerProperties();
-      });
-      inheritLabel.append(inherit, caption); host.append(inheritLabel);
-      if (!target.animationOverrides) {
-        const note = document.createElement("p"); note.className = "mso-help"; setText(note, "Editor.InheritedMotionHelp"); host.append(note);
-      }
-    }
-    const inherited = !!preset && !target.animationOverrides;
-    const effective = inherited ? preset : target;
-    renderAnimationControls(controls, {
-      value: { animations: effective.animations, triggers: effective.triggers },
-      draftValue: this._animationEdits.get(key),
-      fields: this._fieldDefinitions(target), targets,
-      disabled: this._uploading, readOnly: inherited,
-      onChange: value => {
-        if (this._busy || this._uploading || inherited) return;
-        target.animations = validateAnimationSettings(value.animations);
-        target.triggers = validateTriggerRules(value.triggers);
-        this._invalidInputs.delete(key); this._animationEdits.delete(key); this._markDirty();
-        this._animationPreviewUpdate = this._updatePreview();
-      },
-      onDraftChange: value => { this._animationEdits.set(key, value); this._markDirty(); },
-      onInvalid: message => { if (message) this._invalidInputs.set(key, message); else this._invalidInputs.delete(key); },
-      onPreview: config => this._previewAnimation(wholeDesign ? "self" : target.id, config),
-      onReset: () => this._preview?.renderer?.resetAnimations(wholeDesign ? "self" : target.id),
-      onTriggerPreview: ruleId => this._previewTrigger(wholeDesign ? "self" : target.id, ruleId)
-    });
-    host.append(controls);
-  }
-
-  _renderSharedWidgetAnimations() {
-    const host = this.element?.querySelector("[data-widget-animations]");
-    if (!host || !this.widgetMode || !this._draft) return;
-    host.replaceChildren();
-    this._renderAnimationControls(host, this._draft, { wholeDesign: true });
-  }
-
-  async _previewAnimation(id, configuration) {
-    await this._animationPreviewUpdate;
-    return this._preview?.renderer?.previewAnimation(id, configuration);
-  }
-
-  async _previewTrigger(id, ruleId) {
-    await this._animationPreviewUpdate;
-    return this._preview?.renderer?.previewTrigger(id, ruleId);
-  }
-
-  _renderComponentProperties(host, layer) {
-    if (layer.type === "character-widget") { this._renderWidgetProperties(host, layer); return; }
-    if (!this.widgetMode) return;
-    if (["image", "text", "character-portrait", "character-name", "dynamic-text", "dynamic-number"].includes(layer.type)) {
-      const label = document.createElement("label"); label.className = "mso-layer-field"; setText(label, "Editor.ContentSource");
-      const source = document.createElement("select"); setAttr(source, "aria-label", "Editor.ContentSource");
-      for (const [value, text] of [["static", L("Editor.StaticContent")], ["dynamic", L("Editor.DynamicContent")]]) { const option = document.createElement("option"); option.value = value; writeText(option, text); source.append(option); }
-      source.value = ["image", "text"].includes(layer.type) ? "static" : "dynamic";
-      source.addEventListener("change", () => { void this._draftOperation(() => this._setContentSource(source.value)); });
-      label.append(source); host.append(label);
-    }
-    const dynamic = ["character-name", "dynamic-text", "dynamic-number", "resource-bar"].includes(layer.type);
-    if (layer.type === "character-portrait") {
-      this._layerField(host, layer, "portraitSource", L("Editor.PortraitArtwork"), { options: [{ value: "profile", label: L("Editor.ProfileImage") }, { value: "token", label: L("Editor.TokenArtwork") }] });
-      this._layerField(host, layer, "fit", L("Editor.ImageScaling"), { options: ["contain", "cover"].map(value => ({ value, label: S(value) })) });
-      this._layerField(host, layer, "circular", L("Editor.CircularPortrait"), { type: "checkbox" });
-      this._layerField(host, layer, "borderRadius", L("Editor.CornerRadius"), { type: "number", min: 0, max: 3840 });
-      this._layerField(host, layer, "lockAspectRatio", L("Editor.LockAspect"), { type: "checkbox" });
-      this._layerField(host, layer, "src", L("Editor.FallbackImage"), { maxLength: 4096 });
-    }
-    if (dynamic) {
-      const fields = this._fieldDefinitions(layer);
-      const choices = fields.filter(field => !["dynamic-number", "resource-bar"].includes(layer.type) || field.type === "number").map(field => ({ value: field.id, label: fieldLabel(field), fieldId: field.id }));
-      const optionsFor = value => choices.some(option => option.value === value) ? choices : [{ value: value ?? "", label: value ? L("Editor.FieldUnavailable", { field: value }) : L("Editor.NoNumericFields") }, ...choices];
-      this._layerField(host, layer, "binding", L("Editor.CharacterField"), { options: optionsFor(layer.binding) });
-      if (layer.type === "resource-bar") {
-        this._layerField(host, layer, "maxBinding", L("Editor.MaximumField"), { options: optionsFor(layer.maxBinding) });
-        const pair = document.createElement("button"); pair.type = "button"; setText(pair, "Editor.MatchingMaximum"); pair.disabled = this._uploading;
-        pair.addEventListener("click", () => {
-          if (this._busy || this._uploading) return;
-          if (!this._useResourceMaximum(layer)) ui.notifications.info(t("Editor.NoMaximum"));
-        });
-        host.append(pair);
-        this._layerField(host, layer, "display", L("Editor.ResourceDisplay"), { options: [
-          { value: "bar", label: L("Editor.ResourceBar") }, { value: "dots", label: L("Editor.ResourceDots") }
-        ] });
-        const displayHelp = document.createElement("p"); displayHelp.className = "mso-help"; setText(displayHelp, "Editor.ResourceDotsHelp"); host.append(displayHelp);
-        this._layerField(host, layer, "foregroundColor", L("Editor.FillColor"), { maxLength: 9 });
-        this._layerField(host, layer, "backgroundColor", L("Editor.TrackColor"), { maxLength: 9 });
-        this._layerField(host, layer, "showValue", L("Editor.ShowValues"), { type: "checkbox" });
-      }
-      else {
-        const template = this._layerField(host, layer, "text", L("Editor.TextTemplate"), { type: "textarea", maxLength: 10000 });
-        const insertLabel = document.createElement("label"); insertLabel.className = "mso-layer-field"; setText(insertLabel, "Editor.InsertFieldTemplate");
-        const insert = document.createElement("select"); setAttr(insert, "aria-label", "Editor.InsertTemplateField");
-        for (const field of fields) { const option = document.createElement("option"); option.value = field.id; option.dataset.editorFieldId = field.id; option.textContent = fieldLabel(field); insert.append(option); }
-        const button = document.createElement("button"); button.type = "button"; setText(button, "Editor.InsertField"); button.disabled = !fields.length;
-        button.addEventListener("click", () => {
-          const token = `{${insert.value}}`; const start = template.selectionStart ?? template.value.length; const end = template.selectionEnd ?? start;
-          template.value = `${template.value.slice(0, start)}${token}${template.value.slice(end)}`;
-          this._onLayerInput({ currentTarget: template }); template.focus();
-        });
-        insertLabel.append(insert, button); host.append(insertLabel);
-      }
-      this._layerField(host, layer, "fallback", L("Editor.MissingValue"), { maxLength: 1000 });
-      this._layerField(host, layer, "fontFamily", L("Editor.Font"), { options: FONT_FAMILIES });
-      this._layerField(host, layer, "fontSize", L("Editor.FontSize"), { type: "number", min: 1, max: 512, step: "any" });
-      this._layerField(host, layer, "fontWeight", L("Editor.FontWeight"), { options: FONT_WEIGHTS });
-      this._layerField(host, layer, "color", L("Editor.TextColor"), { maxLength: 9 });
-      this._layerField(host, layer, "align", L("Editor.Alignment"), { options: ["left", "center", "right"].map(value => ({ value, label: S(value) })) });
-      this._layerField(host, layer, "shadow", L("Editor.TextShadow"), { type: "checkbox" });
-      const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.FieldsHelp"); host.append(help);
-    }
-  }
-
-  /** Optional presentation; an empty field keeps the default look. */
-  _renderStyleProperties(host, layer) {
-    const textual = ["text", "character-name", "dynamic-text", "dynamic-number"].includes(layer.type);
-    const dynamic = textual && layer.type !== "text";
-    const section = (key, open = false) => {
-      const details = document.createElement("details"); details.className = "mso-style-section"; details.open = open;
-      const summary = document.createElement("summary"); setText(summary, key); details.append(summary);
-      host.append(details); return details;
-    };
-    const grid = parent => { const element = document.createElement("div"); element.className = "mso-property-grid"; parent.append(element); return element; };
-    const number = (parent, field, key, min, max, step = "any") => this._layerField(parent, layer, field, L(key), { type: "number", min, max, step });
-    const color = (parent, field, key) => this._layerField(parent, layer, field, L(key), { maxLength: 9 });
-    const check = (parent, field, key) => this._layerField(parent, layer, field, L(key), { type: "checkbox" });
-    if (textual) {
-      const text = section("Editor.TextLayoutSection", TEXT_KEYS.some(key => layer[key] !== undefined));
-      const metrics = grid(text);
-      number(metrics, "lineHeight", "Editor.LineHeight", 0.5, 5, 0.05);
-      number(metrics, "letterSpacing", "Editor.LetterSpacing", -50, 200);
-      number(metrics, "padding", "Editor.TextPadding", 0, 500);
-      this._layerField(metrics, layer, "verticalAlign", L("Editor.VerticalAlign"), { options: [
-        { value: "", label: L("Editor.StyleDefault") }, { value: "top", label: L("Editor.AlignTop") },
-        { value: "middle", label: L("Editor.AlignMiddle") }, { value: "bottom", label: L("Editor.AlignBottom") }] });
-      check(text, "uppercase", "Editor.Uppercase");
-      color(text, "highlightColor", "Editor.HighlightColor");
-      check(text, "richText", "Editor.RichText");
-      const strong = grid(text);
-      color(strong, "strongColor", "Editor.StrongColor");
-      number(strong, "strongFontSize", "Editor.StrongFontSize", 1, 512);
-      if (dynamic) {
-        check(text, "accent", "Editor.AccentText");
-        check(text, "strongAccent", "Editor.StrongAccent");
-        check(text, "hideEmptyLines", "Editor.HideEmptyLines");
-        this._layerField(text, layer, "emptyText", L("Editor.EmptyText"), { maxLength: 1000 });
-        this._layerField(text, layer, "valueLabels", L("Editor.ValueLabels"), { type: "textarea", maxLength: 4000 });
-      }
-      const help = document.createElement("p"); help.className = "mso-help"; setText(help, dynamic ? "Editor.TextLayoutHelp" : "Editor.StaticMarkupHelp"); text.append(help);
-    }
-    if (layer.type === "resource-bar") {
-      const dots = section("Editor.CirclesSection", DOT_KEYS.some(key => layer[key] !== undefined));
-      check(dots, "accent", "Editor.AccentFill");
-      const metrics = grid(dots);
-      number(metrics, "maxValue", "Editor.FixedMaximum", 1, 60, 1);
-      number(metrics, "dotSize", "Editor.DotSize", 1, 256);
-      number(metrics, "dotGap", "Editor.DotGap", 0, 256);
-      number(metrics, "dotBorderWidth", "Editor.DotBorderWidth", 0, 32);
-      this._layerField(metrics, layer, "dotDirection", L("Editor.DotDirection"), { options: [
-        { value: "", label: L("Editor.StyleDefault") }, { value: "right", label: L("Editor.DotRight") },
-        { value: "down", label: L("Editor.DotDown") }, { value: "up", label: L("Editor.DotUp") }] });
-      const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.CirclesHelp"); dots.append(help);
-    }
-    if (layer.type === "character-portrait") {
-      this._layerField(host, layer, "imagePosition", L("Editor.ImagePosition"), { options: [
-        { value: "", label: L("Editor.StyleDefault") }, { value: "top", label: L("Editor.AlignTop") },
-        { value: "center", label: L("Editor.AlignMiddle") }, { value: "bottom", label: L("Editor.AlignBottom") }] });
-    }
-    const box = section("Editor.BoxStyleSection", BOX_KEYS.some(key => layer[key] !== undefined));
-    const border = grid(box);
-    number(border, "borderWidth", "Editor.BorderWidth", 0, 64);
-    color(border, "borderColor", "Editor.BorderColor");
-    number(border, "cornerRadius", "Editor.BoxCornerRadius", 0, 3840);
-    const shadow = grid(box);
-    number(shadow, "boxShadowX", "Editor.ShadowX", -200, 200);
-    number(shadow, "boxShadowY", "Editor.ShadowY", -200, 200);
-    number(shadow, "boxShadowBlur", "Editor.ShadowBlur", 0, 200);
-    color(shadow, "boxShadowColor", "Editor.ShadowColor");
-    const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.BoxStyleHelp"); box.append(help);
-  }
-
-  /** GM-only per-character values shared by every widget showing that Actor. */
-  async _editCharacterProfiles(layer) {
-    const api = this.api;
-    if (!api?.setCharacterProfiles) throw new Error(t("Editor.CharacterDataNotReady"));
-    const actors = this._assignedCharacters(layer).filter(uuid => /^Actor\./.test(uuid));
-    if (!actors.length) throw editorError("Editor.ProfilesNoCharacters");
-    const names = new Map((this.characterData?.listActors?.() ?? []).map(actor => [actor.uuid, actor.name]));
-    const profiles = api.getCharacterProfiles();
-    const content = document.createElement("div");
-    const root = document.createElement("div"); root.className = "mso-profile-editor";
-    const help = document.createElement("p"); setText(help, "Editor.ProfilesHelp"); root.append(help);
-    actors.forEach((uuid, index) => {
-      const row = document.createElement("fieldset"); row.className = "mso-profile-row";
-      const legend = document.createElement("legend"); legend.textContent = names.get(uuid) ?? uuid; row.append(legend);
-      for (const [key, caption, placeholder] of [["accent", "Editor.ProfileAccent", "#f79646"], ["fullName", "Editor.ProfileFullName", ""], ["art", "Editor.ProfileArt", ""]]) {
-        const label = document.createElement("label"); label.className = "mso-layer-field";
-        const title = document.createElement("span"); setText(title, caption);
-        const input = document.createElement("input"); input.type = "text"; input.name = `${key}-${index}`;
-        input.value = profiles[uuid]?.[key] ?? ""; if (placeholder) input.placeholder = placeholder;
-        input.maxLength = key === "art" ? 4096 : key === "accent" ? 9 : 200;
-        label.append(title, input);
-        if (key === "accent") { const swatch = document.createElement("input"); swatch.type = "color"; swatch.dataset.profileSwatch = String(index); label.append(swatch); }
-        if (key === "art") { const browse = document.createElement("button"); browse.type = "button"; browse.dataset.profileBrowse = String(index); setText(browse, "Editor.BrowseExisting"); label.append(browse); }
-        row.append(label);
-      }
-      root.append(row);
-    });
-    content.append(root);
-    const result = await DialogV2.input({ window: { title: t("Editor.ProfilesTitle") }, content, modal: true, rejectClose: false,
-      render: (_event, dialog) => {
-        markDialog(dialog, L("Editor.ProfilesTitle"));
-        dialog.element.querySelectorAll("[data-profile-swatch]").forEach(swatch => {
-          const text = dialog.element.querySelector(`[name="accent-${swatch.dataset.profileSwatch}"]`);
-          if (/^#[\da-f]{6}$/i.test(text.value)) swatch.value = text.value;
-          swatch.addEventListener("input", () => { text.value = swatch.value; });
-          text.addEventListener("input", () => { if (/^#[\da-f]{6}$/i.test(text.value)) swatch.value = text.value; });
-        });
-        dialog.element.querySelectorAll("[data-profile-browse]").forEach(button => button.addEventListener("click", () => {
-          const input = dialog.element.querySelector(`[name="art-${button.dataset.profileBrowse}"]`);
-          void new foundry.applications.apps.FilePicker.implementation({ type: "image", current: input.value, allowUpload: false,
-            callback: path => { input.value = path; } }).render({ force: true });
-        }));
-      }
-    });
-    if (!result) return;
-    const next = { ...profiles };
-    actors.forEach((uuid, index) => {
-      next[uuid] = { accent: result[`accent-${index}`] ?? "", fullName: result[`fullName-${index}`] ?? "", art: result[`art-${index}`] ?? "" };
-    });
-    await api.setCharacterProfiles(next);
-    ui.notifications?.info(t("Editor.ProfilesSaved"));
-  }
-
-  _useResourceMaximum(layer = this._selectedLayer()) {
-    if (layer?.type !== "resource-bar") return false;
-    const fields = this._fieldDefinitions(layer);
-    const maximum = fields.find(field => field.id === layer.binding)?.maxField;
-    if (!maximum || fields.find(field => field.id === maximum)?.type !== "number") return false;
-    Object.assign(layer, validateLayer({ ...layer, maxBinding: maximum }, this._draft.canvas));
-    this._invalidInputs.delete(`layer.${layer.id}.maxBinding`);
-    this._markDirty(); this._syncLayerFields(layer); void this._updatePreview();
-    return true;
-  }
-
-  async _setContentSource(source) {
-    const layer = this._selectedLayer(); if (!layer) return;
-    const image = ["image", "character-portrait"].includes(layer.type);
-    const type = source === "static" ? image ? "image" : "text" : image ? "character-portrait" : "dynamic-text";
-    if (type === layer.type) return;
-    const replacement = { ...createLayer(type, this._draft.canvas), ...layer, type };
-    if (source === "dynamic" && !image) { replacement.binding = "character.name"; replacement.text = "{character.name}"; }
-    Object.assign(layer, validateLayer(replacement, this._draft.canvas));
-    this._markDirty(); await this._updatePreview(); this._renderLayerProperties();
-  }
-
-  _renderWidgetProperties(host, layer) {
-    const preset = this.widgetPresets?.list().find(entry => entry.id === layer.presetId);
-    const description = document.createElement("p"); description.className = "mso-help"; writeText(description, preset ? L("Editor.SharedDesign", { name: preset.name }) : L("Editor.SourcePresetMissing")); host.append(description);
-    const sourceLabel = document.createElement("label"); sourceLabel.className = "mso-layer-field"; const sourceCaption = document.createElement("span"); setText(sourceCaption, "Editor.DataSource"); sourceLabel.append(sourceCaption);
-    const source = document.createElement("select"); setAttr(source, "aria-label", "Editor.DataSource");
-    for (const [value, text] of [["actors", L("Editor.FoundryActors")], ["demo", L("Editor.DemoCharacters")]]) { const option = document.createElement("option"); option.value = value; writeText(option, text); source.append(option); }
-    source.value = layer.dataSource ?? "actors"; source.disabled = this._uploading;
-    source.addEventListener("change", () => { void this._draftOperation(async () => { this._changeCharacterDataSource(layer, source.value); await this._updatePreview(); this._renderLayerProperties(); this._renderAnimationTestPanel(); }); });
-    sourceLabel.append(source); host.append(sourceLabel);
-    const demoMode = layer.dataSource === "demo";
-    if (demoMode) { const note = document.createElement("p"); note.className = "mso-binding-warning mso-help"; setText(note, "Editor.DemoHelp"); host.append(note); }
-    const actor = document.createElement("p"); actor.className = "mso-help"; actor.dataset.actorStatus = ""; actor.setAttribute("role", "status"); writeText(actor, layer.actorUuid || L("Editor.NoAssignedCharacter")); host.append(actor);
-    if (layer.actorUuid && this.characterData) {
-      const id = layer.id; const reference = layer.actorUuid;
-      const updateStatus = () => {
-        void this.characterData.resolve(reference, ["character.name"]).then(result => {
-          if (this._selectedLayerId !== id || this._selectedLayer()?.actorUuid !== reference) return;
-          if (result.warning) writeError(actor, result.warning);
-          else { delete actor.dataset.editorError; writeText(actor, String(result.values?.["character.name"] ?? reference)); }
-          actor.classList.toggle("mso-binding-warning", !!result.warning);
-        }).catch(error => { writeError(actor, error); actor.classList.add("mso-binding-warning"); });
-      };
-      updateStatus();
-      this._actorStatusUnsubscribe = this.characterData.subscribe?.(reference, updateStatus);
-    }
-    const actions = document.createElement("div"); actions.className = "mso-image-actions";
-    for (const [label, operation] of [...(!demoMode ? [[L("Editor.ChangeCharacter"), () => this._assignActor()], [L("Editor.ClearCharacter"), () => this._assignActor("")], [L("Editor.CharacterProfiles"), () => this._editCharacterProfiles(layer)]] : []), [L("Editor.EditDesign"), () => services.openWidgetPreset?.(layer.presetId)]]) {
-      const button = document.createElement("button"); button.type = "button"; writeText(button, label); button.disabled = this._uploading || label.key === "Editor.EditDesign" && !preset; button.addEventListener("click", () => { void this._draftOperation(operation); }); actions.append(button);
-    }
-    host.append(actions);
-    const label = document.createElement("label"); label.className = "mso-layer-field"; setText(label, "Editor.ActorUUIDLink");
-    const reference = document.createElement("input"); reference.type = "text"; reference.value = demoMode ? "" : layer.actorUuid; setAttr(reference, "aria-label", "Editor.ActorUUIDLink");
-    const apply = document.createElement("button"); apply.type = "button"; setText(apply, "Editor.ApplyCharacterLink"); apply.addEventListener("click", () => { void this._draftOperation(() => this._assignActor(reference.value.trim())); }); label.append(reference, apply); if (!demoMode) host.append(label);
-    this._renderInstanceCarousel(host, layer, preset);
-  }
-
-  _assignedCharacters(layer) { return layer.actorUuids ?? (layer.actorUuid ? [layer.actorUuid] : []); }
-
-  _changeCharacterDataSource(layer, source) {
-    if (!this._allLayers().includes(layer) || !["actors", "demo"].includes(source) || (layer.dataSource ?? "actors") === source) return;
-    if ((layer.dataSource ?? "actors") === "actors") this._realActorAssignments.set(layer.id, [...this._assignedCharacters(layer)]);
-    const actors = source === "demo" ? [...DEMO_ACTOR_UUIDS] : [...(this._realActorAssignments.get(layer.id) ?? [])];
-    Object.assign(layer, validateLayer({ ...layer, dataSource: source, actorUuid: actors[0] ?? "", actorUuids: actors, carousel: { ...layer.carousel, actorStartUuid: null } }, this._draft.canvas));
-    this._markDirty();
-  }
-
-  async _replaceCarouselActor(layer, previous) {
-    const draft = this._draft, actor = await this._chooseActor();
-    if (!actor || draft !== this._draft || !this._allLayers().includes(layer)) return;
-    const actors = [...this._assignedCharacters(layer)], index = actors.indexOf(previous);
-    if (index < 0) return;
-    if (actors.includes(actor.uuid) && actor.uuid !== previous) throw new Error(t("Editor.AlreadyAssigned"));
-    actors[index] = actor.uuid; this._setCarouselCharacters(layer, actors);
-    await this._updatePreview(); this._renderLayerProperties();
-  }
-
-  async _previewAssignedActor(layer, uuid) {
-    const accepted = await this._preview?.renderer?.handleAnimationCommand?.({ overlayId: this._draft.id, layerId: layer.id, kind: "carousel", action: "select-actor", actorUuid: uuid });
-    if (!accepted) throw new Error(t("Editor.ActorUnavailablePreview"));
-    this._syncInstanceCarouselPreview();
-  }
-
-  async _addCarouselActor(reference) {
-    const layer = this._selectedLayer(), draft = this._draft;
-    if (!layer || layer.type !== "character-widget") return;
-    const actor = reference === undefined ? await this._chooseActor() : await this.characterData.resolveActor(reference);
-    if (!actor || this._draft !== draft || !this._allLayers().includes(layer)) return;
-    if (layer.dataSource === "demo") this._changeCharacterDataSource(layer, "actors");
-    const actors = [...this._assignedCharacters(layer)];
-    if (actors.includes(actor.uuid)) return;
-    if (actors.length >= 20) throw new Error(t("Editor.ActorLimit"));
-    actors.push(actor.uuid);
-    this._setCarouselCharacters(layer, actors);
-    await this._updatePreview(); this._renderLayerProperties();
-  }
-
-  _setCarouselCharacters(layer, actors) {
-    const carousel = { ...(layer.carousel ?? {}) };
-    if (carousel.actorStartUuid && !actors.includes(carousel.actorStartUuid)) carousel.actorStartUuid = null;
-    Object.assign(layer, validateLayer({ ...layer, actorUuid: actors[0] ?? "", actorUuids: actors, carousel }, this._draft.canvas));
-    this._markDirty();
-  }
-
-  async _carouselCharacterCommand(layer, uuid, command) {
-    if (!this._allLayers().includes(layer)) return;
-    const actors = [...this._assignedCharacters(layer)], index = actors.indexOf(uuid);
-    if (index < 0) return;
-    if (command === "remove") actors.splice(index, 1);
-    else {
-      const next = index + (command === "up" ? -1 : 1);
-      if (next < 0 || next >= actors.length) return;
-      [actors[index], actors[next]] = [actors[next], actors[index]];
-    }
-    this._setCarouselCharacters(layer, actors);
-    await this._updatePreview(); this._renderLayerProperties();
-  }
-
-  _instanceCarouselField(host, layer, label, field, { options, pageId, min, max, step } = {}) {
-    const wrapper = document.createElement("label"); wrapper.className = "mso-layer-field";
-    const title = document.createElement("span"); writeText(title, label);
-    const input = document.createElement(options ? "select" : "input");
-    input.dataset.instanceCarouselField = field; writeAttr(input, "aria-label", label);
-    if (pageId) input.dataset.carouselPageId = pageId;
-    if (!options) { input.type = "number"; setAttr(input, "placeholder", "Editor.PresetDefault"); }
-    for (const option of options ?? []) { const entry = document.createElement("option"); entry.value = String(option.value); writeText(entry, option.label); input.append(entry); }
-    for (const [key, value] of Object.entries({ min, max, step })) if (value !== undefined) input[key] = String(value);
-    let value = pageId ? layer.carousel?.pageDurations?.[pageId] : layer.carousel?.[field];
-    if ((field === "duration" || pageId) && value !== undefined && value !== null) value /= 1000;
-    input.value = String(value ?? "");
-    const key = `carousel.${layer.id}.${pageId ? `page.${pageId}` : field}`;
-    if (this._invalidInputs.has(key)) { input.value = this._invalidInputs.get(key); setValidity(input, L("Editor.CorrectCarousel")); }
-    input.disabled = this._uploading;
-    input.addEventListener(options ? "change" : "input", () => this._onInstanceCarouselInput(input, layer, { field, pageId }));
-    wrapper.append(title, input); host.append(wrapper); return input;
-  }
-
-  _onInstanceCarouselInput(input, layer, { field, pageId }) {
-    if (this._busy || this._uploading || !this._allLayers().includes(layer)) return;
-    const key = `carousel.${layer.id}.${pageId ? `page.${pageId}` : field}`;
-    try {
-      let value = input.value.trim() === "" ? null : input.value;
-      if (["duration", "transitionDuration", "characterTransitionDuration"].includes(field) || pageId) {
-        if (value !== null) value = Number(value) * (field === "duration" || pageId ? 1000 : 1);
-        const isDuration = field === "duration" || !!pageId;
-        if (value !== null && (!Number.isSafeInteger(value) || value < (isDuration ? 100 : 0) || value > (isDuration ? 3600000 : 10000))) throw editorError(isDuration ? "Editor.DwellRange" : "Editor.TransitionRange");
-      }
-      if (["loop", "enabled"].includes(field) && value !== null) value = value === "true";
-      const carousel = { ...(layer.carousel ?? {}) };
-      if (pageId) {
-        carousel.pageDurations = { ...(carousel.pageDurations ?? {}) };
-        if (value === null) delete carousel.pageDurations[pageId]; else carousel.pageDurations[pageId] = value;
-      } else carousel[field] = value;
-      Object.assign(layer, validateLayer({ ...layer, carousel }, this._draft.canvas));
-      setValidity(input, ""); this._invalidInputs.delete(key); this._markDirty();
-      void this._updatePreview().then(() => { if (["mode", "actorStartUuid", "startPageId"].includes(field)) this._renderLayerProperties(); });
-    } catch (error) {
-      setValidity(input, error); this._invalidInputs.set(key, input.value); this._markDirty();
-    }
-  }
-
-  async _instancePageOrder(layer, preset, pageId, direction) {
-    const order = this._orderedCarouselPages(layer, preset).map(page => page.id), index = order.indexOf(pageId);
-    const next = index + direction;
-    if (index < 0 || next < 0 || next >= order.length) return;
-    [order[index], order[next]] = [order[next], order[index]];
-    Object.assign(layer, validateLayer({ ...layer, carousel: { ...layer.carousel, pageOrder: order } }, this._draft.canvas));
-    this._markDirty(); await this._updatePreview(); this._renderLayerProperties();
-  }
-
-  _orderedCarouselPages(layer, preset) {
-    const pages = preset?.pages ?? [], order = layer.carousel?.pageOrder ?? [];
-    return [...order.map(id => pages.find(page => page.id === id)).filter(Boolean), ...pages.filter(page => !order.includes(page.id))];
-  }
-
-  _carouselPreviewSequence(layer, preset) {
-    const { settings } = resolveCarouselSettings(layer, preset ?? {});
-    const actors = this._assignedCharacters(layer);
-    const allPages = this._orderedCarouselPages(layer, preset).filter(page => page.enabled !== false);
-    const pages = allPages.length ? allPages : (preset?.pages?.length ? [] : [{ id: null, name: t("Editor.SharedCard") }]);
-    const firstActor = actors.includes(settings.actorStartUuid) ? settings.actorStartUuid : actors[0];
-    const firstPage = pages.find(page => page.id === settings.startPageId) ?? pages[0];
-    const actorIds = ["information", "static"].includes(settings.mode) ? (firstActor ? [firstActor] : []) : actors;
-    const displayedPages = ["character", "static"].includes(settings.mode) ? (firstPage ? [firstPage] : []) : pages;
-    return settings.traversal === "characters-first" ? displayedPages.flatMap(page => actorIds.map(actorUuid => ({ actorUuid, pageId: page.id }))) : actorIds.flatMap(actorUuid => displayedPages.map(page => ({ actorUuid, pageId: page.id })));
-  }
-
-  _renderInstanceCarousel(host, layer, preset) {
-    const section = document.createElement("section"); section.className = "mso-instance-carousel"; setAttr(section, "aria-label", "Editor.CarouselSettings");
-    const title = document.createElement("h4"); setText(title, "Editor.CarouselSettings"); section.append(title); host.append(section);
-    const inherited = [{ value: "", label: L("Editor.PresetDefault") }];
-    this._instanceCarouselField(section, layer, L("Editor.CyclingMode"), "mode", { options: [...inherited, { value: "static", label: L("Editor.StaticMode") }, { value: "information", label: L("Editor.InformationMode") }, { value: "character", label: L("Editor.CharacterMode") }, { value: "combined", label: L("Editor.CombinedMode") }] });
-    this._instanceCarouselField(section, layer, L("Editor.AutomaticPlayback"), "enabled", { options: [...inherited, { value: "true", label: L("Editor.PlayAutomatically") }, { value: "false", label: L("Editor.StartPaused") }] });
-    this._instanceCarouselField(section, layer, L("Editor.TraversalOrder"), "traversal", { options: [...inherited, { value: "pages-first", label: L("Editor.PagesFirst") }, { value: "characters-first", label: L("Editor.CharactersFirst") }] });
-    const assignedTitle = document.createElement("h5"); setText(assignedTitle, "Editor.AssignedCharacters"); section.append(assignedTitle);
-    const assigned = document.createElement("div"); assigned.className = "mso-carousel-assigned"; assigned.dataset.assignedCharacters = ""; setAttr(assigned, "aria-label", "Editor.AssignedDrop"); section.append(assigned);
-    const characters = this._assignedCharacters(layer), labels = new Map(), actorNodes = [];
-    const addButton = (parent, label, operation, disabled = false) => {
-      const button = document.createElement("button"); button.type = "button"; writeText(button, label); button.disabled = this._uploading || disabled;
-      button.addEventListener("click", () => { void this._draftOperation(operation); }); parent.append(button); return button;
-    };
-    if (!characters.length) { const empty = document.createElement("p"); empty.className = "mso-help"; setText(empty, "Editor.NoCharacters"); assigned.append(empty); }
-    characters.forEach((uuid, index) => {
-      const row = document.createElement("div"); row.className = "mso-carousel-order-row";
-      const name = document.createElement("span"); setText(name, "Editor.CharacterLoading", { index: index + 1 }); actorNodes.push([uuid, name]); row.append(name);
-      if (layer.dataSource !== "demo") addButton(row, L("Editor.SelectActorIndex", { index: index + 1 }), () => this._replaceCarouselActor(layer, uuid));
-      addButton(row, L("Editor.PreviewCharacterIndex", { index: index + 1 }), () => this._previewAssignedActor(layer, uuid));
-      addButton(row, L("Editor.EarlierCharacterIndex", { index: index + 1 }), () => this._carouselCharacterCommand(layer, uuid, "up"), index === 0);
-      addButton(row, L("Editor.LaterCharacterIndex", { index: index + 1 }), () => this._carouselCharacterCommand(layer, uuid, "down"), index === characters.length - 1);
-      addButton(row, L("Editor.RemoveCharacterIndex", { index: index + 1 }), () => this._carouselCharacterCommand(layer, uuid, "remove")); assigned.append(row);
-    });
-    if (layer.dataSource === "demo") addButton(assigned, L("Editor.RestoreDemoCharacters"), async () => { this._setCarouselCharacters(layer, [...DEMO_ACTOR_UUIDS]); await this._updatePreview(); this._renderLayerProperties(); }, DEMO_ACTOR_UUIDS.every(uuid => characters.includes(uuid)));
-    else addButton(assigned, L("Editor.AddCharacter"), () => this._addCarouselActor(), characters.length >= 20);
-    const initialActor = this._instanceCarouselField(section, layer, L("Editor.InitialActor"), "actorStartUuid", { options: [{ value: "", label: L("Editor.FirstCharacter") }, ...characters.map((uuid, index) => ({ value: uuid, label: L("Editor.CharacterIndex", { index: index + 1 }) }))] });
-    const pagesTitle = document.createElement("h5"); setText(pagesTitle, "Editor.InformationPageOrder"); section.append(pagesTitle);
-    const pages = this._orderedCarouselPages(layer, preset);
-    if (layer.carousel?.pageOrder?.length) addButton(section, L("Editor.PresetPageOrder"), async () => {
-      Object.assign(layer, validateLayer({ ...layer, carousel: { ...layer.carousel, pageOrder: [] } }, this._draft.canvas));
-      this._markDirty(); await this._updatePreview(); this._renderLayerProperties();
-    });
-    if (!pages.length) { const shared = document.createElement("p"); shared.className = "mso-help"; setText(shared, "Editor.SharedCardHelp"); section.append(shared); }
-    pages.forEach((page, index) => {
-      const row = document.createElement("div"); row.className = "mso-carousel-page-row";
-      const name = document.createElement("strong"); setText(name, page.enabled === false ? "Editor.DisabledPageName" : "Editor.PageName", { index: index + 1, name: page.name }); row.append(name);
-      const buttons = document.createElement("div"); buttons.className = "mso-page-actions"; row.append(buttons);
-      addButton(buttons, L("Editor.EarlierPageIndex", { index: index + 1 }), () => this._instancePageOrder(layer, preset, page.id, -1), index === 0);
-      addButton(buttons, L("Editor.LaterPageIndex", { index: index + 1 }), () => this._instancePageOrder(layer, preset, page.id, 1), index === pages.length - 1);
-      this._instanceCarouselField(row, layer, L("Editor.NamedPageDuration", { name: page.name }), "duration", { pageId: page.id, min: .1, max: 3600, step: .1 }); section.append(row);
-    });
-    this._instanceCarouselField(section, layer, L("Editor.InitialPage"), "startPageId", { options: [...inherited, ...pages.filter(page => page.enabled !== false).map(page => ({ value: page.id, label: page.name }))] });
-    this._instanceCarouselField(section, layer, L("Editor.PageDuration"), "duration", { min: .1, max: 3600, step: .1 });
-    const transitionOptions = [...inherited, ...PAGE_TRANSITIONS.map(entry => ({ value: entry.id, label: S(entry.label) }))];
-    this._instanceCarouselField(section, layer, L("Editor.PageTransition"), "transition", { options: transitionOptions });
-    this._instanceCarouselField(section, layer, L("Editor.PageTransitionDuration"), "transitionDuration", { min: 0, max: 10000, step: 1 });
-    this._instanceCarouselField(section, layer, L("Editor.CharacterTransition"), "characterTransition", { options: transitionOptions });
-    this._instanceCarouselField(section, layer, L("Editor.CharacterTransitionDuration"), "characterTransitionDuration", { min: 0, max: 10000, step: 1 });
-    this._instanceCarouselField(section, layer, L("Editor.Loop"), "loop", { options: [...inherited, { value: "true", label: L("Editor.Loop") }, { value: "false", label: L("Editor.StopAtEnd") }] });
-    const previewTitle = document.createElement("h5"); setText(previewTitle, "Editor.PreviewSequence"); section.append(previewTitle);
-    const sequence = document.createElement("ol"); sequence.className = "mso-carousel-sequence"; setAttr(sequence, "aria-label", "Editor.PreviewSequence"); section.append(sequence);
-    const status = document.createElement("p"); status.className = "mso-help"; status.setAttribute("role", "status"); section.append(status);
-    const controls = document.createElement("div"); controls.className = "mso-page-actions"; section.append(controls);
-    for (const [label, command] of [[L("Editor.PreviousStep"), "previous"], [L("Editor.NextStep"), "next"], [L("Editor.PausePreview"), "pause"], [L("Editor.ResumePreview"), "resume"], [L("Editor.ResetPreview"), "reset"]]) addButton(controls, label, () => this._instanceCarouselPreview(layer.id, command), !preset);
-    const note = document.createElement("p"); note.className = "mso-help"; setText(note, "Editor.PreviewHelp"); section.append(note);
-    this._carouselPanel = { layerId: layer.id, layer, preset, labels, sequence, status };
-    this._syncInstanceCarouselPreview();
-    this._animationTestPanel?.refreshDiagnostics?.();
-    const generation = this._carouselLabelsGeneration;
-    void Promise.all(characters.map(async (uuid, index) => {
-      try { const result = await this.characterData?.resolve(uuid, ["character.name"]); return [uuid, result?.warning ? L("Editor.CharacterUnavailable", { index: index + 1 }) : result?.values?.["character.name"] == null ? L("Editor.CharacterIndex", { index: index + 1 }) : String(result.values["character.name"])]; }
-      catch { return [uuid, L("Editor.CharacterUnavailable", { index: index + 1 })]; }
-    })).then(entries => {
-      if (generation !== this._carouselLabelsGeneration || this._selectedLayerId !== layer.id) return;
-      for (const [uuid, label] of entries) labels.set(uuid, label);
-      for (const [uuid, node] of actorNodes) writeText(node, labels.get(uuid));
-      for (const option of initialActor.children) if (labels.has(option.value)) writeText(option, labels.get(option.value));
-      this._syncInstanceCarouselPreview();
-      this._animationTestPanel?.refreshDiagnostics?.();
-    });
-  }
-
-  async _instanceCarouselPreview(id, command) {
-    const carousel = this._preview?.renderer?.compositions?.get(id)?.carousel;
-    await carousel?.[command]?.(); this._syncInstanceCarouselPreview();
-  }
-
-  _syncInstanceCarouselPreview() {
-    const panel = this._carouselPanel;
-    if (!panel || this._selectedLayerId !== panel.layerId) return;
-    const state = this._preview?.renderer?.compositions?.get(panel.layerId)?.carousel?.getState?.();
-    const sequence = state?.sequence ?? this._carouselPreviewSequence(panel.layer, panel.preset);
-    panel.sequence.replaceChildren();
-    for (const step of sequence) {
-      const item = document.createElement("li");
-      const actorIndex = this._assignedCharacters(panel.layer).indexOf(step.actorUuid);
-      const name = labelText(panel.labels.get(step.actorUuid) ?? L("Editor.CharacterIndex", { index: actorIndex + 1 }));
-      const page = panel.preset?.pages?.find(entry => entry.id === step.pageId);
-      item.textContent = `${name} / ${page?.name ?? t("Editor.SharedCard")}`;
-      if (step.actorUuid === state?.activeActorUuid && step.pageId === state?.activePageId) item.setAttribute("aria-current", "step");
-      panel.sequence.append(item);
-    }
-    const activeName = labelText(panel.labels.get(state?.activeActorUuid)), activePage = panel.preset?.pages?.find(page => page.id === state?.activePageId)?.name;
-    panel.status.textContent = !sequence.length ? t("Editor.NoPreviewSteps") : state ? t("Editor.PreviewStatus", { active: activeName ? `: ${activeName} / ${activePage ?? t("Editor.SharedCard")}` : "", state: state.paused ? t("Editor.Paused") : t("Editor.Running"), count: sequence.length }) : t("Editor.ConfiguredSteps", { count: sequence.length });
-  }
-
-  _onLayerInput(event) {
-    if (this._busy || this._uploading) return;
-    const layer = this._selectedLayer();
-    if (!layer) return;
-    const input = event.currentTarget;
-    const field = input.dataset.layerField;
-    const numeric = new Set(["x", "y", "width", "height", "rotation", "opacity", "fontSize", "borderRadius", ...OPTIONAL_NUMBERS]);
-    const allowed = new Set(["name", "x", "y", "width", "height", "rotation", "opacity", "visible", "locked", "src", "fit", "lockAspectRatio", "text", "fontFamily", "fontSize", "fontWeight", "color", "align", "shadow", "binding", "maxBinding", "fallback", "portraitSource", "circular", "borderRadius", "foregroundColor", "backgroundColor", "showValue", "display", ...OPTIONAL_LAYER_KEYS]);
-    if (!allowed.has(field)) return;
-    let value = input.type === "checkbox" ? input.checked : input.value;
-    // Clearing an optional style restores its default instead of failing validation.
-    if (OPTIONAL_LAYER_KEYS.includes(field) && input.type !== "checkbox" && input.value.trim() === "") value = undefined;
-    else if (numeric.has(field)) value = input.value.trim() === "" ? NaN : Number(input.value);
-    try {
-      const patch = { [field]: value };
-      if (field === "binding" && layer.text === `{${layer.binding}}`) patch.text = `{${value}}`;
-      const validated = validateLayer({ ...layer, ...patch }, this._draft.canvas, this._editingLayers().indexOf(layer));
-      for (const key of OPTIONAL_LAYER_KEYS) if (!Object.hasOwn(validated, key)) delete layer[key];
-      Object.assign(layer, validated);
-      setValidity(input, "");
-      this._invalidInputs.delete(`layer.${layer.id}.${field}`);
-      this._markDirty();
-      this._syncLayerFields(layer, { skip: input });
-      this._updateLayerRow(layer);
-      void this._updatePreview();
-    }
-    catch (error) {
-      setValidity(input, error);
-      this._invalidInputs.set(`layer.${layer.id}.${field}`, input.type === "checkbox" ? input.checked : input.value);
-      this._markDirty();
-    }
-  }
-
-  _syncLayerFields(layer, { skip } = {}) {
-    if (!layer || layer.id !== this._selectedLayerId) return;
-    this.element?.querySelectorAll("[data-layer-field]").forEach(input => {
-      if (input === skip) return;
-      const field = input.dataset.layerField;
-      // Keep unfinished entries visible until that property is corrected or reloaded.
-      if (this._invalidInputs.has(`layer.${layer.id}.${field}`)) return;
-      if (input.type === "checkbox") input.checked = !!layer[field];
-      else input.value = String(layer[field] ?? "");
-      setValidity(input, "");
-      this._invalidInputs.delete(`layer.${layer.id}.${field}`);
-    });
-    this.element?.querySelectorAll('[data-layer-command="delete"]').forEach(button => {
-      button.disabled = !!layer.locked || this._uploading;
-    });
-  }
-
-  _updateLayerRow(layer) {
-    this.element?.querySelectorAll("[data-layer-id]").forEach(row => {
-      if (row.dataset.layerId !== layer.id) return;
-      const name = row.querySelector("[data-layer-name]");
-      if (name) name.textContent = layer.name;
-      for (const [command, active, yes, no] of [["visible", layer.visible, L("Editor.Visible"), L("Editor.Hidden")], ["locked", !!layer.locked, L("Editor.Locked"), L("Editor.Unlocked")]]) {
-        const button = row.querySelector(`[data-layer-command="${command}"]`);
-        if (!button) continue;
-        writeText(button, active ? yes : no);
-        writeAttr(button, "title", active ? yes : no);
-        writeAttr(button, "aria-label", active ? yes : no);
-        button.setAttribute("aria-pressed", String(active));
-      }
-    });
   }
 
   _onDraftInput(event) {

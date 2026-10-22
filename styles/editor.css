@@ -91,6 +91,11 @@
 .mso-editor .mso-layer-list { display: flex; flex-direction: column; gap: 5px; max-height: 210px; overflow-y: auto; }
 .mso-editor .mso-layer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 3px; border: 1px solid transparent; border-radius: 4px; padding: 2px; }
 .mso-editor .mso-layer-row.selected { background: #26344d; border-color: #7193d9; }
+.mso-editor .mso-layer-row.selected.primary { border-color: var(--mso-accent); box-shadow: inset 3px 0 0 var(--mso-accent); }
+.mso-editor .mso-arrange { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin: 8px 0; }
+.mso-editor .mso-arrange > span { color: var(--mso-muted); font-size: .8rem; }
+.mso-editor .mso-arrange-buttons { display: flex; flex-wrap: wrap; gap: 3px; }
+.mso-editor .mso-selection-count { font-weight: 600; margin: 0 0 6px; }
 .mso-editor .mso-layer-select { display: flex; align-items: center; gap: 6px; text-align: left; padding: 3px; border-color: transparent; min-width: 0; background: transparent; }
 .mso-editor .mso-layer-select [data-layer-name] { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .73rem; }
 .mso-editor .mso-layer-type { display: inline-block; width: 15px; color: var(--mso-accent); text-align: center; font-size: .85rem; flex-shrink: 0; }

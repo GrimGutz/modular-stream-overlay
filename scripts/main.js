@@ -5,6 +5,7 @@ import { genericAdapter } from "./adapters/generic.js";
 import { cainAdapter } from "./adapters/cain.js";
 import { dnd5eAdapter } from "./adapters/dnd5e.js";
 import { loadCainTranslations } from "./adapters/cain-translations.js";
+import { loadFoundryFonts } from "./integration/fonts.js";
 import { WidgetPresetStore, registerWidgetSettings } from "./core/widget-presets.js";
 import { CharacterDataService, validateAdapterPreferences } from "./data/character-data.js";
 import { validateMappings } from "./data/mappings.js";
@@ -346,9 +347,12 @@ Hooks.once("streamReady", () => {
     if (status === "disconnected") window.location.reload(); // Re-fetch authoritative state after reconnect.
   });
   game.socket.on("shutdown", () => { status = "shutdown"; characterData.stop(); outputSignature = null; void renderer.render(null); recover(); });
-  // cain-ru translates CAIN catalog names only in the game view; load them before the first frame.
-  void loadCainTranslations().catch(error => console.warn("Modular Stream Overlay | CAIN translations unavailable", error))
-    .finally(() => { characterData.refresh(); void refreshOutput(); });
+  // cain-ru translates CAIN catalog names, and Foundry loads its font files, only in the game
+  // view; load both before the first frame.
+  void Promise.all([
+    loadCainTranslations().catch(error => console.warn("Modular Stream Overlay | CAIN translations unavailable", error)),
+    loadFoundryFonts().catch(error => console.warn("Modular Stream Overlay | Fonts unavailable", error))
+  ]).finally(() => { characterData.refresh(); void refreshOutput(); });
 });
 
 Hooks.on("updateUser", user => {

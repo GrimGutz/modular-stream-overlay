@@ -8,6 +8,8 @@
 .mso-layer-selection { position: absolute; transform-origin: center center; outline: var(--mso-outline-size) solid #a8caff; pointer-events: none; }
 .mso-layer-selection.locked { outline-style: dashed; outline-color: #b6bdc9; }
 .mso-layer-selection .mso-resize-handle { pointer-events: auto; }
+.mso-group-selection { position: absolute; outline: var(--mso-outline-size) dashed #a8caff; outline-offset: calc(var(--mso-outline-size) * 3); pointer-events: none; }
+.mso-marquee { position: absolute; border: var(--mso-outline-size) solid #a8caff; background: rgba(148, 183, 255, .14); pointer-events: none; z-index: 3; }
 .mso-resize-handle { position: absolute; display: block; width: var(--mso-handle-size); height: var(--mso-handle-size); background: #fff; border: var(--mso-outline-size) solid #476fa6; box-sizing: border-box; transform: translate(-50%, -50%); }
 .mso-handle-nw { left: 0; top: 0; cursor: nwse-resize; }
 .mso-handle-n { left: 50%; top: 0; cursor: ns-resize; }

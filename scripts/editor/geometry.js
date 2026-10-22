@@ -56,10 +56,11 @@ export function shortcutCommand(event) {
     // Physical keys keep Ctrl+C/V/Z working with non-Latin keyboard layouts.
     const key = event.code?.startsWith("Key") ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
     if (key === "z") return { action: event.shiftKey ? "redo" : "undo" };
-    const actions = { d: "duplicate", c: "copy", x: "cut", v: "paste", y: "redo" };
+    const actions = { a: "selectAll", d: "duplicate", c: "copy", x: "cut", v: "paste", y: "redo" };
     return actions[key] && !event.shiftKey ? { action: actions[key] } : null;
   }
   if (event.key === "Delete" || event.key === "Backspace") return { action: "delete" };
+  if (event.key === "Escape") return { action: "deselect" };
   const step = event.shiftKey ? 10 : 1;
   const directions = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
   if (directions[event.key]) return { action: "move", x: directions[event.key][0], y: directions[event.key][1] };
