@@ -600,3 +600,30 @@ test("optional box and text styles apply from the designer and clear back to def
   editor._onLayerInput({ currentTarget: lineHeight });
   assert.equal(layer.lineHeight, 1.3); assert.match(lineHeight.message, /Line height/);
 });
+
+test("full-screen canvas fills the screen, follows leaving browser full screen and restores the window", async t => {
+  const { editor } = fixture();
+  const listeners = { window: new Map(), document: new Map() };
+  const target = name => ({ addEventListener: (event, fn) => listeners[name].set(event, fn), removeEventListener: (event, fn) => { if (listeners[name].get(event) === fn) listeners[name].delete(event); } });
+  const previous = { window: globalThis.window, document: globalThis.document };
+  t.after(() => { globalThis.window = previous.window; globalThis.document = previous.document; });
+  let fullscreen = null;
+  globalThis.window = { innerWidth: 2560, innerHeight: 1440, ...target("window") };
+  globalThis.document = { get fullscreenElement() { return fullscreen; }, ...target("document"),
+    documentElement: { requestFullscreen: async () => { fullscreen = {}; } }, exitFullscreen: async () => { fullscreen = null; } };
+  const classes = new Set(), positions = [];
+  editor.element = { classList: { toggle: (name, on) => on ? classes.add(name) : classes.delete(name) }, querySelector: () => null };
+  editor.position = { left: 120, top: 80, width: 1380, height: 900 };
+  editor.setPosition = position => { positions.push(position); Object.assign(editor.position, position); };
+  editor._toggleCanvasFullscreen();
+  await Promise.resolve();
+  assert(classes.has("mso-canvas-fullscreen"));
+  assert.deepEqual(positions.at(-1), { left: 0, top: 0, width: 2560, height: 1440 });
+  assert.equal(editor._documentFullscreen, true);
+  window.innerWidth = 1920; listeners.window.get("resize")();
+  assert.equal(positions.at(-1).width, 1920, "It follows the screen size");
+  fullscreen = null; listeners.document.get("fullscreenchange")();
+  assert(!classes.has("mso-canvas-fullscreen"), "Esc out of browser full screen leaves the mode");
+  assert.deepEqual(positions.at(-1), { left: 120, top: 80, width: 1380, height: 900 });
+  assert.equal(listeners.window.size + listeners.document.size, 0, "No listeners remain");
+});

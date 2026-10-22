@@ -94,7 +94,8 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     actions: Object.fromEntries([
       "editOverlay", "createOverlay", "renameOverlay", "deleteOverlay", "saveOverlay", "reloadOverlay",
       "uploadBackground", "browseBackground", "removeBackground", "savePreset", "loadPreset", "renamePreset", "duplicatePreset",
-      "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "installDemo", "resetDemo"
+      "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "installDemo", "resetDemo",
+      "toggleCanvasFullscreen"
     ].map(action => [action, OverlayEditor.onAction]))
   };
 
@@ -133,6 +134,11 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
   /** A design may expose one editable scope while retaining its complete saved document. */
   _editingOverlay() { return this._draft; }
   _editingLayers() { return this._editingOverlay()?.layers ?? []; }
+  /** Canvas snapping is a per-browser preference; it defaults to on. */
+  _snapping() {
+    try { return game.settings.get(MODULE_ID, "canvasSnapping") !== false; }
+    catch { return true; }
+  }
   _allLayers() { return this._draft?.layers ?? []; }
   _canvasBlocked() { return this._busy || this._uploading; }
   _animationTargets(_target, { wholeDesign = false, preset = null } = {}) {
@@ -225,6 +231,8 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       hasPreset: !!selectedPreset,
       dirty: this._dirty,
       uploading: this._uploading,
+      snapping: this._snapping(),
+      canvasFullscreen: this._canvasFullscreen === true,
       zoomOptions: [
         { value: "fit", label: t("Editor.Fit") }, { value: "0.5", label: "50%" },
         { value: "1", label: "100%" }, { value: "2", label: "200%" }
@@ -265,6 +273,7 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         isBlocked: () => this._canvasBlocked()
       });
       this._preview.setZoom(this._zoom);
+      this._preview.setSnapping(this._snapping());
       await this._updatePreview();
       this._preview.select(this._selectedLayerId, { notify: false });
     }
@@ -312,6 +321,11 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       if (this._uploading) return;
       this._selectedPresetId = event.currentTarget.value;
       void this.render({ force: true });
+    });
+    this.element.querySelector("[data-canvas-snap]")?.addEventListener("change", event => {
+      const enabled = event.currentTarget.checked;
+      this._preview?.setSnapping(enabled);
+      void Promise.resolve(game.settings?.set?.(MODULE_ID, "canvasSnapping", enabled)).catch(() => {});
     });
     this.element.querySelector("[data-canvas-zoom]")?.addEventListener("change", event => {
       const value = event.currentTarget.value;
@@ -1384,6 +1398,11 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static onAction(event, target) {
     event.preventDefault();
+    // Browser full screen needs the click's own synchronous stack; it never waits for other work.
+    if (target.dataset.action === "toggleCanvasFullscreen") {
+      this._toggleCanvasFullscreen();
+      return;
+    }
     // Keep the local file chooser inside the trusted click's synchronous stack.
     if (target.dataset.action === "uploadBackground") {
       this._uploadBackground();
@@ -1780,8 +1799,45 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  /**
+   * Full-screen canvas: the window fills the screen and the canvas takes the space of the
+   * sidebar and settings panels, keeping tools, Layers/Properties and Save beside it.
+   * Foundry dialogs stay usable because the window, not the canvas element, is enlarged.
+   */
+  _toggleCanvasFullscreen(enabled = !this._canvasFullscreen) {
+    if (!this.element || enabled === (this._canvasFullscreen === true)) return;
+    this._canvasFullscreen = enabled;
+    this.element.classList.toggle("mso-canvas-fullscreen", enabled);
+    if (enabled) {
+      const { left, top, width, height } = this.position;
+      this._restorePosition = { left, top, width, height };
+      this._fitToScreen = () => this.setPosition({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight });
+      window.addEventListener("resize", this._fitToScreen);
+      this._fitToScreen();
+      // Leaving browser full screen (Esc, F11) also leaves this mode.
+      this._onFullscreenChange = () => { if (this._documentFullscreen && !document.fullscreenElement) { this._documentFullscreen = false; this._toggleCanvasFullscreen(false); } };
+      document.addEventListener("fullscreenchange", this._onFullscreenChange);
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().then(() => { this._documentFullscreen = true; }, () => {});
+      }
+    } else {
+      window.removeEventListener("resize", this._fitToScreen);
+      document.removeEventListener("fullscreenchange", this._onFullscreenChange);
+      if (this._documentFullscreen && document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
+      this._documentFullscreen = false;
+      if (this._restorePosition) this.setPosition(this._restorePosition);
+    }
+    const button = this.element.querySelector('[data-action="toggleCanvasFullscreen"]');
+    if (button) {
+      button.querySelector("i")?.classList.replace(enabled ? "fa-expand" : "fa-compress", enabled ? "fa-compress" : "fa-expand");
+      setAttr(button, "title", enabled ? "Template.ExitFullscreen" : "Template.CanvasFullscreen");
+      setAttr(button, "aria-label", enabled ? "Template.ExitFullscreen" : "Template.CanvasFullscreen");
+    }
+  }
+
   async close(options = {}) {
     if (!await this._discardDraft()) return this;
+    this._toggleCanvasFullscreen(false);
     this._actorStatusUnsubscribe?.();
     this._actorStatusUnsubscribe = null;
     this._preview?.destroy();

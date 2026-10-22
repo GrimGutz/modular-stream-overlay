@@ -41,6 +41,8 @@ The editor places tools beside the canvas and keeps Layers and Properties alongs
 
 1. Use **Add Image** or **Add Text** to create a layer. For images, use the existing upload or Browse Existing workflow in the selected layer's properties. Uploads use the same persistent storage and validation as background images.
 2. Click a layer on the canvas or in the Layers panel. Drag its body to move it; drag a selection handle to resize it. Canvas fit and zoom change only the view: positions and sizes are always stored in the overlay's native pixels. Image aspect-ratio locking preserves its current box proportions during resizing.
+   The expand button beside the canvas heading opens a full-screen canvas: the editor window fills the screen (and the browser enters full screen where allowed), the overlay list and settings panels are hidden, and the canvas takes the free space with Tools, Layers/Properties and Save beside it. Click it again or leave browser full screen (Esc) to return; the window gets its previous size back. Foundry dialogs such as the image picker keep working. Both the overlay editor and the widget designer have it.
+   While dragging or resizing, the layer snaps to other layers' edges and centers, to the canvas edges and middle, and to equal spacing in a row or column (centered between two neighbours, or repeating an existing gap). Pink lines show the alignment, blue lines the canvas middle and orange labels the equal gaps in pixels. Hold **Alt** to place freely, or turn off **Snapping** next to the zoom control; the choice is remembered per browser. Rotated layers and aspect-locked resizing are not snapped; arrow-key nudges never snap. Both the overlay editor and the widget designer have it, and the designer's page view also snaps to shared elements.
 3. Edit the selected layer's name, position, size, rotation, opacity, visibility, and lock state in Properties. Image layers provide Contain, Cover, and Stretch; text layers provide content, a bundled list of common local fonts with a generic fallback, size, weight, color, alignment, and optional shadow. Text is displayed as text, including literal HTML-like characters.
 4. Use the Layers panel to select, show/hide, lock/unlock, duplicate, delete, or reorder layers. Higher layers cover lower layers. Locked layers cannot be dragged, resized, or nudged. Hidden layers remain editable through the layer list and do not appear in OBS.
 5. With the editor focused and outside editable controls, use arrow keys to move the selected layer by 1 native pixel, Shift+arrow by 10 pixels, Delete/Backspace to delete, and Ctrl/Cmd+D to duplicate. Text fields, number inputs, selections, and other editable controls keep their normal shortcuts.
@@ -106,7 +108,7 @@ The Widget Preset Manager stores reusable component designs separately. Full-ove
 
 ## OBS Browser Source setup
 
-This module uses Foundry's existing authenticated **`/stream`** view and public **`streamReady`** hook. It does not depend on arbitrary HTML being served from a module folder, a custom server route, a detached desktop window, or a companion process.
+This module uses Foundry's existing authenticated **`/stream`** view and public **`streamReady`** hook. It does not depend on arbitrary HTML being served from a module folder, a custom server route or a detached desktop window. An optional local [OBS connector](#obs-connector-optional) can sign OBS in automatically.
 
 ### One-time account setup
 
@@ -117,23 +119,34 @@ This module uses Foundry's existing authenticated **`/stream`** view and public 
 ### Connect OBS
 
 1. Run Foundry and keep the world launched. In OBS, create a **Browser Source**. Leave **Local file** disabled.
-2. Start with the **Join page** URL shown in the overlay editor (usually `http://localhost:30000/join` on this computer; use your real address and any route prefix).
-3. Right-click the Browser Source → **Interact**, and log in as the dedicated viewer. OBS keeps its own browser cookies; logging in using another browser or the Foundry desktop application does not authenticate OBS. The normal game page may briefly appear during this setup, so perform setup before going live.
-4. Open the source's properties and replace its URL with the editor's **Browser Source URL**, usually `http://localhost:30000/stream?mso=1`. The query parameter opts into this module's output. An ordinary `/stream` URL retains Foundry's normal stream view.
-5. Set Browser Source width and height to the overlay's canvas dimensions, initially **1920** and **1080**. Keep OBS's transparent browser background CSS, or use:
+2. Use the editor's **Browser Source URL** as its only URL, usually `http://localhost:30000/stream?mso=1` (use your real address and any route prefix). The query parameter opts into this module's output; an ordinary `/stream` URL retains Foundry's normal stream view.
+3. If OBS shows Foundry's sign-in page, right-click the Browser Source → **Interact** and sign in as the dedicated viewer. Foundry then returns to the overlay URL by itself. OBS keeps its own browser cookies; signing in using another browser or the Foundry desktop application does not authenticate OBS.
+4. Set Browser Source width and height to the overlay's canvas dimensions, initially **1920** and **1080**. Keep OBS's transparent browser background CSS, or use:
 
    ```css
    html, body { background: rgba(0, 0, 0, 0) !important; margin: 0; overflow: hidden; }
    ```
 
-6. Leave **Shutdown source when not visible** off when continuous synchronization is desired. The optional **Refresh browser when scene becomes active** setting is not needed for normal updates.
-7. Return to Foundry, edit the active overlay, and click **Save overlay**. Foundry's setting notifications update the output without restarting OBS. Active-overlay selection, preset loads, and viewer assignment also synchronize.
+5. Leave **Shutdown source when not visible** off when continuous synchronization is desired. The optional **Refresh browser when scene becomes active** setting is not needed for normal updates.
+6. Return to Foundry, edit the active overlay, and click **Save overlay**. Foundry's setting notifications update the output without restarting OBS. Active-overlay selection, preset loads, and viewer assignment also synchronize.
 
-If the source initially redirects to Join, authenticate using Interact and then set the overlay URL again; login redirects do not preserve the module's query parameter. Never put a password or GM session token into the URL.
+Foundry keeps sign-ins only in server memory for at most 24 hours, so after Foundry restarts OBS shows the sign-in page again; sign in once more, or use the connector below. Changing the viewer's password also signs it out. Never put a password or GM session token into the URL.
+
+### OBS connector (optional)
+
+`tools/obs-connector.mjs` runs on the streaming PC and signs OBS in automatically, including after Foundry or the world restarts. OBS keeps one URL and never needs Interact.
+
+1. Install Node.js 22 or later. Double-click `tools/obs-connector.bat` in the module folder, or run `node tools/obs-connector.mjs setup` once.
+2. Enter the Foundry address (`http://localhost:30000`), the viewer account's name exactly as Foundry lists it, its password and a port (default `30001`). Settings are saved to `%APPDATA%\modular-stream-overlay\obs-connector.json`, outside Foundry's Data folder.
+3. Set the OBS Browser Source URL to `http://localhost:30001/` and keep the connector window open while streaming. To start it with Windows, put a shortcut to `obs-connector.bat` in the Startup folder (`Win+R` → `shell:startup`).
+
+Until Foundry is running, a world is launched and sign-in succeeds, the connector serves a transparent page that checks again every 5 seconds, so nothing appears on stream. When the connection drops, the overlay page reloads itself once the connector answers. The connector window reports what it is waiting for, such as no world launched, an unknown account name or a wrong password; it never prints the password.
+
+Anything that reaches the connector acts as the viewer account. It therefore listens on `127.0.0.1` only, accepts only its own host and origin (other websites in your browser cannot use it), forwards only GET/HEAD requests and the stream socket, and refuses Foundry's other pages such as `/game`, `/setup` and `/join`. The password is stored in plain text in the settings file on that PC; use a dedicated viewer account and keep the file private. Run `setup` again to change it.
 
 The renderer uses the configured logical canvas and fits it into the Browser Source viewport with transparent margins if aspect ratios differ. If you change canvas dimensions, also update the Browser Source width and height for native pixel-for-pixel output; this does not require restarting OBS.
 
-The GM browser need not stay open after saving. Foundry's server/world and OBS's dedicated session must stay available. On a socket disconnect the scene is cleared; on reconnection the page reloads to fetch authoritative settings. Disabling the viewer clears output and displays setup guidance. An active selection of None produces pure transparency. No assets, settings, or private documents are exported into an unauthenticated endpoint.
+The GM browser need not stay open after saving. Foundry's server/world and OBS's dedicated session must stay available. On a socket disconnect the scene is cleared; on reconnection the page reloads to fetch authoritative settings. Behind the connector it also reloads once Foundry is reachable again after its own reconnection attempts give up. Disabling the viewer clears output and displays setup guidance. An active selection of None produces pure transparency. No assets, settings, or private documents are exported into an unauthenticated endpoint.
 
 If Live Controls times out after updating from 0.5.2, restart Foundry, reopen the world, and refresh both the GM client and the OBS Browser Source. Confirm that the source uses `/stream?mso=1` and is logged in as the selected viewer account. A viewer logged into an ordinary game tab does not receive temporary stream controls. Automatic cycling and saved overlay updates remain independent of manual commands.
 

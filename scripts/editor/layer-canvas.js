@@ -2,8 +2,11 @@ import { OverlayRenderer } from "../render/renderer.js";
 import { setAttr } from "../ui/i18n.js";
 import { clone } from "../core/schema.js";
 import { nativePoint, moveGeometry, resizeGeometry, shortcutCommand } from "./geometry.js";
+import { snapMove, snapResize, snapTargets } from "./snapping.js";
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+// Snapping reach in screen pixels, so it feels the same at every zoom level.
+const SNAP_DISTANCE = 6;
 
 /** Editor-only interaction surface. The broadcast renderer never constructs this class. */
 export class LayerCanvas {
@@ -15,6 +18,7 @@ export class LayerCanvas {
     this.onCommand = onCommand;
     this.isBlocked = isBlocked;
     this.selectedId = null;
+    this.snapping = true;
     this.zoom = "fit";
     this.gesture = null;
     this.disposed = false;
@@ -74,6 +78,8 @@ export class LayerCanvas {
     this.layout();
   }
 
+  setSnapping(enabled) { this.snapping = enabled === true; }
+
   layout() {
     if (!this.overlay || this.disposed) return;
     const bounds = this.host.getBoundingClientRect();
@@ -91,6 +97,7 @@ export class LayerCanvas {
     });
     this.controls.style.setProperty("--mso-handle-size", `${9 / layout.scale}px`);
     this.controls.style.setProperty("--mso-outline-size", `${1.5 / layout.scale}px`);
+    this.controls.style.setProperty("--mso-guide-font", `${11 / layout.scale}px`);
   }
 
   select(id, { notify = true } = {}) {
@@ -167,11 +174,50 @@ export class LayerCanvas {
     event.preventDefault(); event.stopPropagation();
     const delta = nativePoint(event.clientX, event.clientY, { left: gesture.clientX, top: gesture.clientY }, gesture.scale);
     const geometry = gesture.handle ? resizeGeometry(gesture.start, gesture.handle, delta) : moveGeometry(gesture.start, delta);
+    this.showGuides(this.snap(gesture, geometry, event));
     if (Object.entries(geometry).every(([key, value]) => layer[key] === value)) return;
     Object.assign(layer, geometry);
     this.renderer.updateLayer(layer);
     for (const box of this.controls.children) if (box.dataset.layerId === layer.id) this.boxGeometry(box, layer);
     this.onChange(layer);
+  }
+
+  /**
+   * Stick the dragged box to other layers, the canvas middle and equal spacing. Alt skips it;
+   * rotated layers and aspect-locked resizing keep their exact geometry.
+   */
+  snap(gesture, geometry, event) {
+    if (!this.snapping || event.altKey || ((gesture.start.rotation ?? 0) % 360) !== 0) return [];
+    if (gesture.handle && gesture.start.lockAspectRatio === true) return [];
+    const targets = snapTargets([...(gesture.overlay.layers ?? []), ...(this.overlay?.layers ?? [])], gesture.layerId);
+    const threshold = SNAP_DISTANCE / gesture.scale, canvas = gesture.overlay.canvas ?? this.overlay.canvas;
+    const snapped = gesture.handle ? snapResize({ ...gesture.start, ...geometry }, gesture.handle, targets, canvas, threshold)
+      : snapMove({ ...gesture.start, ...geometry }, targets, canvas, threshold);
+    for (const key of Object.keys(geometry)) geometry[key] = snapped[key];
+    return snapped.guides;
+  }
+
+  showGuides(guides) {
+    if (!guides.length || !this.controls) { this.guideLayer?.remove(); this.guideLayer = null; return; }
+    this.guideLayer ??= document.createElement("div");
+    this.guideLayer.className = "mso-snap-guides";
+    if (this.guideLayer.parentElement !== this.controls) this.controls.append(this.guideLayer);
+    this.guideLayer.replaceChildren(...guides.map(guide => {
+      const node = document.createElement("div");
+      if (guide.type === "line") {
+        node.className = `mso-snap-line mso-snap-line-${guide.axis}${guide.canvas ? " mso-snap-canvas" : ""}`;
+        Object.assign(node.style, guide.axis === "x"
+          ? { left: `${guide.position}px`, top: `${guide.from}px`, height: `${guide.to - guide.from}px` }
+          : { top: `${guide.position}px`, left: `${guide.from}px`, width: `${guide.to - guide.from}px` });
+      } else {
+        node.className = `mso-snap-gap mso-snap-gap-${guide.axis}`;
+        Object.assign(node.style, guide.axis === "x"
+          ? { left: `${guide.from}px`, top: `${guide.cross}px`, width: `${guide.to - guide.from}px` }
+          : { top: `${guide.from}px`, left: `${guide.cross}px`, height: `${guide.to - guide.from}px` });
+        const label = document.createElement("span"); label.textContent = String(guide.size); node.append(label);
+      }
+      return node;
+    }));
   }
 
   pointerUp(event) {
@@ -187,6 +233,7 @@ export class LayerCanvas {
   finishGesture() {
     const gesture = this.gesture;
     this.gesture = null;
+    this.showGuides([]);
     this.host.classList.remove("mso-manipulating");
     if (gesture && this.host.hasPointerCapture?.(gesture.pointerId)) this.host.releasePointerCapture(gesture.pointerId);
   }

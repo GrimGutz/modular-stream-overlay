@@ -18,3 +18,13 @@
 .mso-handle-sw { left: 0; top: 100%; cursor: nesw-resize; }
 .mso-handle-w { left: 0; top: 50%; cursor: ew-resize; }
 .mso-manipulating, .mso-manipulating * { user-select: none !important; }
+.mso-snap-guides { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.mso-snap-line { position: absolute; background: #ff3d9a; }
+.mso-snap-line.mso-snap-canvas { background: #22c7ff; }
+.mso-snap-line-x { width: var(--mso-outline-size); transform: translateX(-50%); }
+.mso-snap-line-y { height: var(--mso-outline-size); transform: translateY(-50%); }
+.mso-snap-gap { position: absolute; border: 0 solid #ff9f1a; }
+.mso-snap-gap-x { height: 0; border-top-width: var(--mso-outline-size); }
+.mso-snap-gap-y { width: 0; border-left-width: var(--mso-outline-size); }
+.mso-snap-gap > span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -120%); padding: 0 .3em; font: 600 var(--mso-guide-font) / 1.3 sans-serif; color: #fff; background: #ff9f1a; border-radius: .3em; white-space: nowrap; }
+.mso-snap-gap-y > span { transform: translate(15%, -50%); }

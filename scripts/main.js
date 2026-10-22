@@ -11,7 +11,7 @@ import { validateCharacterProfiles } from "./data/profiles.js";
 import { OverlayRenderer } from "./render/renderer.js";
 import { OverlayEditor, configureEditor, refreshEditors } from "./ui/editor.js";
 import { WidgetPresetManager, configureWidgetEditor, openWidgetManager, openWidgetPreset, refreshWidgetEditors } from "./ui/widget-editor.js";
-import { isOverlayRequest, overlayURL, isViewerAllowed, viewerAccessMessage } from "./integration/obs.js";
+import { isOverlayRequest, overlayURL, isViewerAllowed, viewerAccessMessage, watchForConnector } from "./integration/obs.js";
 import { defaultAnimationRegistry } from "./animation/playback.js";
 import { registerTriggerEvent } from "./animation/triggers.js";
 import { AnimationCommands } from "./animation/commands.js";
@@ -155,6 +155,7 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "debugAnimations", localizeSetting({
     scope: "world", config: true, restricted: true, type: Boolean, default: false
   }, { name: "Settings.debugAnimations.Name", hint: "Settings.debugAnimations.Hint" }));
+  game.settings.register(MODULE_ID, "canvasSnapping", { scope: "client", config: false, type: Boolean, default: true });
   game.settings.register(MODULE_ID, "viewerUserId", {
     name: "Overlay viewer account", scope: "world", config: false, type: String,
     default: "", onChange: settingsChanged
@@ -328,17 +329,22 @@ Hooks.once("streamReady", () => {
   document.body.append(output);
   renderer = new OverlayRenderer(output, { widgets, context: { viewerUserId: game.userId, widgetPresets, characterData, ...animationContext } });
   // Updates while reconnecting must not leave a stale scene on air.
+  // Foundry's socket stops retrying after a few seconds; behind the OBS connector the page
+  // reloads itself once Foundry is reachable again, so OBS needs no manual refresh.
+  let stopRecovery = null;
+  const recover = () => { stopRecovery ??= watchForConnector({ url: window.location.href, reload: () => window.location.reload() }); };
   game.socket.on("disconnect", () => {
     status = "disconnected";
     characterData.stop();
     outputSignature = null;
     void renderer.render(null);
     // Transparent while disconnected; never fall through to the built-in chat page.
+    recover();
   });
   game.socket.on("connect", () => {
     if (status === "disconnected") window.location.reload(); // Re-fetch authoritative state after reconnect.
   });
-  game.socket.on("shutdown", () => { status = "shutdown"; characterData.stop(); outputSignature = null; void renderer.render(null); });
+  game.socket.on("shutdown", () => { status = "shutdown"; characterData.stop(); outputSignature = null; void renderer.render(null); recover(); });
   void refreshOutput();
 });
 
