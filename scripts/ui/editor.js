@@ -5,8 +5,9 @@ import { alignPositions, boundsOf, distributePositions } from "../editor/arrange
 import { moveGeometry } from "../editor/geometry.js";
 import { uploadBackground } from "../core/background-upload.js";
 import { loadFoundryFonts } from "../integration/fonts.js";
-import { validateAssetPath } from "../core/schema.js";
-import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayers, reorderLayer } from "../core/layers.js";
+import { validateAssetPath, validateLayer } from "../core/schema.js";
+import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayers, reorderLayer, reorderInGroup, stepLayer,
+  moveLayers, groupLayers, layerOrder, dissolveSmallGroups } from "../core/layers.js";
 import { isCharacterComponent } from "../render/character-components.js";
 import { renderAnimationTestControls } from "./animation-controls.js";
 import { DEMO_ACTOR_UUIDS } from "../demo/data.js";
@@ -15,12 +16,14 @@ import { t, uiText, errorText, localizeDOM, setText, setAttr, onLanguageChange }
 import { L, S, labelText, editorError, writeText, writeAttr, writeError, setValidity, markDialog, relabelEditorText } from "./editor-text.js";
 import { LayerInspector } from "./editor-inspector.js";
 import { CharacterPanels } from "./editor-characters.js";
+import { LayerList } from "./editor-layers.js";
 
 const MODULE_ID = "modular-stream-overlay";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 let services = {};
 const editors = new Set();
 const VIEWER_ROLES = { 1: "Template.RolePlayer", 2: "Template.RoleTrusted", 3: "Template.RoleAssistant", 4: "Template.RoleGamemaster" };
+const GRID_STEPS = [10, 20, 25, 50, 100];
 onLanguageChange(() => { for (const editor of editors) editor.refreshLanguage(); });
 
 /** Supply dependencies without coupling the editor to storage or renderer internals. */
@@ -35,11 +38,23 @@ export async function refreshEditors(options = {}) {
 
 const clone = value => foundry.utils.deepClone(value);
 
+/** Natural pixel size of an image file; a fallback box when the browser cannot decode it here. */
+async function imageSize(file) {
+  try {
+    const bitmap = await globalThis.createImageBitmap(file);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close?.();
+    if (size.width > 0 && size.height > 0) return size;
+  } catch { /* The uploader already checked the file; keep a default box. */ }
+  return { width: 640, height: 360 };
+}
+
 /**
- * The GM-only visual editor. Unsaved drafts are private to this application. Layer properties
- * and character widget panels come from the LayerInspector and CharacterPanels mixins.
+ * The GM-only visual editor. Unsaved drafts are private to this application. The Layers panel,
+ * layer properties and character widget panels come from the LayerList, LayerInspector and
+ * CharacterPanels mixins.
  */
-export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsApplicationMixin(ApplicationV2))) {
+export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(HandlebarsApplicationMixin(ApplicationV2)))) {
   static DEFAULT_OPTIONS = {
     id: "modular-stream-overlay-editor",
     classes: ["mso-editor"],
@@ -88,10 +103,22 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
   /** A design may expose one editable scope while retaining its complete saved document. */
   _editingOverlay() { return this._draft; }
   _editingLayers() { return this._editingOverlay()?.layers ?? []; }
-  /** Canvas snapping is a per-browser preference; it defaults to on. */
-  _snapping() {
-    try { return game.settings.get(MODULE_ID, "canvasSnapping") !== false; }
-    catch { return true; }
+  /** Canvas snapping, rulers, grid and guides are per-browser preferences. */
+  _canvasSetting(key, fallback) {
+    try { return game.settings.get(MODULE_ID, key) ?? fallback; }
+    catch { return fallback; }
+  }
+  _snapping() { return this._canvasSetting("canvasSnapping", true) !== false; }
+  _rulers() { return this._canvasSetting("canvasRulers", true) !== false; }
+  _grid() { const step = Number(this._canvasSetting("canvasGrid", 0)); return GRID_STEPS.includes(step) ? step : 0; }
+  _saveCanvasSetting(key, value) { void Promise.resolve(game.settings?.set?.(MODULE_ID, key, value)).catch(() => {}); }
+  /** Guides belong to the overlay or design being edited. */
+  _guides() { return this._canvasSetting("canvasGuides", {})?.[this._draft?.id] ?? { x: [], y: [] }; }
+  _saveGuides(guides) {
+    if (!this._draft?.id) return;
+    const all = { ...(this._canvasSetting("canvasGuides", {}) ?? {}) };
+    if (guides.x.length || guides.y.length) all[this._draft.id] = guides; else delete all[this._draft.id];
+    this._saveCanvasSetting("canvasGuides", all);
   }
   _allLayers() { return this._draft?.layers ?? []; }
   _canvasBlocked() { return this._busy || this._uploading; }
@@ -193,7 +220,9 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
       if (command === "cut") return this._selectionCommand("delete");
       return;
     }
-    if (command === "paste") return this._pasteLayer(payload.text);
+    if (command === "paste") return payload.files?.length ? this._historyStep(() => this._insertImages(payload.files)) : this._pasteLayer(payload.text);
+    if (command === "group") return this._groupSelection();
+    if (command === "ungroup") return this._ungroupSelection();
     return this._selectionCommand(command);
   }
 
@@ -229,6 +258,59 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
     this._markDirty();
     await this._updatePreview();
     this._selectLayers(pasted.map(layer => layer.id));
+  }
+
+  /**
+   * Upload pasted or dropped image files through the module's validated storage (PNG, JPEG or
+   * WebP) and add each as an image layer, scaled to fit the canvas, at `point` or its center.
+   */
+  async _insertImages(files, point = null) {
+    const images = [...files].filter(file => /^image\//.test(file?.type ?? "") || /\.(?:png|jpe?g|webp)$/i.test(file?.name ?? "")).slice(0, 10);
+    if (!images.length || !this._draft) return;
+    if (this._allLayers().length + images.length > 100) throw new Error(t("Editor.ComponentLimit"));
+    const draft = this._draft, added = [];
+    this._uploading = true;
+    this._uploadKind = "image";
+    this._setUploadState();
+    try {
+      for (const file of images) {
+        const path = validateAssetPath(await (services.uploadBackground ?? uploadBackground)(file));
+        if (!path) throw new Error(t("Editor.NoUploadedPath"));
+        added.push(this._imageLayerFor(path, file.name, await imageSize(file), point, added.length));
+      }
+    }
+    catch (error) { throw new Error(t("Editor.ImageUploadError", { error: errorText(error) || t("Editor.RetryImage") }), { cause: error }); }
+    finally {
+      this._uploading = false;
+      this._uploadKind = null;
+      this._setUploadState();
+    }
+    if (this._draft !== draft) { ui.notifications.warn(t("Editor.UploadedLayerChanged")); return; }
+    const composition = this._editingOverlay();
+    let top = Math.max(-1, ...[...composition.layers, ...(composition.widgets ?? [])].map(entry => entry.z));
+    for (const layer of added) { layer.z = Math.min(10000, ++top); composition.layers.push(layer); }
+    this._markDirty();
+    await this._updatePreview();
+    this._selectLayers(added.map(layer => layer.id));
+    ui.notifications.info(t("Editor.ImagesAdded", { count: added.length }));
+  }
+
+  _imageLayerFor(path, filename, size, point, index) {
+    const canvas = this._draft.canvas, layer = createLayer("image", canvas);
+    // Large images start at most 90% of the canvas; small ones keep their pixel size.
+    const scale = Math.min(1, canvas.width * 0.9 / size.width, canvas.height * 0.9 / size.height);
+    const width = Math.max(1, Math.round(size.width * scale)), height = Math.max(1, Math.round(size.height * scale));
+    const center = point ?? { x: canvas.width / 2, y: canvas.height / 2 };
+    const name = String(filename ?? "").replace(/\.[^.]+$/, "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
+    return validateLayer({ ...layer, src: path, width, height, fit: "contain", lockAspectRatio: true,
+      x: Math.round(center.x - width / 2 + index * 20), y: Math.round(center.y - height / 2 + index * 20), ...(name ? { name } : {}) }, canvas);
+  }
+
+  async _dropImages(event) {
+    event.preventDefault(); event.stopPropagation();
+    const files = [...(event.dataTransfer?.files ?? [])];
+    const point = this._preview?.nativeAt?.(event.clientX, event.clientY) ?? null;
+    await this._draftOperation(() => this._historyStep(() => this._insertImages(files, point)));
   }
 
   _textLayerFor(text) {
@@ -292,6 +374,8 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
       dirty: this._dirty,
       uploading: this._uploading,
       snapping: this._snapping(),
+      rulers: this._rulers(),
+      gridOptions: [0, ...GRID_STEPS].map(value => ({ value, label: value ? `${value} px` : t("Editor.GridOff"), selected: value === this._grid() })),
       canvasFullscreen: this._canvasFullscreen === true,
       zoomOptions: [
         { value: "fit", label: t("Editor.Fit") }, { value: "0.5", label: "50%" },
@@ -333,22 +417,32 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
         onSelect: (id, ids) => this._selectLayers(ids ?? (id ? [id] : []), id, { canvas: false }),
         onCommand: (command, payload) => { void this._draftOperation(() => this._canvasCommand(command, payload)); },
         copyText: () => this._copySelection(),
+        onGuides: guides => this._saveGuides(guides),
         isBlocked: () => this._canvasBlocked()
       });
       this._preview.setZoom(this._zoom);
       this._preview.setSnapping(this._snapping());
+      this._preview.setGuides(this._guides());
+      this._preview.setRulers(this._rulers());
+      this._preview.setGrid(this._grid());
       await this._updatePreview();
       this._preview.setSelection(this._selectedLayerIds, this._selectedLayerId, { notify: false });
     }
     this._renderLayerPanel();
     this._renderSharedWidgetAnimations();
     this._renderAnimationTestPanel();
+    const hasFiles = event => [...(event.dataTransfer?.types ?? [])].includes("Files");
     for (const host of [this._previewElement, this.element.querySelector("[data-layer-properties]")]) {
       host?.addEventListener("dragover", event => {
+        // Image files dropped on the canvas become image layers.
+        if (host === this._previewElement && hasFiles(event)) { event.preventDefault(); return; }
         const id = event.target.closest?.("[data-layer-id]")?.dataset.layerId;
         if ((this._editingLayers().find(layer => layer.id === id) ?? this._selectedLayer())?.type === "character-widget") event.preventDefault();
       });
-      host?.addEventListener("drop", event => { void this._dropActor(event); });
+      host?.addEventListener("drop", event => {
+        if (host === this._previewElement && hasFiles(event)) { void this._dropImages(event); return; }
+        void this._dropActor(event);
+      });
     }
     this.element.querySelectorAll("[data-draft-field]").forEach(input => {
       if (this._invalidInputs.has(input.dataset.draftField)) {
@@ -388,7 +482,17 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
     this.element.querySelector("[data-canvas-snap]")?.addEventListener("change", event => {
       const enabled = event.currentTarget.checked;
       this._preview?.setSnapping(enabled);
-      void Promise.resolve(game.settings?.set?.(MODULE_ID, "canvasSnapping", enabled)).catch(() => {});
+      this._saveCanvasSetting("canvasSnapping", enabled);
+    });
+    this.element.querySelector("[data-canvas-rulers]")?.addEventListener("change", event => {
+      const enabled = event.currentTarget.checked;
+      this._preview?.setRulers(enabled);
+      this._saveCanvasSetting("canvasRulers", enabled);
+    });
+    this.element.querySelector("[data-canvas-grid]")?.addEventListener("change", event => {
+      const step = Number(event.currentTarget.value);
+      this._preview?.setGrid(step);
+      this._saveCanvasSetting("canvasGrid", step);
     });
     this.element.querySelector("[data-canvas-zoom]")?.addEventListener("change", event => {
       const value = event.currentTarget.value;
@@ -397,6 +501,8 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
     });
     const fit = this.element.querySelector('[data-canvas-zoom] option[value="fit"]');
     if (fit) setText(fit, "Editor.Fit");
+    const gridOff = this.element.querySelector('[data-canvas-grid] option[value="0"]');
+    if (gridOff) setText(gridOff, "Editor.GridOff");
     for (const option of this.element.querySelectorAll('[data-draft-field="background.fit"] option')) {
       if (["cover", "contain", "stretch"].includes(option.value)) writeText(option, S(option.value[0].toUpperCase() + option.value.slice(1)));
     }
@@ -588,6 +694,8 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
     if (command === "duplicate") {
       if (this._allLayers().length >= 100) throw new Error(t("Editor.ComponentLimit"));
       const copy = duplicateLayer(composition, id);
+      // A grouped layer's copy stays in its group, just above the original.
+      if (layer.groupId) moveLayers(composition, [copy.id], layerOrder(composition).filter(entry => entry !== copy).indexOf(layer), layer.groupId);
       this._selectedLayerId = copy.id;
     }
     else if (command === "delete") {
@@ -596,7 +704,12 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
     }
     else if (command === "visible") layer.visible = !layer.visible;
     else if (command === "locked") layer.locked = !layer.locked;
-    else if (["up", "down", "front", "back"].includes(command)) reorderLayer(composition, id, command);
+    else if (["up", "down", "front", "back"].includes(command)) {
+      // Grouped layers restack inside their group; other layers step over whole groups.
+      if (layer.groupId) reorderInGroup(composition, id, command);
+      else if (["up", "down"].includes(command) && composition.layers.some(entry => entry.groupId)) stepLayer(composition, id, command);
+      else reorderLayer(composition, id, command);
+    }
     else return;
     this._markDirty();
     await this._updatePreview();
@@ -605,6 +718,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
 
   _removeLayer(composition, id) {
     deleteLayer(composition, id);
+    dissolveSmallGroups(composition);
     for (const key of this._invalidInputs.keys()) if (key.startsWith(`layer.${id}.`) || key.startsWith(`carousel.${id}.`)) this._invalidInputs.delete(key);
     this._invalidInputs.delete(`animation.${id}`); this._animationEdits.delete(`animation.${id}`);
     this._pruneSelection(composition.layers);
@@ -624,7 +738,14 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
     let selection = layers.map(layer => layer.id);
     if (command === "duplicate") {
       if (this._allLayers().length + layers.length > 100) throw new Error(t("Editor.ComponentLimit"));
-      selection = ordered.map(layer => duplicateLayer(composition, layer.id).id);
+      const copies = ordered.map(layer => duplicateLayer(composition, layer.id));
+      // Copies of grouped layers form new groups instead of joining the originals.
+      for (const groupId of new Set(copies.map(copy => copy.groupId).filter(Boolean))) {
+        const members = copies.filter(copy => copy.groupId === groupId);
+        if (members.length > 1) groupLayers(composition, members.map(copy => copy.id), members[0].groupName);
+        else { delete members[0].groupId; delete members[0].groupName; }
+      }
+      selection = copies.map(copy => copy.id);
     }
     else if (command === "delete") {
       const locked = layers.filter(layer => layer.locked);
@@ -663,62 +784,6 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(HandlebarsAppl
     this._markDirty();
     await this._updatePreview();
     this._selectLayers(this._selectedLayerIds, this._selectedLayerId);
-  }
-
-  _layerButton(label, command, id, { disabled = false, pressed } = {}) {
-    const button = document.createElement("button");
-    button.type = "button";
-    writeText(button, label);
-    writeAttr(button, "title", label);
-    writeAttr(button, "aria-label", label);
-    button.dataset.layerCommand = command;
-    button.disabled = disabled || this._uploading;
-    if (pressed !== undefined) button.setAttribute("aria-pressed", String(pressed));
-    button.addEventListener("click", event => {
-      event.preventDefault();
-      const toggle = command === "select" && (event.shiftKey || event.ctrlKey || event.metaKey);
-      void this._draftOperation(() => toggle ? this._toggleSelection(id) : this._layerCommand(command, id));
-    });
-    return button;
-  }
-
-  _renderLayerPanel() {
-    const list = this.element?.querySelector("[data-layer-list]");
-    if (!list) return;
-    list.replaceChildren();
-    const sorted = [...this._editingLayers()].sort((a, b) => b.z - a.z);
-    if (!sorted.length) {
-      const message = document.createElement("p");
-      message.className = "mso-help";
-      setText(message, "Editor.EmptyLayers");
-      list.append(message);
-    }
-    const selected = new Set(this._selectedLayerIds);
-    for (const layer of sorted) {
-      const row = document.createElement("div");
-      row.className = `mso-layer-row${selected.has(layer.id) ? " selected" : ""}${layer.id === this._selectedLayerId ? " primary" : ""}`;
-      row.dataset.layerId = layer.id;
-      const select = this._layerButton(layer.name, "select", layer.id, { pressed: selected.has(layer.id) });
-      select.className = "mso-layer-select";
-      select.textContent = "";
-      const icon = document.createElement("span");
-      icon.className = "mso-layer-type";
-      icon.textContent = layer.type === "text" ? "T" : layer.type === "image" ? "▧" : "■";
-      icon.setAttribute("aria-hidden", "true");
-      const name = document.createElement("span");
-      name.dataset.layerName = "";
-      name.textContent = layer.name;
-      select.append(icon, name);
-      const visible = this._layerButton(layer.visible ? L("Editor.Visible") : L("Editor.Hidden"), "visible", layer.id, { pressed: layer.visible });
-      visible.className = "mso-layer-toggle";
-      const locked = this._layerButton(layer.locked ? L("Editor.Locked") : L("Editor.Unlocked"), "locked", layer.id, { pressed: !!layer.locked });
-      locked.className = "mso-layer-toggle";
-      row.append(select, visible, locked);
-      list.append(row);
-    }
-    const count = this.element.querySelector("[data-layer-count]");
-    if (count) count.textContent = String(sorted.length);
-    this._renderLayerProperties();
   }
 
   _onDraftInput(event) {

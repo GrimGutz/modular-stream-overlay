@@ -203,7 +203,7 @@
       "Zoom": "Zoom",
       "CanvasZoom": "Canvas zoom",
       "InteractiveCanvas": "Interactive overlay canvas",
-      "DragHelp": "Drag to move · Handles resize · Shift/Ctrl+click or drag on empty space to select several · Hold Alt to place freely",
+      "DragHelp": "Drag to move · Handles resize · Top handle rotates (Shift: 15°) · Shift/Ctrl+click or drag on empty space to select several · Drop or paste images · Hold Alt to place freely",
       "TransparencyHelp": "Checkerboard indicates transparency. Canvas changes stay private until you save.",
       "PreviewCharacter": "Preview with character",
       "PreviewDemo": "Preview DEMO DATA",
@@ -211,7 +211,7 @@
       "LayersProperties": "Layers and properties",
       "LayerList": "Layer list",
       "Layers": "Layers",
-      "LayerOrderHelp": "Top layer is in front. The background stays behind all layers.",
+      "LayerOrderHelp": "Top layer is in front. Drag rows to restack layers or move them into or out of a group. The background stays behind all layers.",
       "SelectedLayerProperties": "Selected layer properties",
       "Properties": "Properties",
       "WholeWidgetAnimations": "Whole widget animations & triggers",
@@ -315,7 +315,9 @@
       "RoleGamemaster": "Game Master",
       "Snapping": "Snapping",
       "CanvasFullscreen": "Full-screen canvas",
-      "ExitFullscreen": "Exit full screen"
+      "ExitFullscreen": "Exit full screen",
+      "Rulers": "Rulers & guides",
+      "Grid": "Grid"
     },
     "Editor": {
       "Title": "Modular Stream Overlay",
@@ -383,7 +385,7 @@
       "SendBack": "Send to back",
       "Duplicate": "Duplicate",
       "Delete": "Delete",
-      "KeyboardHelp": "Arrow keys move 1 px; Shift moves 10 px. Ctrl/Cmd+C copies, +X cuts, +V pastes (also between worlds and browsers), +D duplicates, +A selects all, Esc deselects. Ctrl/Cmd+Z undoes (last 100 steps); Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redoes. Delete removes an unlocked layer.",
+      "KeyboardHelp": "Arrow keys move 1 px; Shift moves 10 px. Ctrl/Cmd+C copies, +X cuts, +V pastes (layers between worlds and browsers, or an image), +D duplicates, +A selects all, +G groups, +Shift+G ungroups, Esc deselects. Ctrl/Cmd+Z undoes (last 100 steps); Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redoes. Delete removes an unlocked layer.",
       "InheritMotion": "Inherit shared widget animations and triggers",
       "InheritedMotionHelp": "This widget uses the shared design's grouped animations and triggers. Edit the shared design, or turn off inheritance to configure only this instance.",
       "ContentSource": "Content source",
@@ -601,7 +603,7 @@
       "SchemaFadeOver": "Fade Over",
       "PasteUnsupported": "This kind of layer cannot be pasted here: widget designs cannot hold widgets, and overlays cannot hold character components.",
       "SelectionCount": "{count} layers selected",
-      "SelectionHelp": "Commands and alignment apply to every selected layer; locked layers stay where they are. Drag any selected layer to move them together. Shift/Ctrl+click adds or removes a layer.",
+      "SelectionHelp": "Commands, shared properties and alignment apply to every selected layer; locked layers stay where they are. Drag any selected layer to move them together. Shift/Ctrl+click adds or removes a layer. Clicking a grouped layer selects its group; click it again to pick just that layer.",
       "AlignSelection": "Align selected layers",
       "AlignOnCanvas": "Align on the canvas",
       "ArrangeLeft": "Align left edges",
@@ -613,7 +615,17 @@
       "DistributeHorizontal": "Distribute horizontally with equal gaps (3+ layers)",
       "DistributeVertical": "Distribute vertically with equal gaps (3+ layers)",
       "LockedLayersKept": "Locked layers were kept. Unlock them to delete them.",
-      "PasteMissingDesign": "This widget's design is not in this world. Copy or import the widget design first, then paste the widget again."
+      "PasteMissingDesign": "This widget's design is not in this world. Copy or import the widget design first, then paste the widget again.",
+      "GridOff": "Off",
+      "GroupName": "Group {index}",
+      "GroupNameField": "Group name",
+      "Group": "Group (Ctrl+G)",
+      "Ungroup": "Ungroup (Ctrl+Shift+G)",
+      "GroupNeedsTwo": "Select at least two layers to group them.",
+      "ExpandGroup": "Show the group's layers",
+      "CollapseGroup": "Hide the group's layers in this list",
+      "MixedValues": "— mixed —",
+      "ImagesAdded": "Image layers added: {count}. Save to publish them to OBS."
     },
     "Settings": {
       "LanguageHint": "Choose the language of this module's configuration interface on this client. Auto follows Foundry; unsupported languages use English. Stream content is unchanged.",
@@ -656,7 +668,8 @@
     },
     "Canvas": {
       "Description": "Overlay design canvas. Select layers, drag, or use arrow keys.",
-      "LockedLayer": "{name} (locked)"
+      "LockedLayer": "{name} (locked)",
+      "RotateHandle": "Drag to rotate; Shift snaps to 15° steps"
     },
     "Buttons": {
       "Confirm": "Confirm",

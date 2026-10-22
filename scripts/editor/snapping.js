@@ -12,10 +12,14 @@ const end = (box, axis) => start(box, axis) + size(box, axis);
 const crossAxis = axis => AXES[axis].cross;
 const overlaps = (a, b, axis) => start(a, axis) < end(b, axis) && start(b, axis) < end(a, axis);
 
-/** Lines a box edge or center can stick to on one axis, with what produced them. */
-function lines(axis, targets, canvas) {
+/**
+ * Lines a box edge or center can stick to on one axis, with what produced them. `extra` are
+ * ruler guides and grid lines: they attract like the others but draw no snap line of their own.
+ */
+function lines(axis, targets, canvas, extra = []) {
   const extent = axis === "x" ? canvas.width : canvas.height;
   const result = [0, extent / 2, extent].map(position => ({ position, target: null }));
+  for (const position of extra) result.push({ position, target: null, quiet: true });
   for (const target of targets) {
     for (const position of [start(target, axis), start(target, axis) + size(target, axis) / 2, end(target, axis)]) result.push({ position, target });
   }
@@ -45,10 +49,19 @@ function spacingCandidates(box, axis, targets) {
     candidate.value + length <= start(neighbour, axis) + EPSILON || candidate.value >= end(neighbour, axis) - EPSILON));
 }
 
-function bestOffset(box, axis, targets, canvas, threshold, { spacing = true } = {}) {
+/** Ruler guides on this axis and the grid lines on either side of the box edges and center. */
+function extraLines(box, axis, { guides, grid } = {}) {
+  const result = [...(guides?.[axis] ?? [])];
+  if (grid > 0) for (const anchor of [start(box, axis), start(box, axis) + size(box, axis) / 2, end(box, axis)]) {
+    result.push(Math.floor(anchor / grid) * grid, Math.ceil(anchor / grid) * grid);
+  }
+  return result;
+}
+
+function bestOffset(box, axis, targets, canvas, threshold, { spacing = true, extra = [] } = {}) {
   let best = null;
   const anchors = [start(box, axis), start(box, axis) + size(box, axis) / 2, end(box, axis)];
-  for (const line of lines(axis, targets, canvas)) for (const anchor of anchors) {
+  for (const line of lines(axis, targets, canvas, extra)) for (const anchor of anchors) {
     const offset = line.position - anchor;
     if (Math.abs(offset) <= threshold && (!best || Math.abs(offset) < Math.abs(best.offset))) best = { offset, kind: "align" };
   }
@@ -90,12 +103,15 @@ function spacingGuides(box, axis, snap) {
   return [reference, placed];
 }
 
-/** Snap a moved box. Returns its adjusted position and the guides to draw. */
-export function snapMove(box, targets, canvas, threshold) {
+/**
+ * Snap a moved box. Returns its adjusted position and the guides to draw. `options.guides`
+ * ({x: [], y: []}) and `options.grid` (a step in pixels) add ruler guides and a grid.
+ */
+export function snapMove(box, targets, canvas, threshold, options = {}) {
   const result = { ...box };
   const snaps = {};
   for (const axis of ["x", "y"]) {
-    const snap = bestOffset(result, axis, targets, canvas, threshold);
+    const snap = bestOffset(result, axis, targets, canvas, threshold, { extra: extraLines(result, axis, options) });
     if (snap) { result[AXES[axis].start] += snap.offset; snaps[axis] = snap; }
   }
   const guides = ["x", "y"].flatMap(axis => [...alignmentGuides(result, axis, targets, canvas), ...spacingGuides(result, axis, snaps[axis])]);
@@ -106,7 +122,7 @@ export function snapMove(box, targets, canvas, threshold) {
  * Snap the edges a resize handle moves (n/s/e/w and corners). The opposite edges stay put.
  * Returns the adjusted geometry and alignment guides.
  */
-export function snapResize(box, handle, targets, canvas, threshold, { minSize = 8 } = {}) {
+export function snapResize(box, handle, targets, canvas, threshold, { minSize = 8, ...options } = {}) {
   const result = { ...box };
   for (const axis of ["x", "y"]) {
     const moving = axis === "x" ? (handle.includes("e") ? "end" : handle.includes("w") ? "start" : null)
@@ -114,7 +130,7 @@ export function snapResize(box, handle, targets, canvas, threshold, { minSize = 
     if (!moving) continue;
     const edge = moving === "end" ? end(result, axis) : start(result, axis);
     let best = null;
-    for (const line of lines(axis, targets, canvas)) {
+    for (const line of lines(axis, targets, canvas, extraLines(result, axis, options))) {
       const offset = line.position - edge;
       if (Math.abs(offset) <= threshold && (!best || Math.abs(offset) < Math.abs(best))) best = offset;
     }

@@ -24,7 +24,7 @@ class Element {
   releasePointerCapture(id) { this.captures.delete(id); }
   focus() { this.focused=true; }
   closest(selector) {
-    const key = selector === "[data-layer-id]" ? "layerId" : selector === "[data-resize-handle]" ? "resizeHandle" : null;
+    const key = { "[data-layer-id]": "layerId", "[data-resize-handle]": "resizeHandle", "[data-rotate-handle]": "rotateHandle", "[data-guide-axis]": "guideAxis", "[data-ruler]": "ruler" }[selector] ?? null;
     return key && this.dataset[key] !== undefined ? this : this.parent?.closest(selector) ?? null;
   }
 }
@@ -70,7 +70,8 @@ test("selected handles remain above overlaps and aspect resizing preserves sourc
   const f=fixture();const above=createLayer("text",f.overlay.canvas);above.z=10;f.overlay.layers.push(above);
   await f.canvas.render(f.overlay);f.canvas.setZoom(1);f.canvas.select(f.layer.id);
   const selection=f.canvas.controls.children.at(-1);
-  assert.equal(selection.dataset.layerId,f.layer.id);assert.equal(selection.children.length,8);
+  assert.equal(selection.dataset.layerId,f.layer.id);assert.equal(selection.children.filter(node=>node.dataset.resizeHandle).length,8);
+  assert.equal(selection.children.filter(node=>node.dataset.rotateHandle!==undefined).length,1,"One rotation handle");
   const handle=selection.children.find(node=>node.dataset.resizeHandle==="se");
   f.canvas.pointerDown(event(handle));f.canvas.pointerMove(event(handle,{clientX:110,clientY:60}));
   assert(f.layer.width>640);assert(Math.abs(f.layer.width/f.layer.height-640/360)<.000001);
@@ -253,4 +254,69 @@ test("copy raised by the key press itself writes the clipboard once, with no fal
   assert.equal(data["text/plain"],"COPIED");assert.equal(copy.prevented,true);
   assert.deepEqual(f.commands,["copy"],"The fallback does not copy a second time");
   delete document.execCommand;f.canvas.destroy();
+});
+
+test("the rotation handle turns a layer around its center; Shift snaps to 15° and near-straight angles snap",async()=>{
+  const f=fixture();await f.canvas.render(f.overlay);f.canvas.setZoom(1);f.canvas.select(f.layer.id);
+  // Layer 100,80 640×360: center 420,260. The handle starts straight above the center.
+  const rotate=()=>f.canvas.controls.children.at(-1).children.find(node=>node.dataset.rotateHandle!==undefined);
+  f.canvas.pointerDown(event(rotate(),{clientX:420,clientY:60}));
+  f.canvas.pointerMove(event(rotate(),{clientX:620,clientY:260}));assert.equal(f.layer.rotation,90);
+  f.canvas.pointerMove(event(rotate(),{clientX:620,clientY:200}));assert.equal(f.layer.rotation,73.3);
+  f.canvas.pointerMove(event(rotate(),{clientX:620,clientY:200,shiftKey:true}));assert.equal(f.layer.rotation,75);
+  f.canvas.pointerMove(event(rotate(),{clientX:425,clientY:60}));assert.equal(f.layer.rotation,0,"Within 2° of straight snaps");
+  f.canvas.pointerMove(event(rotate(),{clientX:425,clientY:60,altKey:true}));assert.equal(f.layer.rotation,1.4);
+  f.canvas.keyDown(event(f.host,{key:"Escape"}));assert.equal(f.layer.rotation,0,"Escape restores the angle");
+  assert.equal(f.layer.x,100,"Rotation never moves the layer");
+  f.canvas.destroy();
+});
+
+test("clicking a grouped layer selects its group and drags it; clicking again picks just that layer",async()=>{
+  const f=group();Object.assign(f.layer,{groupId:"group-1",groupName:"Pair"});Object.assign(f.second,{groupId:"group-1",groupName:"Pair"});
+  await f.canvas.render(f.overlay);f.canvas.setZoom(1);f.canvas.setSnapping(false);
+  const hit=id=>f.canvas.controls.children.find(node=>node.dataset.layerId===id&&node.className==="mso-layer-hit");
+  f.canvas.pointerDown(event(hit(f.second.id)));
+  assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id]);assert.equal(f.canvas.selectedId,f.second.id);
+  f.canvas.pointerMove(event(hit(f.second.id),{clientX:30,clientY:20}));f.canvas.pointerUp(event(hit(f.second.id),{clientX:30,clientY:20}));
+  assert.deepEqual([f.layer.x,f.second.x],[120,920],"The whole group moved");
+  f.canvas.pointerDown(event(hit(f.second.id)));f.canvas.pointerUp(event(hit(f.second.id)));
+  assert.deepEqual(f.canvas.selectedIds,[f.second.id]);
+  f.canvas.select(null);f.canvas.pointerDown(event(hit(f.layer.id),{shiftKey:true}));
+  assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id],"Shift-click adds the whole group");
+  f.canvas.select(null);
+  const background=f.canvas.controls.children.find(node=>node.dataset.layerId===f.locked.id);
+  f.canvas.pointerDown(event(background,{clientX:90,clientY:70}));f.canvas.pointerUp(event(background,{clientX:760,clientY:460}));
+  assert.deepEqual(f.canvas.selectedIds,[f.layer.id,f.second.id],"A rectangle around one member selects its group");
+  f.canvas.destroy();
+});
+
+test("guides come out of the rulers, snap moved layers, and go back into the ruler to be removed",async()=>{
+  const f=fixture();const saved=[];f.canvas.onGuides=guides=>saved.push(guides);
+  await f.canvas.render(f.overlay);f.canvas.setZoom(1);f.canvas.setRulers(true);
+  const [top,left]=[f.canvas.rulers.top,f.canvas.rulers.left];
+  assert.equal(top.hidden,false);assert.equal(top.dataset.ruler,"y");
+  f.canvas.pointerDown(event(left,{clientX:10,clientY:300}));f.canvas.pointerMove(event(left,{clientX:803,clientY:300}));
+  const live=f.canvas.controls.children.find(node=>node.dataset.guideAxis==="x");
+  assert.equal(live.style.left,"803px");assert.equal(live.children[0].textContent,"803","The position shows while dragging");
+  f.canvas.pointerUp(event(left,{clientX:803,clientY:300}));
+  assert.deepEqual(saved.at(-1),{x:[803],y:[]});
+  f.canvas.select(f.layer.id);const box=f.canvas.controls.children.find(node=>node.className==="mso-layer-hit");
+  // Right edge 740 dragged by 60 lands at 800, within reach of the guide at 803.
+  f.canvas.pointerDown(event(box,{clientX:10,clientY:20}));f.canvas.pointerMove(event(box,{clientX:70,clientY:20}));f.canvas.pointerUp(event(box,{clientX:70,clientY:20}));
+  assert.equal(f.layer.x+f.layer.width,803);
+  const guide=f.canvas.controls.children.find(node=>node.dataset.guideAxis==="x");
+  f.canvas.pointerDown(event(guide,{clientX:803,clientY:300}));f.canvas.pointerUp(event(guide,{clientX:5,clientY:300}));
+  assert.deepEqual(saved.at(-1),{x:[],y:[]},"Dropped on the ruler, the guide is gone");
+  f.canvas.setRulers(false);assert.equal(top.hidden,true);
+  f.canvas.destroy();
+});
+
+test("the grid draws and snaps edges to its lines",async()=>{
+  const f=fixture();await f.canvas.render(f.overlay);f.canvas.setZoom(1);f.canvas.setGrid(50);
+  assert.equal(f.canvas.controls.children[0].className,"mso-grid");assert.equal(f.canvas.controls.children[0].style["--mso-grid-size"],"50px");
+  f.canvas.select(f.layer.id);const box=f.canvas.controls.children.find(node=>node.className==="mso-layer-hit");
+  f.canvas.pointerDown(event(box,{clientX:10,clientY:20}));f.canvas.pointerMove(event(box,{clientX:57,clientY:20}));f.canvas.pointerUp(event(box,{clientX:57,clientY:20}));
+  assert.equal(f.layer.x,150,"147 snaps to the grid line at 150");
+  f.canvas.setGrid(0);assert(!f.canvas.controls.children.some(node=>node.className==="mso-grid"));
+  f.canvas.destroy();
 });

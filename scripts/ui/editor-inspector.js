@@ -54,13 +54,15 @@ export const LayerInspector = Base => class extends Base {
     host.append(section);
   }
 
-  /** Several selected layers: alignment, distribution and commands that apply to all of them. */
+  /** Several selected layers: their group, shared properties, alignment and commands for all of them. */
   _renderSelectionProperties(host, layers) {
     const movable = layers.filter(layer => !layer.locked);
     const count = document.createElement("p");
     count.className = "mso-selection-count";
     setText(count, "Editor.SelectionCount", { count: layers.length });
     host.append(count);
+    this._renderGroupControls(host, layers);
+    this._renderSharedProperties(host, layers);
     this._renderArrangeButtons(host, { several: true, distribute: movable.length >= 3, disabled: !movable.length });
     const commands = document.createElement("div");
     commands.className = "mso-layer-commands";
@@ -78,6 +80,110 @@ export const LayerInspector = Base => class extends Base {
     help.className = "mso-help";
     setText(help, "Editor.SelectionHelp");
     host.append(help);
+  }
+
+  /** Exactly one whole group: its name and Ungroup. Anything else: Group. */
+  _renderGroupControls(host, layers) {
+    const groups = new Set(layers.map(layer => layer.groupId));
+    const [groupId] = groups;
+    const whole = groups.size === 1 && groupId && this._allLayers().filter(layer => layer.groupId === groupId).length === layers.length;
+    const section = document.createElement("div");
+    section.className = "mso-group-controls";
+    if (whole) {
+      const label = document.createElement("label"); label.className = "mso-layer-field";
+      const caption = document.createElement("span"); setText(caption, "Editor.GroupNameField");
+      const input = document.createElement("input"); input.type = "text"; input.maxLength = 80; input.dataset.groupNameField = "";
+      input.value = layers[0].groupName ?? ""; input.disabled = this._uploading;
+      setAttr(input, "aria-label", "Editor.GroupNameField");
+      input.addEventListener("change", () => {
+        void this._draftOperation(async () => {
+          if (!await this._renameGroup(groupId, input.value)) { input.value = layers[0].groupName ?? ""; }
+        });
+      });
+      label.append(caption, input);
+      section.append(label);
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.groupAction = whole ? "ungroup" : "group";
+    setText(button, whole ? "Editor.Ungroup" : "Editor.Group");
+    button.disabled = this._uploading;
+    button.addEventListener("click", () => { void this._draftOperation(() => whole ? this._ungroupSelection() : this._groupSelection()); });
+    section.append(button);
+    if (!whole && [...groups].some(Boolean)) {
+      const ungroup = document.createElement("button");
+      ungroup.type = "button"; ungroup.dataset.groupAction = "ungroup";
+      setText(ungroup, "Editor.Ungroup"); ungroup.disabled = this._uploading;
+      ungroup.addEventListener("click", () => { void this._draftOperation(() => this._ungroupSelection()); });
+      section.append(ungroup);
+    }
+    host.append(section);
+  }
+
+  /**
+   * Fields every selected layer can share: opacity, visibility, lock and, where layers have them,
+   * font, size, weight and color. A blank field or "mixed" choice means the values differ.
+   */
+  _renderSharedProperties(host, layers) {
+    const section = document.createElement("div");
+    section.className = "mso-shared-properties";
+    const grid = document.createElement("div");
+    grid.className = "mso-property-grid";
+    const field = (parent, key, label, { type = "text", options, min, max, step } = {}) => {
+      const applicable = layers.filter(layer => Object.hasOwn(layer, key));
+      if (!applicable.length) return;
+      const values = new Set(applicable.map(layer => String(layer[key])));
+      const mixed = values.size > 1;
+      const wrapper = document.createElement("label");
+      wrapper.className = `mso-layer-field${type === "checkbox" ? " mso-checkbox-field" : ""}`;
+      const caption = document.createElement("span"); setText(caption, label);
+      const input = document.createElement(options ? "select" : "input");
+      input.dataset.sharedField = key;
+      setAttr(input, "aria-label", label);
+      if (options) {
+        if (mixed) { const option = document.createElement("option"); option.value = ""; setText(option, "Editor.MixedValues"); input.append(option); }
+        for (const value of options) { const option = document.createElement("option"); option.value = String(value); option.textContent = String(value); input.append(option); }
+        input.value = mixed ? "" : String(applicable[0][key]);
+      } else {
+        input.type = type;
+        if (type === "checkbox") { input.checked = applicable.every(layer => layer[key]); input.indeterminate = mixed; }
+        else { input.value = mixed ? "" : String(applicable[0][key]); if (mixed) setAttr(input, "placeholder", "Editor.MixedValues"); }
+        for (const [name, value] of Object.entries({ min, max, step })) if (value !== undefined) input[name] = String(value);
+      }
+      input.disabled = this._uploading;
+      input.addEventListener(options || type === "checkbox" ? "change" : "input", () => this._onSharedInput(input, applicable, key));
+      if (type === "checkbox") wrapper.append(input, caption); else wrapper.append(caption, input);
+      parent.append(wrapper);
+    };
+    field(grid, "opacity", "Editor.Opacity", { type: "number", min: 0, max: 1, step: .01 });
+    field(grid, "fontSize", "Editor.FontSize", { type: "number", min: 1, max: 512, step: "any" });
+    field(grid, "fontWeight", "Editor.FontWeight", { options: FONT_WEIGHTS });
+    field(grid, "color", "Editor.Color", {});
+    section.append(grid);
+    const fonts = layers.filter(layer => Object.hasOwn(layer, "fontFamily"));
+    field(section, "fontFamily", "Editor.Font", { options: [...new Set(fonts.flatMap(layer => this._fontChoices(layer.fontFamily)))] });
+    const toggles = document.createElement("div");
+    toggles.className = "mso-property-grid";
+    field(toggles, "visible", "Editor.Visible", { type: "checkbox" });
+    field(toggles, "locked", "Editor.Locked", { type: "checkbox" });
+    section.append(toggles);
+    host.append(section);
+  }
+
+  _onSharedInput(input, layers, key) {
+    if (this._busy || this._uploading || !layers.every(layer => this._allLayers().includes(layer))) return;
+    let value = input.type === "checkbox" ? input.checked : input.value;
+    if (value === "") return;
+    if (["opacity", "fontSize"].includes(key)) value = input.value.trim() === "" ? NaN : Number(input.value);
+    try {
+      const validated = layers.map(layer => validateLayer({ ...layer, [key]: value }, this._draft.canvas));
+      layers.forEach((layer, index) => Object.assign(layer, validated[index]));
+      setValidity(input, "");
+      if (input.type === "checkbox") input.indeterminate = false;
+      this._markDirty();
+      void this._updatePreview().then(() => { if (["visible", "locked"].includes(key)) this._renderLayerPanel(); });
+    }
+    catch (error) { setValidity(input, error); }
   }
 
   _layerField(host, layer, field, label, { type = "text", min, max, step, options, maxLength } = {}) {

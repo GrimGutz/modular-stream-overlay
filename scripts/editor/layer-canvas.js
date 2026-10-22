@@ -4,6 +4,7 @@ import { clone } from "../core/schema.js";
 import { nativePoint, moveGeometry, resizeGeometry, shortcutCommand } from "./geometry.js";
 import { snapMove, snapResize, snapTargets } from "./snapping.js";
 import { boundsOf, containsBox } from "./arrange.js";
+import { CanvasRulers, RULER_SIZE } from "./rulers.js";
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 // Snapping reach in screen pixels, so it feels the same at every zoom level.
@@ -11,21 +12,29 @@ const SNAP_DISTANCE = 6;
 // A press that moves less than this many screen pixels is a click, not a selection rectangle.
 const CLICK_DISTANCE = 3;
 const additive = event => event.shiftKey || event.ctrlKey || event.metaKey;
+// Rotation snaps to straight angles within this many degrees; Shift snaps to 15° steps.
+const STRAIGHT_SNAP = 2;
+const normalizeAngle = angle => { const value = ((angle + 180) % 360 + 360) % 360 - 180; return value === -180 ? 180 : value; };
 
 /**
  * Editor-only interaction surface. The broadcast renderer never constructs this class.
- * Several layers can be selected; the primary one (the last clicked) owns the resize handles
- * and the editor's property panel.
+ * Several layers can be selected; the primary one (the last clicked) owns the resize and
+ * rotation handles and the editor's property panel. Clicking a grouped layer selects its group.
+ * Rulers, guides ({x: [], y: []} positions) and the grid are editor aids only.
  */
 export class LayerCanvas {
-  constructor({ host, keyboardRoot = host, widgets, context, getOverlay, onChange = () => {}, onSelect = () => {}, onCommand = () => {}, copyText = () => null, isBlocked = () => false }) {
+  constructor({ host, keyboardRoot = host, widgets, context, getOverlay, onChange = () => {}, onSelect = () => {}, onCommand = () => {}, copyText = () => null, onGuides = () => {}, isBlocked = () => false }) {
     this.host = host;
     this.getOverlay = getOverlay;
     this.onChange = onChange;
     this.onSelect = onSelect;
     this.onCommand = onCommand;
     this.copyText = copyText;
+    this.onGuides = onGuides;
     this.isBlocked = isBlocked;
+    this.guides = { x: [], y: [] };
+    this.rulersOn = false;
+    this.grid = 0;
     this.selectedIds = [];
     this.primaryId = null;
     this.snapping = true;
@@ -43,6 +52,8 @@ export class LayerCanvas {
     this.surface = document.createElement("div");
     this.surface.className = "mso-design-surface";
     this.host.replaceChildren(this.surface);
+    this.rulers = new CanvasRulers(host);
+    this.rulers.attach();
     this.renderer = new OverlayRenderer(this.surface, { widgets, context, preview: true, onLayout: layout => this.layoutControls(layout) });
     this.resizeObserver = new ResizeObserver(() => this.layout());
     this.resizeObserver.observe(host);
@@ -52,6 +63,7 @@ export class LayerCanvas {
     this.listen(host, "pointercancel", event => this.pointerCancel(event));
     this.listen(host, "lostpointercapture", event => this.pointerCancel(event));
     this.listen(host, "dragstart", event => event.preventDefault());
+    this.listen(host, "scroll", () => this.drawRulers());
     this.listen(keyboardRoot, "keydown", event => this.keyDown(event), true);
     // Clipboard events target the page body when no text is selected; only a canvas that is
     // waiting for one after its own shortcut reacts.
@@ -103,11 +115,43 @@ export class LayerCanvas {
 
   setSnapping(enabled) { this.snapping = enabled === true; }
 
+  /** Rulers also show the guides; snapping uses guides only while they are shown. */
+  setRulers(enabled) {
+    this.rulersOn = enabled === true;
+    this.rulers.setVisible(this.rulersOn);
+    this.host.classList.toggle?.("mso-with-rulers", this.rulersOn);
+    this.layout();
+    this.renderControls();
+  }
+
+  /** Grid step in native pixels; 0 turns the grid off. */
+  setGrid(step) {
+    this.grid = Number.isFinite(step) && step > 0 ? step : 0;
+    this.renderControls();
+  }
+
+  setGuides(guides) {
+    const clean = values => [...new Set((Array.isArray(values) ? values : []).filter(Number.isFinite).map(Math.round))].slice(0, 100);
+    this.guides = { x: clean(guides?.x), y: clean(guides?.y) };
+    this.renderControls();
+  }
+
+  snapOptions() { return { guides: this.rulersOn ? this.guides : undefined, grid: this.grid }; }
+
+  drawRulers() { this.rulers.draw(this.renderer.layout, (this.getOverlay?.() ?? this.overlay)?.canvas); }
+
+  /** Native canvas coordinates of a screen point, for drops. */
+  nativeAt(clientX, clientY) {
+    const rect = this.controls?.getBoundingClientRect?.();
+    return rect ? nativePoint(clientX, clientY, rect, this.renderer.layout?.scale ?? 1) : null;
+  }
   layout() {
     if (!this.overlay || this.disposed) return;
     const bounds = this.host.getBoundingClientRect();
     const { width, height } = this.overlay.canvas;
-    const scale = this.zoom === "fit" ? Math.max(0.01, Math.min(Math.max(1, bounds.width - 32) / width, Math.max(1, bounds.height - 32) / height)) : this.zoom;
+    // Fitting leaves room for the rulers on every side, so the canvas stays centered.
+    const margin = 32 + (this.rulersOn ? 2 * RULER_SIZE : 0);
+    const scale = this.zoom === "fit" ? Math.max(0.01, Math.min(Math.max(1, bounds.width - margin) / width, Math.max(1, bounds.height - margin) / height)) : this.zoom;
     this.surface.style.width = `${Math.max(bounds.width - 2, width * scale + 32)}px`;
     this.surface.style.height = `${Math.max(bounds.height - 2, height * scale + 32)}px`;
     this.renderer.setScale(scale);
@@ -121,6 +165,8 @@ export class LayerCanvas {
     this.controls.style.setProperty("--mso-handle-size", `${9 / layout.scale}px`);
     this.controls.style.setProperty("--mso-outline-size", `${1.5 / layout.scale}px`);
     this.controls.style.setProperty("--mso-guide-font", `${11 / layout.scale}px`);
+    this.controls.style.setProperty("--mso-rotate-offset", `${-26 / layout.scale}px`);
+    this.drawRulers();
   }
 
   select(id, { notify = true } = {}) { this.setSelection(id ? [id] : [], id, { notify }); }
@@ -142,6 +188,12 @@ export class LayerCanvas {
     this.controls.replaceChildren();
     const overlay = this.getOverlay?.() ?? this.overlay;
     if (!overlay) return;
+    if (this.grid) {
+      const grid = document.createElement("div");
+      grid.className = "mso-grid";
+      grid.style.setProperty("--mso-grid-size", `${this.grid}px`);
+      this.controls.append(grid);
+    }
     const selected = new Set(this.selectedIds);
     for (const layer of [...overlay.layers].sort((a, b) => a.z - b.z)) {
       if (!layer.visible) continue;
@@ -162,11 +214,18 @@ export class LayerCanvas {
       selection.className = `mso-layer-selection${layer.locked ? " locked" : ""}`;
       selection.dataset.layerId = layer.id;
       this.boxGeometry(selection, layer);
-      if (chosen.length === 1 && !layer.locked) for (const direction of HANDLES) {
-        const handle = document.createElement("span");
-        handle.className = `mso-resize-handle mso-handle-${direction}`;
-        handle.dataset.resizeHandle = direction;
-        selection.append(handle);
+      if (chosen.length === 1 && !layer.locked) {
+        for (const direction of HANDLES) {
+          const handle = document.createElement("span");
+          handle.className = `mso-resize-handle mso-handle-${direction}`;
+          handle.dataset.resizeHandle = direction;
+          selection.append(handle);
+        }
+        const rotate = document.createElement("span");
+        rotate.className = "mso-rotate-handle";
+        rotate.dataset.rotateHandle = "";
+        setAttr(rotate, "title", "Canvas.RotateHandle");
+        selection.append(rotate);
       }
       this.controls.append(selection);
     }
@@ -177,6 +236,20 @@ export class LayerCanvas {
       this.controls.append(group);
       this.groupGeometry(group, chosen);
     }
+    if (this.rulersOn) for (const axis of ["x", "y"]) this.guides[axis].forEach((position, index) => {
+      const guide = document.createElement("div");
+      guide.className = `mso-guide mso-guide-${axis}`;
+      guide.dataset.guideAxis = axis;
+      guide.dataset.guideIndex = String(index);
+      Object.assign(guide.style, axis === "x" ? { left: `${position}px`, top: "0px", height: `${overlay.canvas.height}px` }
+        : { top: `${position}px`, left: "0px", width: `${overlay.canvas.width}px` });
+      if (this.gesture?.guide?.axis === axis && this.gesture.guide.index === index) {
+        const label = document.createElement("span");
+        label.textContent = String(position);
+        guide.append(label);
+      }
+      this.controls.append(guide);
+    });
     if (this.marquee?.box) {
       const marquee = document.createElement("div");
       marquee.className = "mso-marquee";
@@ -204,37 +277,123 @@ export class LayerCanvas {
     }
   }
 
+  /** Visible members of a layer's group, or just the layer. */
+  groupOf(layer) {
+    return layer.groupId ? this.layers().filter(entry => entry.groupId === layer.groupId && entry.visible).sort((a, b) => a.z - b.z).map(entry => entry.id) : [layer.id];
+  }
+
+  /** IDs plus every visible member of their groups. */
+  withGroups(ids) {
+    const chosen = new Set(ids);
+    const groups = new Set(this.layers().filter(layer => chosen.has(layer.id) && layer.groupId).map(layer => layer.groupId));
+    return [...ids, ...this.layers().filter(layer => groups.has(layer.groupId) && layer.visible && !chosen.has(layer.id)).sort((a, b) => a.z - b.z).map(layer => layer.id)];
+  }
+
   pointerDown(event) {
     if (event.button !== 0 || this.disposed || this.pendingRenderGeneration !== null || this.isBlocked() || !this.overlay || this.gesture || this.marquee) return;
+    const ruler = event.target.closest?.("[data-ruler]");
+    const guide = event.target.closest?.("[data-guide-axis]");
+    this.host.focus({ preventScroll: true });
+    if (ruler || guide) { this.startGuide(event, ruler?.dataset.ruler ?? guide.dataset.guideAxis, guide ? Number(guide.dataset.guideIndex) : null); return; }
     const box = event.target.closest?.("[data-layer-id]");
     const handle = event.target.closest?.("[data-resize-handle]")?.dataset.resizeHandle;
+    const rotate = event.target.closest?.("[data-rotate-handle]");
     const overlay = this.getOverlay?.() ?? this.overlay;
     const layer = box && overlay.layers.find(value => value.id === box.dataset.layerId);
-    this.host.focus({ preventScroll: true });
+    if (layer && rotate && !layer.locked && layer.visible) { this.startRotation(event, overlay, layer); return; }
     const previous = [...this.selectedIds];
-    // Shift, Ctrl or Cmd adds a layer to the selection or removes it.
+    const members = layer ? this.groupOf(layer) : [];
+    // Shift, Ctrl or Cmd adds a layer, or its whole group, to the selection or removes it.
     if (layer && !handle && additive(event)) {
       event.preventDefault(); event.stopPropagation();
-      const ids = previous.includes(layer.id) ? previous.filter(id => id !== layer.id) : [...previous, layer.id];
-      this.setSelection(ids, ids.includes(layer.id) ? layer.id : undefined);
+      const removing = members.every(id => previous.includes(id));
+      const ids = removing ? previous.filter(id => !members.includes(id)) : [...previous, ...members.filter(id => !previous.includes(id))];
+      this.setSelection(ids, removing ? undefined : layer.id);
       return;
     }
     const grouped = !!layer && !handle && previous.length > 1 && previous.includes(layer.id);
-    if (!grouped && !(additive(event) && !layer)) this.select(layer?.id ?? null);
+    // A grouped layer selects its group first; clicking it again then picks just that layer.
+    const groupFirst = !!layer && !handle && !grouped && members.length > 1;
+    if (groupFirst) this.setSelection(members, layer.id);
+    else if (!grouped && !(additive(event) && !layer)) this.select(layer?.id ?? null);
     // Empty space and locked layers start a selection rectangle; a plain click just selects.
     if (!layer || !layer.visible || layer.locked) {
       this.startMarquee(event, additive(event) ? previous : []);
       return;
     }
     event.preventDefault(); event.stopPropagation();
-    const moving = grouped ? overlay.layers.filter(entry => previous.includes(entry.id) && entry.visible && !entry.locked) : [layer];
+    const together = grouped || groupFirst ? new Set(this.selectedIds) : null;
+    const moving = together ? overlay.layers.filter(entry => together.has(entry.id) && entry.visible && !entry.locked) : [layer];
     this.gesture = {
       pointerId: event.pointerId, overlay, layerId: layer.id, start: clone(layer), handle, grouped, moved: false,
       starts: new Map(moving.map(entry => [entry.id, clone(entry)])),
       clientX: event.clientX, clientY: event.clientY, scale: this.renderer.layout?.scale ?? 1
     };
+    this.capture(event);
+  }
+
+  capture(event) {
     this.host.setPointerCapture(event.pointerId);
     this.host.classList.add("mso-manipulating");
+  }
+
+  /** Turn the layer around its center by dragging the handle above it. */
+  startRotation(event, overlay, layer) {
+    event.preventDefault(); event.stopPropagation();
+    const rect = this.controls.getBoundingClientRect(), scale = this.renderer.layout?.scale ?? 1;
+    const center = { x: layer.x + layer.width / 2, y: layer.y + layer.height / 2 };
+    const point = nativePoint(event.clientX, event.clientY, rect, scale);
+    this.gesture = { pointerId: event.pointerId, overlay, layerId: layer.id, start: clone(layer), starts: new Map([[layer.id, clone(layer)]]), moved: false,
+      rotate: { rect, scale, center, angle: Math.atan2(point.y - center.y, point.x - center.x) } };
+    this.capture(event);
+  }
+
+  rotateMove(gesture, layer, event) {
+    const { rect, scale, center, angle } = gesture.rotate;
+    const point = nativePoint(event.clientX, event.clientY, rect, scale);
+    const turned = (Math.atan2(point.y - center.y, point.x - center.x) - angle) * 180 / Math.PI;
+    let rotation = normalizeAngle((gesture.start.rotation ?? 0) + turned);
+    if (event.shiftKey) rotation = normalizeAngle(Math.round(rotation / 15) * 15);
+    else {
+      rotation = Math.round(rotation * 10) / 10;
+      const straight = Math.round(rotation / 90) * 90;
+      if (this.snapping && !event.altKey && Math.abs(rotation - straight) < STRAIGHT_SNAP) rotation = normalizeAngle(straight);
+    }
+    this.showAngle(layer, rotation);
+    if (layer.rotation === rotation) return;
+    gesture.moved = true;
+    layer.rotation = rotation;
+    this.renderer.updateLayer(layer);
+    this.updateBoxes([layer]);
+    this.onChange(layer);
+  }
+
+  showAngle(layer, rotation) {
+    if (!this.controls) return;
+    this.angleLabel ??= document.createElement("div");
+    this.angleLabel.className = "mso-angle-label";
+    this.angleLabel.textContent = `${rotation}°`;
+    Object.assign(this.angleLabel.style, { left: `${layer.x + layer.width / 2}px`, top: `${layer.y + layer.height / 2}px` });
+    if (this.angleLabel.parentElement !== this.controls) this.controls.append(this.angleLabel);
+  }
+
+  /** Drag a new guide out of a ruler, or move an existing one; dropping it on the ruler removes it. */
+  startGuide(event, axis, index) {
+    if (!this.rulersOn || !["x", "y"].includes(axis) || !this.controls) return;
+    event.preventDefault(); event.stopPropagation();
+    const previous = { x: [...this.guides.x], y: [...this.guides.y] };
+    if (index === null) { this.guides[axis].push(0); index = this.guides[axis].length - 1; }
+    this.gesture = { pointerId: event.pointerId, overlay: this.getOverlay?.() ?? this.overlay, guide: { axis, index },
+      previous, rect: this.controls.getBoundingClientRect(), scale: this.renderer.layout?.scale ?? 1 };
+    this.capture(event);
+    this.guideMove(event);
+  }
+
+  guideMove(event) {
+    const { guide, rect, scale } = this.gesture;
+    const point = nativePoint(event.clientX, event.clientY, rect, scale);
+    this.guides[guide.axis][guide.index] = Math.round(point[guide.axis]);
+    this.renderControls();
   }
 
   startMarquee(event, base) {
@@ -251,9 +410,11 @@ export class LayerCanvas {
     const gesture = this.gesture;
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     if (this.pendingRenderGeneration !== null || this.isBlocked() || (this.getOverlay?.() ?? this.overlay) !== gesture.overlay) { this.cancelGesture(); return; }
+    if (gesture.guide) { event.preventDefault(); event.stopPropagation(); this.guideMove(event); return; }
     const layer = gesture.overlay.layers.find(value => value.id === gesture.layerId);
     if (!layer || layer.locked || !layer.visible) { this.cancelGesture(); return; }
     event.preventDefault(); event.stopPropagation();
+    if (gesture.rotate) { this.rotateMove(gesture, layer, event); return; }
     const delta = nativePoint(event.clientX, event.clientY, { left: gesture.clientX, top: gesture.clientY }, gesture.scale);
     if (gesture.handle) {
       const geometry = resizeGeometry(gesture.start, gesture.handle, delta);
@@ -293,7 +454,7 @@ export class LayerCanvas {
     const bounds = boundsOf(starts);
     const targets = snapTargets([...(gesture.overlay.layers ?? []), ...(this.overlay?.layers ?? [])], new Set(gesture.starts.keys()));
     const canvas = gesture.overlay.canvas ?? this.overlay.canvas;
-    const snapped = snapMove({ ...bounds, x: bounds.x + delta.x, y: bounds.y + delta.y }, targets, canvas, SNAP_DISTANCE / gesture.scale);
+    const snapped = snapMove({ ...bounds, x: bounds.x + delta.x, y: bounds.y + delta.y }, targets, canvas, SNAP_DISTANCE / gesture.scale, this.snapOptions());
     this.showGuides(snapped.guides);
     return { x: snapped.x - bounds.x, y: snapped.y - bounds.y };
   }
@@ -303,7 +464,7 @@ export class LayerCanvas {
     if (!this.snapping || event.altKey || ((gesture.start.rotation ?? 0) % 360) !== 0 || gesture.start.lockAspectRatio === true) return [];
     const targets = snapTargets([...(gesture.overlay.layers ?? []), ...(this.overlay?.layers ?? [])], gesture.layerId);
     const canvas = gesture.overlay.canvas ?? this.overlay.canvas;
-    const snapped = snapResize({ ...gesture.start, ...geometry }, gesture.handle, targets, canvas, SNAP_DISTANCE / gesture.scale);
+    const snapped = snapResize({ ...gesture.start, ...geometry }, gesture.handle, targets, canvas, SNAP_DISTANCE / gesture.scale, this.snapOptions());
     for (const key of Object.keys(geometry)) geometry[key] = snapped[key];
     return snapped.guides;
   }
@@ -319,7 +480,7 @@ export class LayerCanvas {
       width: Math.abs(point.x - marquee.origin.x), height: Math.abs(point.y - marquee.origin.y) };
     // Layers entirely inside the rectangle; locked and hidden ones stay out, like a locked background.
     const inside = this.layers().filter(layer => layer.visible && !layer.locked && containsBox(marquee.box, layer)).sort((a, b) => a.z - b.z);
-    this.setSelection([...marquee.base, ...inside.map(layer => layer.id)], undefined, { notify: false });
+    this.setSelection(this.withGroups([...marquee.base, ...inside.map(layer => layer.id)]), undefined, { notify: false });
   }
 
   finishMarquee() {
@@ -367,6 +528,7 @@ export class LayerCanvas {
     this.pointerMove(event);
     const gesture = this.gesture;
     this.finishGesture();
+    if (gesture?.guide) { this.finishGuide(gesture, event); return; }
     // A click on one layer of a selection, without dragging, selects just that layer.
     if (gesture?.grouped && !gesture.moved) this.select(gesture.layerId);
   }
@@ -376,10 +538,20 @@ export class LayerCanvas {
     else if (this.gesture?.pointerId === event.pointerId) this.cancelGesture();
   }
 
+  finishGuide(gesture, event) {
+    const { axis, index } = gesture.guide;
+    if (this.rulers.contains(axis, event.clientX, event.clientY)) this.guides[axis].splice(index, 1);
+    this.guides[axis] = [...new Set(this.guides[axis])];
+    this.renderControls();
+    if (JSON.stringify(this.guides) !== JSON.stringify(gesture.previous)) this.onGuides({ x: [...this.guides.x], y: [...this.guides.y] });
+  }
+
   finishGesture() {
     const gesture = this.gesture;
     this.gesture = null;
     this.showGuides([]);
+    this.angleLabel?.remove?.();
+    this.angleLabel = null;
     this.host.classList.remove("mso-manipulating");
     if (gesture && this.host.hasPointerCapture?.(gesture.pointerId)) this.host.releasePointerCapture(gesture.pointerId);
   }
@@ -388,7 +560,8 @@ export class LayerCanvas {
     this.cancelMarquee();
     const gesture = this.gesture;
     if (!gesture) return;
-    const keys = ["x", "y", "width", "height"];
+    if (gesture.guide) { this.guides = gesture.previous; this.finishGesture(); this.renderControls(); return; }
+    const keys = ["x", "y", "width", "height", "rotation"];
     for (const [id, start] of gesture.handle ? [[gesture.layerId, gesture.start]] : gesture.starts) {
       const layer = gesture.overlay.layers.find(value => value.id === id);
       if (!layer) continue;
@@ -457,7 +630,12 @@ export class LayerCanvas {
     if (!action || event.type !== action || this.disposed) return;
     this.pendingClipboard = null;
     event.preventDefault(); event.stopPropagation();
-    if (action === "paste") { this.onCommand("paste", { text: event.clipboardData?.getData?.("text/plain") ?? "" }); return; }
+    if (action === "paste") {
+      // A copied screenshot or image file arrives as a file rather than text.
+      const files = [...(event.clipboardData?.files ?? [])].filter(file => /^image\//.test(file.type ?? ""));
+      this.onCommand("paste", { text: event.clipboardData?.getData?.("text/plain") ?? "", ...(files.length ? { files } : {}) });
+      return;
+    }
     const text = this.copyText();
     if (text) event.clipboardData?.setData?.("text/plain", text);
     this.onCommand(action, { copied: !!text });
@@ -472,6 +650,7 @@ export class LayerCanvas {
     this.resizeObserver.disconnect();
     for (const stop of this.listeners) stop();
     this.listeners = [];
+    this.rulers.destroy();
     this.renderer.destroy();
     this.host.replaceChildren();
   }

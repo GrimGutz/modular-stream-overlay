@@ -392,6 +392,9 @@ export function validateLayer(input, canvas = { width: 1920, height: 1080 }, ind
     result.config = configuration(input.config);
   }
   boxStyle(result, input);
+  // Editor grouping only: layers sharing a group ID move, hide and lock together. Output ignores it.
+  optional(result, input, "groupId", value => identifier(value, "Group ID"));
+  if (result.groupId) optional(result, input, "groupName", value => text(value, "Group name"));
   return result;
 }
 

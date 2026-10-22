@@ -158,6 +158,10 @@ Hooks.once("init", () => {
     scope: "world", config: true, restricted: true, type: Boolean, default: false
   }, { name: "Settings.debugAnimations.Name", hint: "Settings.debugAnimations.Hint" }));
   game.settings.register(MODULE_ID, "canvasSnapping", { scope: "client", config: false, type: Boolean, default: true });
+  // Editor aids per browser: rulers with guides (kept per overlay or design ID) and a grid step.
+  game.settings.register(MODULE_ID, "canvasRulers", { scope: "client", config: false, type: Boolean, default: true });
+  game.settings.register(MODULE_ID, "canvasGrid", { scope: "client", config: false, type: Number, default: 0 });
+  game.settings.register(MODULE_ID, "canvasGuides", { scope: "client", config: false, type: Object, default: {} });
   game.settings.register(MODULE_ID, "viewerUserId", {
     name: "Overlay viewer account", scope: "world", config: false, type: String,
     default: "", onChange: settingsChanged
