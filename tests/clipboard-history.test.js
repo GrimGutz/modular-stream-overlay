@@ -93,3 +93,27 @@ test("pasting refuses layers the target editor cannot hold", async () => {
   await editor._canvasCommand("copy");
   await assert.rejects(editor._canvasCommand("paste"), /cannot be pasted/);
 });
+
+test("undo keeps only the last 100 steps", async () => {
+  const editor = editorFixture();
+  const layer = createLayer("text", editor._draft.canvas);
+  editor._draft.layers.push(layer); editor._selectedLayerId = layer.id;
+  editor._commitHistory();
+  for (let step = 1; step <= 105; step++) { layer.x = step; editor._markDirty(); editor._commitHistory(); }
+  let undone = 0;
+  while (editor._history.undo.length) { await editor._canvasCommand("undo"); undone++; }
+  assert.equal(undone, 100);
+  assert.equal(editor._draft.layers[0].x, 5, "The oldest steps beyond 100 are dropped");
+});
+
+test("several undo steps in a row keep the keyboard focus on the canvas after each re-render", async () => {
+  const editor = editorFixture();
+  const focused = [];
+  editor.rendered = true;
+  editor.render = async () => { editor._previewElement = { focus: () => focused.push(editor._draft.layers.length) }; };
+  const layer = createLayer("text", editor._draft.canvas);
+  for (let count = 1; count <= 3; count++) { editor._draft.layers.push({ ...layer, id: `layer-${count}` }); editor._markDirty(); editor._commitHistory(); }
+  await editor._canvasCommand("undo"); await editor._canvasCommand("undo"); await editor._canvasCommand("undo");
+  assert.equal(editor._draft.layers.length, 0, "Three Ctrl+Z steps undo three changes");
+  assert.deepEqual(focused, [2, 1, 0], "Focus returns to the canvas after every step");
+});

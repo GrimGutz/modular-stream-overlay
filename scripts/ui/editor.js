@@ -228,7 +228,13 @@ export class OverlayEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     this._animationEdits.clear();
     if (!this._allLayers().some(layer => layer.id === this._selectedLayerId)) this._selectedLayerId = null;
     this._dirty = history.current !== history.baseline;
-    if (this.rendered) await this.render({ force: true });
+    if (!this.rendered) return;
+    await this.render({ force: true });
+    // The re-render replaces the focused canvas; without focus the next Ctrl+Z would reach
+    // Foundry instead of this editor, so only one step could be undone.
+    this._previewElement?.focus?.({ preventScroll: true });
+    // Any normalization during rendering must not become a phantom step for the next undo.
+    if (this._draft) history.current = JSON.stringify(this._draft);
   }
 
   /** Canvas shortcuts beyond single-layer commands. */
