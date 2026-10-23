@@ -128,6 +128,22 @@ export function generateOverlayBundle(source, { actors = {}, refs = {} } = {}) {
     actorSlots, widgetPresets, overlays, actorBindings: bindings });
 }
 
+/**
+ * Names of the Actors a file's widgets show, by UUID, so another world can match its own
+ * characters. Display text only; it never assigns anything by itself.
+ */
+export function validateActorNames(value) {
+  if (value === undefined) return undefined;
+  object(value, "Actor names");
+  const entries = Object.entries(value);
+  if (entries.length > 500) fail("Actor names hold at most 500 entries.");
+  return Object.fromEntries(entries.map(([uuid, name]) => {
+    if (!validateActorUuid(uuid)) fail("Actor names are keyed by world Actor UUIDs.");
+    if (typeof name !== "string") fail("Actor names must be text.");
+    return [uuid, name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 200)];
+  }));
+}
+
 /** Portable envelope metadata never reaches a saved overlay or preset. */
 export function validateOverlayBundle(source) {
   const input = clone(source);
@@ -158,8 +174,9 @@ export function validateOverlayBundle(source) {
     known(binding, result, "Actor binding"); return result;
   });
   unique(actorBindings.map(binding => `${binding.overlayId}/${binding.layerId}`), "Actor binding targets");
+  const actorNames = validateActorNames(input.actorNames);
   const result = { format: input.format, version: 1, moduleId: MODULE_ID, overlaySchemaVersion: SCHEMA_VERSION,
-    widgetPresetSchemaVersion: WIDGET_PRESET_SCHEMA_VERSION, actorSlots, widgetPresets, overlays, actorBindings };
+    widgetPresetSchemaVersion: WIDGET_PRESET_SCHEMA_VERSION, actorSlots, widgetPresets, overlays, actorBindings, ...(actorNames ? { actorNames } : {}) };
   known(input, result, "Bundle");
   return result;
 }

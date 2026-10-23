@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createOverlay, createState } from "../scripts/core/schema.js";
 import { createLayer, createWidgetInstance } from "../scripts/core/layers.js";
 import { createWidgetPreset } from "../scripts/core/widget-presets.js";
-import { exportBundle, exportFragment, exportFilename, readTransferFile, planImport } from "../scripts/authoring/transfer.js";
+import { exportBundle, exportFragment, exportFilename, readTransferFile, planImport, missingActors } from "../scripts/authoring/transfer.js";
 import { FRAGMENTS_SETTING } from "../scripts/core/fragments.js";
 
 class ApplicationStub {
@@ -23,6 +23,10 @@ function design(id = "plate-design") {
   const preset = createWidgetPreset("Plate");
   preset.id = id;
   return preset;
+}
+function layerWithActors(preset, actors) {
+  const widget = createWidgetInstance(preset);
+  return Object.assign(widget, { id: "card", actorUuids: actors, actorUuid: actors[0] });
 }
 function overlayWithWidget(preset, actors = ["Actor.known", "Actor.missing"]) {
   const overlay = createOverlay("Dossier");
@@ -45,6 +49,29 @@ test("exports carry the widget designs they use and read back; other files are r
   assert.equal(exportFilename("Досье «Мой» КАИН", "overlay"), "Досье-Мой-КАИН.overlay.json");
 });
 
+test("exports name the characters their widgets show, and imports match them by name or choice", async () => {
+  const preset = design();
+  const actors = [{ uuid: "Actor.known", name: "Пиротехник" }, { uuid: "Actor.missing", name: "Клептоман" }, { uuid: "Actor.unused", name: "Unused" }];
+  const bundle = exportBundle({ overlays: [overlayWithWidget(preset)], library: [preset], actors });
+  assert.deepEqual(bundle.actorNames, { "Actor.known": "Пиротехник", "Actor.missing": "Клептоман" }, "Only the characters the widgets show");
+  assert.deepEqual(readTransferFile(JSON.stringify(bundle)).bundle.actorNames, bundle.actorNames);
+  assert.equal(Object.hasOwn(exportBundle({ overlays: [overlayWithWidget(preset)], library: [preset] }), "actorNames"), false, "Older readers see the same shape");
+  assert.throws(() => readTransferFile(JSON.stringify({ ...bundle, actorNames: { "Token.x": "x" } })));
+  const fragment = readTransferFile(JSON.stringify(exportFragment({ name: "Card", layers: [layerWithActors(preset, ["Actor.missing"])] }, [preset], actors)));
+  assert.deepEqual(fragment.actorNames, { "Actor.missing": "Клептоман" });
+  // Another world: Клептоман exists under another ID (and in another case), Пиротехник twice, so neither is guessed.
+  const here = [{ uuid: "Actor.local", name: "клептоман" }, { uuid: "Actor.p1", name: "Пиротехник" }, { uuid: "Actor.p2", name: "Пиротехник" }];
+  const missing = missingActors(bundle, { exists: uuid => here.some(actor => actor.uuid === uuid), actors: here });
+  assert.deepEqual(missing, [{ uuid: "Actor.known", name: "Пиротехник", suggestion: "" }, { uuid: "Actor.missing", name: "Клептоман", suggestion: "Actor.local" }]);
+  const plan = await planImport(bundle, { presets: [preset], actorExists: async uuid => here.some(actor => actor.uuid === uuid),
+    actorMap: { "Actor.known": "", "Actor.missing": "Actor.local" } });
+  const widget = plan.overlays[0].layers.find(layer => layer.id === "card");
+  assert.deepEqual([widget.actorUuids, widget.actorUuid], [["Actor.local"], "Actor.local"]);
+  assert.deepEqual([plan.droppedActors, plan.droppedActorUuids], [1, ["Actor.known"]]);
+  const twice = await planImport(bundle, { presets: [preset], actorExists: async () => true, actorMap: { "Actor.known": "Actor.p1", "Actor.missing": "Actor.p1" } });
+  assert.deepEqual(twice.overlays[0].layers.find(layer => layer.id === "card").actorUuids, ["Actor.p1"], "Two characters mapped to one appear once");
+});
+
 test("an import plan never overwrites: taken IDs are renamed, identical designs reused, unknown Actors dropped", async () => {
   const preset = design(), changed = { ...design(), name: "Plate v2" };
   const bundle = exportBundle({ overlays: [overlayWithWidget(changed)], library: [changed] });
@@ -57,6 +84,13 @@ test("an import plan never overwrites: taken IDs are renamed, identical designs 
   assert.equal(widget.presetId, plan.widgetPresets[0].id, "The widget follows its renamed design");
   assert.deepEqual(widget.actorUuids, ["Actor.known"]); assert.equal(plan.droppedActors, 1);
 });
+
+class FakeElement {
+  constructor(tag) { this.tagName = tag; this.children = []; this.attributes = {}; this.dataset = {}; this.textContent = ""; }
+  append(...nodes) { this.children.push(...nodes); }
+  setAttribute(name, value) { this.attributes[name] = value; }
+  getAttribute(name) { return this.attributes[name] ?? null; }
+}
 
 function memorySettings() {
   const values = new Map();
@@ -75,7 +109,8 @@ function editorFixture() {
   const downloads = [], notes = [];
   globalThis.foundry.utils.saveDataToFile = (text, type, name) => downloads.push({ text, type, name });
   globalThis.game = { user: { isGM: true }, world: { id: "w" }, settings: memorySettings(), i18n: { lang: "en" },
-    modules: new Map([["modular-stream-overlay", { api: { store } }]]), users: [] };
+    modules: new Map([["modular-stream-overlay", { api: { store } }]]), users: [], actors: { contents: [{ uuid: "Actor.known", name: "Known" }] } };
+  globalThis.document = { createElement: tag => new FakeElement(tag) };
   globalThis.ui = { notifications: { info: message => notes.push(message), warn: message => notes.push(message), error() {} } };
   configureEditor({ store, widgetPresets, characterData: { resolveActor: async uuid => uuid === "Actor.known" ? { uuid } : null } });
   const editor = new OverlayEditor();
@@ -108,13 +143,43 @@ test("export saves a file; import adds overlays, designs and fragments without r
   editor._exportFile();
   assert.equal(downloads[0].name, "Dossier.overlay.json"); assert.equal(downloads[0].type, "application/json");
   editor._loadDraft(state.overlays[0], 1);
+  // This world has other characters too, so the import asks; leaving the missing one unassigned.
+  foundry.applications.api.DialogV2.input = async () => ({ actor0: "" });
   await editor._importFile({ text: async () => downloads[0].text });
+  delete foundry.applications.api.DialogV2.input;
   const imported = state.overlays.at(-1);
   assert.equal(imported.name, "Dossier"); assert.equal(presets.list.length, 1, "The identical design is reused");
   assert.deepEqual(imported.layers.find(layer => layer.id === "card").actorUuids, ["Actor.known"]);
-  assert(notes.some(note => /1/.test(note) && /Actor|character/i.test(note)), "The dropped assignment is reported");
+  assert(notes.some(note => /Actor.missing/.test(note) && /character/i.test(note)), "The dropped character is named");
   const fragment = exportFragment({ name: "Plate", layers: [createLayer("color")] });
   await editor._importFile({ text: async () => JSON.stringify(fragment) });
   assert.deepEqual(game.settings.get("modular-stream-overlay", FRAGMENTS_SETTING).map(entry => entry.name), ["Plate"]);
   await assert.rejects(editor._importFile({ text: async () => "{}" }), /not a Modular Stream Overlay/);
+});
+
+test("importing into a world that has the characters under other IDs asks which ones take their places", async () => {
+  const { editor, state, presets, downloads, notes } = editorFixture();
+  const preset = design();
+  presets.list.push(preset);
+  game.actors.contents.push({ uuid: "Actor.missing", name: "Klepto" });
+  editor._loadDraft(overlayWithWidget(preset), 1);
+  editor._exportFile();
+  // The other world: Known kept its ID, Klepto exists as a new Actor with the same name.
+  game.actors.contents = [{ uuid: "Actor.known", name: "Known" }, { uuid: "Actor.copy", name: "Klepto" }, { uuid: "Actor.other", name: "Other" }];
+  let asked = null;
+  foundry.applications.api.DialogV2.input = async ({ content }) => {
+    const select = content.children.find(child => child.tagName === "label").children.find(child => child.tagName === "select");
+    asked = { name: select.name, chosen: select.children.find(option => option.selected)?.value, options: select.children.map(option => option.value) };
+    return { [select.name]: select.children.find(option => option.selected).value };
+  };
+  editor._loadDraft(state.overlays[0], 1);
+  await editor._importFile({ text: async () => downloads.at(-1).text });
+  assert.deepEqual(asked, { name: "actor0", chosen: "Actor.copy", options: ["", "Actor.copy", "Actor.known", "Actor.other"] }, "Only the missing character is asked, same name preselected");
+  assert.deepEqual(state.overlays.at(-1).layers.find(layer => layer.id === "card").actorUuids, ["Actor.known", "Actor.copy"]);
+  assert.equal(notes.some(note => /not in this world/.test(note)), false);
+  foundry.applications.api.DialogV2.input = async () => null;
+  const before = state.overlays.length;
+  await editor._importFile({ text: async () => downloads.at(-1).text });
+  assert.equal(state.overlays.length, before, "Cancelling the choice imports nothing");
+  delete foundry.applications.api.DialogV2.input;
 });

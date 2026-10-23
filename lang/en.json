@@ -665,7 +665,7 @@
       "RescaleApply": "Resize",
       "Exported": "{name} saved to a file.",
       "Imported": "Imported overlays: {overlays}, widget designs: {designs}.",
-      "ImportDroppedActors": "{count} character assignments were left out because those Actors are not in this world. Assign the characters again.",
+      "ImportDroppedActors": "These characters are not in this world, so their widgets were left without them: {names}. Bring the characters over (for example Export Data on each character in the old world and Import Data here, or a compendium), then import the file again or assign them on the widgets.",
       "FragmentImported": "Fragment {name} imported.",
       "ExportFragment": "Export the fragment to a file",
       "AutoFit": "Fit text to the box",
@@ -721,7 +721,13 @@
       "VoiceHelp": "Layers can react to Discord voice: they glow while their person speaks and can appear only while that person is in the channel or speaking. The OBS connector reads Discord on the streaming PC (see its Discord voice setup).",
       "VoiceUserHelp": "A fixed person, such as the GM for the central frame. Pick a player from the list or paste an ID from Discord (Copy User ID).",
       "VoiceActorHelp": "Follows the player linked to the character this layer shows in Discord players; on a character card it follows the card's current character, also in a carousel.",
-      "VoiceSlotHelp": "Slot 1 is the first person in the channel who is not in Discord players, not ignored and not bound to another layer, slot 2 the second, in Discord's order. Bots never take a slot."
+      "VoiceSlotHelp": "Slot 1 is the first person in the channel who is not in Discord players, not ignored and not bound to another layer, slot 2 the second, in Discord's order. Bots never take a slot.",
+      "ImportActorsTitle": "Characters from the file",
+      "ImportActorsHelp": "The file's widgets show characters this world does not have. Choose which of this world's characters takes each place; a character with the same name is already chosen.",
+      "ImportActorFrom": "Instead of {name}",
+      "ImportActorSkip": "— leave unassigned —",
+      "ImportNoViewer": "This world has no overlay viewer account yet, so OBS shows only a notice. Choose the account OBS signs in with (for example OBS) under Viewer account and choose Save viewer.",
+      "ImportNotActive": "{name} was imported. Choose it as the active overlay to show it on stream."
     },
     "Settings": {
       "LanguageHint": "Choose the language of this module's configuration interface on this client. Auto follows Foundry; unsupported languages use English. Stream content is unchanged.",

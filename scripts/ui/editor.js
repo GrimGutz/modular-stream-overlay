@@ -11,7 +11,7 @@ import { listFragments, saveFragment, deleteFragment } from "../core/fragments.j
 import { rescaleOverlay, rescaleTransform } from "../core/rescale.js";
 import { overlayToWidgetPreset } from "../core/widget-presets.js";
 import { OverlayRenderer } from "../render/renderer.js";
-import { exportBundle, exportFragment, exportFilename, readTransferFile, needsActorChoices, planImport } from "../authoring/transfer.js";
+import { exportBundle, exportFragment, exportFilename, readTransferFile, needsActorChoices, planImport, missingActors } from "../authoring/transfer.js";
 import { importOverlayBundle } from "../authoring/bundle.js";
 import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayers, reorderLayer, reorderInGroup, stepLayer,
   moveLayers, groupLayers, layerOrder, dissolveSmallGroups } from "../core/layers.js";
@@ -62,6 +62,12 @@ function downloadJson(data, filename) {
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+/** This world's Actors, for naming exported characters and matching imported ones; a GM sees them all. */
+function worldActors() {
+  const actors = globalThis.game?.actors?.contents ?? [];
+  return actors.map(actor => ({ uuid: actor.uuid, name: String(actor.name ?? "") })).sort((left, right) => left.name.localeCompare(right.name));
 }
 
 /** A fragment drawn on its own small canvas, for its thumbnail. */
@@ -1505,7 +1511,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   _exportFragment(id) {
     const fragment = listFragments().find(entry => entry.id === id);
     if (!fragment) return;
-    downloadJson(exportFragment(fragment, this.widgetPresets?.list?.() ?? []), exportFilename(fragment.name, "fragment"));
+    downloadJson(exportFragment(fragment, this.widgetPresets?.list?.() ?? [], worldActors()), exportFilename(fragment.name, "fragment"));
   }
 
   async _saveFragment() {
@@ -1597,7 +1603,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     const library = this.widgetPresets?.list?.() ?? [];
     const bundle = this.widgetMode
       ? exportBundle({ widgetPresets: [overlayToWidgetPreset(this._draft, { id: this._draft.id, name: this._draft.name })] })
-      : exportBundle({ overlays: [this._draft], library });
+      : exportBundle({ overlays: [this._draft], library, actors: worldActors() });
     downloadJson(bundle, exportFilename(this._draft.name, this.widgetMode ? "widget" : "overlay"));
     ui.notifications.info(t("Editor.Exported", { name: this._draft.name }));
   }
@@ -1618,10 +1624,18 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     const data = readTransferFile(await file.text());
     const library = this.widgetPresets?.list?.() ?? [];
     const overlayStore = services.store ?? this.api?.store;
-    const actorExists = async uuid => !!(await this.characterData?.resolveActor?.(uuid));
     if (data.kind === "bundle" && needsActorChoices(data.bundle)) { await importOverlayBundle({ bundle: data.bundle }); return; }
-    const plan = await planImport(data.kind === "bundle" ? data.bundle : { widgetPresets: data.widgetPresets, layers: data.layers },
-      { overlayIds: overlayStore?.getState?.().overlays.map(overlay => overlay.id) ?? [], presets: library, actorExists });
+    // Characters are matched against this world's Actors, whoever the overlay viewer is.
+    const actors = worldActors(), present = new Set(actors.map(actor => actor.uuid));
+    const source = data.kind === "bundle" ? data.bundle : { widgetPresets: data.widgetPresets, layers: data.layers, actorNames: data.actorNames };
+    const missing = missingActors(source, { exists: uuid => present.has(uuid), actors });
+    let actorMap = {};
+    if (missing.length && actors.length) {
+      actorMap = await this._chooseImportActors(missing, actors);
+      if (!actorMap) return;
+    }
+    const plan = await planImport(source, { overlayIds: overlayStore?.getState?.().overlays.map(overlay => overlay.id) ?? [], presets: library,
+      actorExists: async uuid => present.has(uuid), actorMap });
     // Widget designs come first, so imported widgets find them.
     for (const preset of plan.widgetPresets) {
       const write = options => this.widgetPresets.save(preset, options);
@@ -1637,7 +1651,13 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       await saveFragment(data.name, plan.layers);
       ui.notifications.info(t("Editor.FragmentImported", { name: data.name }));
     } else ui.notifications.info(t("Editor.Imported", { overlays: plan.overlays.length, designs: plan.widgetPresets.length }));
-    if (plan.droppedActors) ui.notifications.warn(t("Editor.ImportDroppedActors", { count: plan.droppedActors }));
+    // A fresh world shows nothing on stream until it has a viewer account and an active overlay.
+    if (!this.api?.getViewerUserId?.()) ui.notifications.warn(t("Editor.ImportNoViewer"), { permanent: true });
+    else if (saved.length && !overlayStore.getState().activeOverlayId) ui.notifications.info(t("Editor.ImportNotActive", { name: saved[0].name }));
+    if (plan.droppedActorUuids.length) {
+      const names = plan.droppedActorUuids.map(uuid => source.actorNames?.[uuid] || uuid).join(", ");
+      ui.notifications.warn(t("Editor.ImportDroppedActors", { names }), { permanent: true });
+    }
     // Open what was imported when nothing unsaved would be lost.
     const opened = this.widgetMode ? plan.widgetPresets[0] : saved[0];
     if (opened && !this._dirty) {
@@ -1645,6 +1665,31 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       this._loadDraft(state.overlays.find(overlay => overlay.id === opened.id) ?? this._draft, state.revision);
     }
     if (this.rendered) await this.render({ force: true });
+  }
+
+  /**
+   * Which of this world's Actors stands in for each character of the file; a character with
+   * the same name is preselected. Returns a UUID map, or null when cancelled.
+   */
+  async _chooseImportActors(missing, actors) {
+    const content = document.createElement("div");
+    const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.ImportActorsHelp"); content.append(help);
+    for (const [index, entry] of missing.entries()) {
+      const label = document.createElement("label"); label.className = "mso-layer-field";
+      const caption = document.createElement("span"); setText(caption, "Editor.ImportActorFrom", { name: entry.name || entry.uuid });
+      const select = document.createElement("select"); select.name = `actor${index}`;
+      setAttr(select, "aria-label", "Editor.ImportActorFrom", { name: entry.name || entry.uuid });
+      const skip = document.createElement("option"); skip.value = ""; setText(skip, "Editor.ImportActorSkip"); select.append(skip);
+      for (const actor of actors) {
+        const option = document.createElement("option"); option.value = actor.uuid; option.textContent = actor.name;
+        option.selected = actor.uuid === entry.suggestion; select.append(option);
+      }
+      label.append(caption, select); content.append(label);
+    }
+    const result = await DialogV2.input({ window: { title: t("Editor.ImportActorsTitle") }, content, modal: true, rejectClose: false,
+      render: (_event, dialog) => markDialog(dialog, L("Editor.ImportActorsTitle")) });
+    if (!result) return null;
+    return Object.fromEntries(missing.map((entry, index) => [entry.uuid, String(result[`actor${index}`] ?? "")]));
   }
 
   async close(options = {}) {
