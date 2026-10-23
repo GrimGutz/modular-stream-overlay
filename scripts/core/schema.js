@@ -152,7 +152,11 @@ export const FADE_EDGES = Object.freeze(["top", "bottom", "left", "right", "vert
 export const DYNAMIC_TEXT_KEYS = Object.freeze(["accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels"]);
 export const DOT_STYLE_KEYS = Object.freeze(["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "dotDirection"]);
 export const DOT_DIRECTIONS = Object.freeze(["right", "down", "up"]);
-export const OPTIONAL_LAYER_KEYS = Object.freeze([...new Set([...BOX_STYLE_KEYS, ...TEXT_LAYOUT_KEYS, ...DYNAMIC_TEXT_KEYS, ...DOT_STYLE_KEYS, ...GRADIENT_KEYS, "imagePosition"])]);
+export const VOICE_KEYS = Object.freeze(["voiceTarget", "voiceUser", "voiceSlot", "voiceColor", "voiceShow", "voiceEffect"]);
+export const VOICE_TARGETS = Object.freeze(["user", "actor", "slot"]);
+export const VOICE_SHOW = Object.freeze(["always", "present", "speaking"]);
+export const VOICE_EFFECTS = Object.freeze(["glow", "none"]);
+export const OPTIONAL_LAYER_KEYS = Object.freeze([...new Set([...BOX_STYLE_KEYS, ...TEXT_LAYOUT_KEYS, ...DYNAMIC_TEXT_KEYS, ...DOT_STYLE_KEYS, ...GRADIENT_KEYS, ...VOICE_KEYS, "imagePosition"])]);
 
 function boxStyle(result, input) {
   optional(result, input, "borderWidth", value => numeric(value, "Border width", 0, 64));
@@ -174,6 +178,36 @@ function boxStyle(result, input) {
     return value;
   });
   optional(result, input, "fadeSize", value => numeric(value, "Fade length", 1, 100));
+}
+
+/** A Discord account's numeric ID (a "snowflake"), as Discord's Copy User ID gives it. */
+export function validateDiscordId(value, label = "Discord user ID") {
+  if (typeof value !== "string" || !/^\d{15,25}$/.test(value)) fail(`${label} must be the digits Discord's Copy User ID gives.`);
+  return value;
+}
+
+/**
+ * Discord voice reaction: whose voice the layer follows (a Discord user, the player linked to
+ * the layer's character, or the Nth unlisted person in the channel), its glow color and when
+ * it is shown. An unfinished user target keeps no ID and simply follows nobody.
+ */
+function voiceStyle(result, input) {
+  optional(result, input, "voiceTarget", value => {
+    if (!VOICE_TARGETS.includes(value)) fail("A voice target is a Discord user, the character's player or a free slot.");
+    return value;
+  });
+  if (!result.voiceTarget) return;
+  if (result.voiceTarget === "user") optional(result, input, "voiceUser", value => validateDiscordId(value));
+  if (result.voiceTarget === "slot") result.voiceSlot = numeric(input.voiceSlot ?? 1, "Free voice slot", 1, 20, true);
+  optional(result, input, "voiceColor", value => color(value, "Voice glow color"));
+  optional(result, input, "voiceShow", value => {
+    if (!VOICE_SHOW.includes(value)) fail("Show the layer always, while in the channel or while speaking.");
+    return value;
+  });
+  optional(result, input, "voiceEffect", value => {
+    if (!VOICE_EFFECTS.includes(value)) fail("A voice effect is a glow or none.");
+    return value;
+  });
 }
 
 function textLayout(result, input) {
@@ -418,6 +452,7 @@ export function validateLayer(input, canvas = { width: 1920, height: 1080 }, ind
     result.config = configuration(input.config);
   }
   boxStyle(result, input);
+  voiceStyle(result, input);
   // Editor grouping only: layers sharing a group ID move, hide and lock together. Output ignores it.
   optional(result, input, "groupId", value => identifier(value, "Group ID"));
   if (result.groupId) optional(result, input, "groupName", value => text(value, "Group name"));

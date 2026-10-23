@@ -2,7 +2,7 @@
  * Layer properties for the overlay editor and widget designer: geometry, content, typography,
  * optional styles and animations. Edits change only the private draft.
  */
-import { validateLayer, validateAssetPath, FONT_WEIGHTS, OPTIONAL_LAYER_KEYS, CLIP_SHAPES, FADE_EDGES } from "../core/schema.js";
+import { validateLayer, validateAssetPath, FONT_WEIGHTS, OPTIONAL_LAYER_KEYS, CLIP_SHAPES, FADE_EDGES, VOICE_KEYS } from "../core/schema.js";
 import { fontFamilies } from "../integration/fonts.js";
 import { createLayer } from "../core/layers.js";
 import { renderAnimationControls } from "./animation-controls.js";
@@ -15,7 +15,7 @@ const BOX_KEYS = ["borderWidth", "borderColor", "cornerRadius", "boxShadowX", "b
 const SHAPE_KEYS = ["clipShape", "clipSize", "maskSrc", "fadeEdge", "fadeSize"];
 const TEXT_KEYS = ["lineHeight", "letterSpacing", "uppercase", "verticalAlign", "padding", "highlightColor", "richText", "strongColor", "strongFontSize", "accent", "strongAccent", "emptyText", "hideEmptyLines", "valueLabels", "autoFit", "minFontSize"];
 const DOT_KEYS = ["accent", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "dotDirection"];
-const OPTIONAL_NUMBERS = ["borderWidth", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "lineHeight", "letterSpacing", "padding", "strongFontSize", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "minFontSize", "clipSize", "fadeSize", "gradientAngle"];
+const OPTIONAL_NUMBERS = ["borderWidth", "cornerRadius", "boxShadowX", "boxShadowY", "boxShadowBlur", "lineHeight", "letterSpacing", "padding", "strongFontSize", "maxValue", "dotSize", "dotGap", "dotBorderWidth", "minFontSize", "clipSize", "fadeSize", "gradientAngle", "voiceSlot"];
 const clone = value => foundry.utils.deepClone(value);
 const ALIGN_BUTTONS = [
   ["left", "Editor.ArrangeLeft", "fa-objects-align-left"], ["center", "Editor.ArrangeCenter", "fa-objects-align-center-horizontal"],
@@ -303,6 +303,7 @@ export const LayerInspector = Base => class extends Base {
     }
     this._renderComponentProperties(host, layer);
     this._renderStyleProperties(host, layer);
+    this._renderVoiceProperties(host, layer);
     this._renderAnimationControls(host, layer);
     const commands = document.createElement("div");
     commands.className = "mso-layer-commands";
@@ -524,6 +525,59 @@ export const LayerInspector = Base => class extends Base {
     const shapeHelp = document.createElement("p"); shapeHelp.className = "mso-help"; setText(shapeHelp, "Editor.ShapeHelp"); shape.append(shapeHelp);
   }
 
+  /**
+   * Discord voice: whose voice the layer follows (a Discord user, the player of the layer's
+   * character, or a free slot for people not in the player list), its glow and when it shows.
+   */
+  _renderVoiceProperties(host, layer) {
+    const details = document.createElement("details");
+    details.className = "mso-style-section mso-voice-properties";
+    details.open = VOICE_KEYS.some(key => layer[key] !== undefined);
+    const summary = document.createElement("summary"); setText(summary, "Editor.VoiceSection"); details.append(summary);
+    host.append(details);
+    this._layerField(details, layer, "voiceTarget", L("Editor.VoiceTarget"), { options: [
+      { value: "", label: L("Editor.VoiceNone") }, { value: "user", label: L("Editor.VoiceUser") },
+      { value: "actor", label: L("Editor.VoiceActor") }, { value: "slot", label: L("Editor.VoiceSlot") }] });
+    if (layer.voiceTarget === "user") {
+      const input = this._layerField(details, layer, "voiceUser", L("Editor.DiscordUserId"), { maxLength: 25 });
+      // Players from the list and people in the channel now, by name.
+      const list = document.createElement("datalist");
+      list.id = `${this.id}-voice-users`;
+      for (const { id, name } of this._voiceChoices()) {
+        const option = document.createElement("option"); option.value = id; option.label = name; list.append(option);
+      }
+      input.setAttribute("list", list.id);
+      details.append(list);
+    }
+    if (layer.voiceTarget === "slot") this._layerField(details, layer, "voiceSlot", L("Editor.VoiceSlotNumber"), { type: "number", min: 1, max: 20, step: 1 });
+    if (layer.voiceTarget) {
+      const grid = document.createElement("div"); grid.className = "mso-property-grid"; details.append(grid);
+      this._layerField(grid, layer, "voiceColor", L("Editor.VoiceColor"), { maxLength: 9 });
+      this._layerField(grid, layer, "voiceShow", L("Editor.VoiceShow"), { options: [
+        { value: "", label: L("Editor.VoiceShowAlways") }, { value: "present", label: L("Editor.VoiceShowPresent") },
+        { value: "speaking", label: L("Editor.VoiceShowSpeaking") }] });
+      this._layerField(grid, layer, "voiceEffect", L("Editor.VoiceEffect"), { options: [
+        { value: "", label: L("Editor.VoiceGlow") }, { value: "none", label: L("Editor.VoiceNoEffect") }] });
+    }
+    const players = document.createElement("button");
+    players.type = "button"; players.dataset.voiceRoster = "";
+    setText(players, "Editor.VoicePlayers");
+    players.addEventListener("click", () => { void Promise.resolve(this._openVoiceRoster()).catch(error => ui.notifications.error(error.message)); });
+    details.append(players);
+    const help = document.createElement("p"); help.className = "mso-help";
+    setText(help, { user: "Editor.VoiceUserHelp", actor: "Editor.VoiceActorHelp", slot: "Editor.VoiceSlotHelp" }[layer.voiceTarget] ?? "Editor.VoiceHelp");
+    details.append(help);
+  }
+
+  /** Discord IDs to suggest: listed players first, then anyone else in the channel now except ignored accounts. */
+  _voiceChoices() {
+    const voice = this.voice, choices = new Map();
+    const ignored = new Set((voice?.roster?.ignored ?? []).map(entry => entry.userId));
+    for (const entry of voice?.roster?.speakers ?? []) choices.set(entry.userId, entry.name || entry.userId);
+    for (const member of voice?.state?.members ?? []) if (!choices.has(member.id) && !ignored.has(member.id)) choices.set(member.id, member.name);
+    return [...choices].map(([id, name]) => ({ id, name }));
+  }
+
   /** Pick an image from Foundry's files for a layer field such as a mask. */
   async _browseLayerAsset(layer, field, input) {
     const draft = this._draft;
@@ -588,6 +642,8 @@ export const LayerInspector = Base => class extends Base {
       this._syncLayerFields(layer, { skip: input });
       this._updateLayerRow(layer);
       void this._updatePreview();
+      // The voice target decides which voice fields apply.
+      if (field === "voiceTarget") this._renderLayerProperties();
     }
     catch (error) {
       setValidity(input, error);

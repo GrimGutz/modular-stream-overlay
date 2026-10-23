@@ -227,3 +227,22 @@
 .mso-editor.mso-canvas-fullscreen .mso-visual-editor .mso-preview { flex: 1 1 auto; height: auto; min-height: 240px; }
 .mso-editor.mso-canvas-fullscreen .mso-inspector { max-height: none; overflow-y: auto; }
 .mso-editor.mso-canvas-fullscreen .mso-save-bar { flex: 0 0 auto; }
+/* Discord players and the voice section. */
+.mso-voice-roster .window-content { overflow-y: auto; }
+.mso-voice-content { display: flex; flex-direction: column; gap: 10px; padding: 4px; }
+.mso-voice-section { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid rgba(255, 255, 255, .12); padding-top: 8px; }
+.mso-voice-section h3 { margin: 0; font-size: .9rem; }
+.mso-voice-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 90px auto; gap: 6px; align-items: end; }
+.mso-voice-row.mso-voice-ignored { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.mso-voice-row .mso-layer-field { margin: 0; }
+.mso-voice-member { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.mso-voice-member code { font-size: .75rem; opacity: .8; }
+.mso-voice-member button { flex: 0 0 auto; width: auto; margin-left: auto; }
+.mso-voice-member button + button { margin-left: 0; }
+.mso-voice-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, .25); flex: 0 0 auto; }
+.mso-voice-member.speaking .mso-voice-dot { background: #43d17a; box-shadow: 0 0 6px #43d17a; }
+.mso-voice-badge { font-size: .72rem; padding: 1px 6px; border-radius: 8px; background: rgba(255, 255, 255, .12); }
+.mso-voice-channel { margin: 0; font-weight: 600; }
+.mso-voice-footer { display: flex; justify-content: flex-end; }
+.mso-voice-footer button { width: auto; min-width: 140px; }
+.mso-voice-properties > button[data-voice-roster] { width: auto; }

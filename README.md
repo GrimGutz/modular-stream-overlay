@@ -151,6 +151,26 @@ Until Foundry is running, a world is launched and sign-in succeeds, the connecto
 
 Anything that reaches the connector acts as the viewer account. It therefore listens on `127.0.0.1` only, accepts only its own host and origin (other websites in your browser cannot use it), forwards only GET/HEAD requests and the stream socket, and refuses Foundry's other pages such as `/game`, `/setup` and `/join`. The password is stored in plain text in the settings file on that PC; use a dedicated viewer account and keep the file private. Run `setup` again to change it.
 
+#### Discord voice
+
+Layers can react to Discord voice, like a StreamKit overlay with custom CSS but inside your layout: a frame glows while its person speaks, and a layer can appear only while that person is in the voice channel or speaking. The connector reads who is speaking from the Discord app on the streaming PC, over the same local channel StreamKit uses, and passes it to the stream page; no StreamKit source is needed.
+
+1. Create an application at <https://discord.com/developers/applications> with the Discord account you stream from. On its **OAuth2** page add the redirect `http://localhost` and save.
+2. Run `node tools/obs-connector.mjs discord-setup` and enter its Client ID and Client Secret. They are saved to `%APPDATA%\modular-stream-overlay\discord.json`, together with the access token later; the secret is never printed.
+3. Join a voice channel and run `node tools/obs-connector.mjs discord-test` once. Discord asks you to authorize your application; the window then lists the channel's members with their Discord IDs and prints every start and stop of speaking. Stop it with Ctrl+C.
+4. Start the connector as usual. With `discord.json` present it also connects to Discord, follows you between channels and reconnects when Discord restarts.
+
+In the editor, **Discord voice** in a layer's properties chooses whose voice the layer follows:
+- **A Discord user**: a fixed person, such as the GM for the central frame.
+- **The character's player**: the player linked to the layer's character under **Discord players…**. On a character card it is the card's current character, also in a carousel; inside a widget design, the character of the card that shows it.
+- **A free slot**: the Nth person in the channel who is not in Discord players, not ignored, not named by another layer and not a bot, in Discord's order. It is meant for guests.
+
+**Glow color** (otherwise the player's color, then the color of the character the layer shows, such as a CAIN blasphemy's color, then white), **Show** (always, while in the channel, while speaking) and **Effect** (glow or none) complete it. The glow paints the layer's border in the color, tints its inside and adds three soft halos, as the usual StreamKit CSS does. A glow on a component inside a widget design is cut at the card's edge, so put frames that glow on the card or on the overlay.
+
+**Discord players…** lists who is in the voice channel now, with their IDs. A GM's Foundry on the streaming PC reads this straight from the connector, even while OBS is closed (the address, `http://localhost:30001` by default, is **OBS connector address** in the module settings); a GM elsewhere sees it while the OBS source is open. One click adds a person as a player or ignores them (a music bot, for example). For each player set a name, the character they play and an optional glow color. **Voice** above the canvas previews the effect: **Design** ignores voice, **Everyone in channel** and **Everyone speaking** show every voice layer in that state, and **Live from Discord** mirrors the stream.
+
+Discord gives voice events only to approved applications and to the testers of your own (its owner counts); if the authorization fails, the window says why. Voice state travels only from the connector to pages on this PC (the stream page, and Foundry pages of the configured Foundry address) and from the stream page to the world's GMs; Discord IDs and names are stored in the world setting `voiceRoster`. The connector trusts the Windows certificate store as browsers do, so antivirus HTTPS scanning (such as Avast Web Shield) does not block its requests to discord.com.
+
 The renderer uses the configured logical canvas and fits it into the Browser Source viewport with transparent margins if aspect ratios differ. If you change canvas dimensions, also update the Browser Source width and height for native pixel-for-pixel output; this does not require restarting OBS.
 
 The GM browser need not stay open after saving. Foundry's server/world and OBS's dedicated session must stay available. On a socket disconnect the scene is cleared; on reconnection the page reloads to fetch authoritative settings. Behind the connector it also reloads once Foundry is reachable again after its own reconnection attempts give up. Disabling the viewer clears output and displays setup guidance. An active selection of None produces pure transparency. No assets, settings, or private documents are exported into an unauthenticated endpoint.
@@ -209,6 +229,11 @@ scripts/render/actor-carousel.js Atomic character presentation and bounded cache
 scripts/data/                  Safe bindings, explicit mappings, Actor lifecycle service
 scripts/integration/obs.js     Route and viewer-account checks
 scripts/integration/fonts.js   Foundry font list and font loading for the editor and OBS
+scripts/integration/voice.js   Discord voice state for voice layers, from the OBS connector
+scripts/core/voice.js          Discord player list and voice state validation
+scripts/render/voice.js        Voice glow and visibility on a layer element
+scripts/ui/voice-roster.js     Discord players window
+tools/discord-voice.mjs        The connector's Discord client (local IPC pipe)
 scripts/authoring/transfer.js  Export and import of overlays, widget designs and fragments as files
 scripts/adapters/generic.js    Permission-aware actor normalization contract
 scripts/adapters/cain.js       CAIN health, level, power, stress, and psyche

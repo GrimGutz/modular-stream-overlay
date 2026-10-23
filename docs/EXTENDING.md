@@ -43,6 +43,7 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 | `validateOverlay(value)` | Returns a sanitized copy or throws `TypeError` |
 | `openEditor()` | Renders the GM editor from the regular game view |
 | `openWidgetManager()`, `openWidgetPreset(id)` | Open the GM design library or a source preset's visual editor |
+| `openVoiceRoster()` | Open the GM's Discord players window (Discord IDs, names, characters and glow colors for voice layers) |
 | `openLiveControls()`, `liveControls` | GM controls for the saved active overlay; see animation contracts below |
 | `animations` | Trusted animation/event/action registrations and semantic event dispatch |
 | `getAdapterPreferences()`, `setAdapterPreferences(map)` | Read/set explicit system providers; mutation is GM-only |
@@ -104,7 +105,7 @@ An image layer has this shape:
 }
 ```
 
-Any layer may also carry the optional shape and mask styles `clipShape`, `clipSize`, `maskSrc`, `fadeEdge` and `fadeSize`, color layers `gradientTo`, `gradientType` and `gradientAngle`, and text layers `autoFit` and `minFontSize`; [OVERLAY_AUTHORING.md](OVERLAY_AUTHORING.md) lists their values. Any layer may carry optional `groupId` (an ID) and `groupName` (1–80 characters, kept only with a group ID). Layers sharing a group ID form an editor group; the renderer ignores both fields.
+Any layer may also carry the optional shape and mask styles `clipShape`, `clipSize`, `maskSrc`, `fadeEdge` and `fadeSize`, color layers `gradientTo`, `gradientType` and `gradientAngle`, and text layers `autoFit` and `minFontSize`; any layer may also react to Discord voice through `voiceTarget`, `voiceUser`, `voiceSlot`, `voiceColor`, `voiceShow` and `voiceEffect`. [OVERLAY_AUTHORING.md](OVERLAY_AUTHORING.md) lists their values. Any layer may carry optional `groupId` (an ID) and `groupName` (1–80 characters, kept only with a group ID). Layers sharing a group ID form an editor group; the renderer ignores both fields.
 
 Text layers use the same common fields plus `text`, `fontFamily`, `fontSize`, `fontWeight`, `color`, `align`, and boolean `shadow`. `text` supports newlines and is assigned through `textContent`. `fontFamily` is a plain family name: letters, digits, spaces and `_ . ' -`, at most 64 characters, starting and ending with a letter or digit (for example Arial, Times New Roman or a Foundry font such as Modesto Condensed). The editor offers Arial, Verdana, Georgia, Times New Roman, Courier New, Trebuchet MS and Foundry's `CONFIG.fontDefinitions` plus the world's `core.fonts`; the output loads those definitions through `FontConfig.loadFont`. Each family gets a generic fallback. Sizes are 1–512 native pixels, weights are the strings `"400"`/`"600"`/`"700"`, alignment is left/center/right, and color accepts 3/4/6/8-digit hexadecimal values. Font files come only from Foundry's font configuration. A layer's width/height bounds its content; resizing changes its box, not its font size.
 

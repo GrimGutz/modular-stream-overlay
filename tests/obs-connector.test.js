@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { connect } from "node:net";
-import { ObsConnector, validateConfig, defaultConfigPath, CONNECTOR_HEADER } from "../tools/obs-connector.mjs";
+import { ObsConnector, validateConfig, defaultConfigPath, trustSystemCertificates, CONNECTOR_HEADER } from "../tools/obs-connector.mjs";
 import { watchForConnector } from "../scripts/integration/obs.js";
 
 const settings = port => ({ foundryUrl: "http://127.0.0.1:1", userName: "OBS Overlay", password: "secret", port });
@@ -117,4 +117,13 @@ test("the stream page reloads only behind the connector once it answers again", 
   header = "1"; await timers[0]();
   assert.equal(reloads.length, 1); assert.equal(timers.length, 0, "Polling stops after the reload");
   stop();
+});
+
+test("the connector adds the Windows certificate store to Node's own list, where Node can read it", () => {
+  let installed = null;
+  const api = { getCACertificates: type => (type === "system" ? ["antivirus-root", "shared"] : ["mozilla", "shared"]), setDefaultCACertificates: certs => { installed = certs; } };
+  assert.equal(trustSystemCertificates(api), true);
+  assert.deepEqual(installed, ["mozilla", "shared", "antivirus-root"]);
+  assert.equal(trustSystemCertificates({}), false, "Older Node keeps its own list");
+  assert.equal(trustSystemCertificates({ ...api, getCACertificates: () => { throw new Error("no store"); } }), false);
 });

@@ -7,6 +7,7 @@ import { WidgetCarousel } from "./carousel.js";
 import { ActorCarousel } from "./actor-carousel.js";
 import { resolveCarouselSettings } from "../carousel/schema.js";
 import { applyBoxStyle, createTextElement, gradientFill, keepFitted, markupLines, usesSpans, writeTextContent } from "./text.js";
+import { bindVoice } from "./voice.js";
 
 /** A layer's own cleanup list that also records into the scene's pending list as it grows. */
 function trackedList(sink) {
@@ -241,14 +242,20 @@ export class OverlayRenderer {
       resolveTarget: id => value.type === "character-widget" ? compositions.get(value.id)?.findMotion(id)
         : motions.get(id) ?? scene.carousel?.findMotion(id) ?? this.context.resolveMotion?.(id) });
     instances.push({ definition: { destroy: () => motion.destroy(this.disposed ? "destroyed" : "render-interrupted") }, args: {} });
+    // A character card follows the character it shows now; a component in a design, its card's character.
+    const shown = { composition: null };
+    const voice = bindVoice(element, value, this.context.voice, () => value.type === "character-widget"
+      ? shown.composition?.getState?.().activeActorUuid ?? value.actorUuids?.[0] ?? ""
+      : this.context.actorUuid || this.context.previewActorUuid || "", this.context.characterData);
+    if (voice) instances.push({ definition: { destroy: () => voice.destroy() }, args: {} });
     if (["image", "color", "text"].includes(value.type)) {
       this.renderStaticLayer(element, value);
       return { element, motion, composition: null, instances };
     }
-    return this.mountContent(value, overlay, { element, motion, instances });
+    return this.mountContent(value, overlay, { element, motion, instances, voice, shown });
   }
 
-  async mountContent(value, overlay, { element, motion, instances }) {
+  async mountContent(value, overlay, { element, motion, instances, voice = null, shown = {} }) {
     let composition = null;
     try {
       if (isCharacterComponent(value.type)) {
@@ -257,13 +264,16 @@ export class OverlayRenderer {
         instances.push({ definition: { destroy: () => binding.destroy() }, args: {} });
         await binding.ready;
       } else if (value.type === "character-widget") {
-        composition = await this.renderCharacterWidget(element, value, instances, motion);
+        composition = await this.renderCharacterWidget(element, value, instances, motion, () => voice?.refresh());
+        shown.composition = composition;
+        voice?.refresh();
       } else {
         // Extension types continue through the established widget registry below.
         await this.renderRegisteredWidget(element, value, overlay, instances);
       }
     } catch (error) {
-      this.cleanup(instances.splice(1));
+      // The motion (and the voice binding, which keeps the empty frame glowing) stay with the element.
+      this.cleanup(instances.splice(voice ? 2 : 1));
       element.replaceChildren();
       if (this.context.mode === "preview") element.textContent = "Widget content unavailable";
       console.error(`Modular Stream Overlay | Layer ${value.id} failed`, error);
@@ -347,7 +357,7 @@ export class OverlayRenderer {
     catch (error) { console.error(`Modular Stream Overlay | Widget ${value.type} failed`, error); element.replaceChildren(); }
   }
 
-  async renderCharacterWidget(element, value, instances, motion) {
+  async renderCharacterWidget(element, value, instances, motion, onActorChange = () => {}) {
     const preset = this.context.widgetPresets?.list().find(item => item.id === value.presetId);
     if (!preset) {
       if (this.context.mode === "preview") { element.textContent = "Widget preset unavailable"; element.classList.add("mso-widget-placeholder"); }
@@ -364,7 +374,8 @@ export class OverlayRenderer {
     if (coordinated(value, design, configuration)) {
       overlay.animations = appearance.animations; overlay.triggers = appearance.triggers;
       const child = new ActorCarousel({ element, overlay, instance: value, hasPages: normalized.pages.length > 0, configuration,
-        context: { ...this.context, deferEntrances: true }, parentMotion: motion, viewportSize: { width: value.width, height: value.height },
+        context: { ...this.context, deferEntrances: true,
+          onCarouselChange: state => { this.context.onCarouselChange?.(state); onActorChange(); } }, parentMotion: motion, viewportSize: { width: value.width, height: value.height },
         createRenderer: (host, context) => new OverlayRenderer(host, { widgets: this.widgets, resolveAsset: this.resolveAsset,
           context, preview: this.context.mode === "preview", viewportSize: { width: value.width, height: value.height }, stretch: true }) });
       instances.push({ definition: { destroy: () => child.destroy() }, args: {} });

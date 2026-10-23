@@ -23,3 +23,11 @@ html.mso-broadcast::before, html.mso-broadcast::after, html.mso-broadcast body::
 #mso-output .mso-message { position: absolute; top: 16px; left: 16px; max-width: 600px; padding: 14px 18px; font: 16px/1.5 sans-serif; color: #fff; background: #17232e; border: 1px solid #6b8595; border-radius: 6px; }
 .mso-text-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
 .mso-text-highlight { padding: 0 .2em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+/* Discord voice: the glow of a speaking person (border, tint and three soft halos), as StreamKit overlays draw it. */
+.mso-voice-glow { transition: border-color .18s ease, box-shadow .18s ease; }
+.mso-voice-glow.mso-speaking {
+  border-color: rgb(var(--mso-voice-rgb, 255, 255, 255)) !important;
+  box-shadow: inset 0 0 0 100vmax rgba(var(--mso-voice-rgb, 255, 255, 255), .16), 0 0 8px rgba(var(--mso-voice-rgb, 255, 255, 255), .95),
+    0 0 20px rgba(var(--mso-voice-rgb, 255, 255, 255), .75), 0 0 36px rgba(var(--mso-voice-rgb, 255, 255, 255), .45) !important;
+}
+.mso-voice-away { visibility: hidden !important; }

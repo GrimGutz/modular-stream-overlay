@@ -135,6 +135,9 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   get store() { return services.store ?? this.api?.store; }
   get characterData() { return services.characterData ?? this.api?.characterData; }
   get widgetPresets() { return services.widgetPresets ?? this.api?.widgetPresets; }
+  /** Discord voice for previews: who is in the channel (from the stream page) and the preview mode. */
+  get voice() { return services.voice ?? services.context?.voice ?? null; }
+  _openVoiceRoster() { return (services.openVoiceRoster ?? this.api?.openVoiceRoster)?.(); }
   _previewContext() { return { ...(services.context ?? {}), characterData: this.characterData, widgetPresets: this.widgetPresets,
     onCarouselChange: () => this._syncInstanceCarouselPreview() }; }
   /** A design may expose one editable scope while retaining its complete saved document. */
@@ -573,6 +576,15 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       this._preview?.setGrid(step);
       this._saveCanvasSetting("canvasGrid", step);
     });
+    const voicePreview = this.element.querySelector("[data-voice-preview]");
+    if (voicePreview) {
+      voicePreview.value = this.voice?.mode ?? "design";
+      voicePreview.disabled = !this.voice;
+      voicePreview.addEventListener("change", event => {
+        try { this.voice?.setMode(event.currentTarget.value); } catch (error) { ui.notifications.error(errorText(error)); }
+        if (event.currentTarget.value === "live") services.requestVoice?.();
+      });
+    }
     this.element.querySelector("[data-canvas-zoom]")?.addEventListener("change", event => {
       const value = event.currentTarget.value;
       this._zoom = value === "fit" ? "fit" : Number(value);

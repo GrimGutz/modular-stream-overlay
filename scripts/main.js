@@ -17,7 +17,10 @@ import { isOverlayRequest, overlayURL, isViewerAllowed, viewerAccessMessage, wat
 import { defaultAnimationRegistry } from "./animation/playback.js";
 import { registerTriggerEvent } from "./animation/triggers.js";
 import { AnimationCommands } from "./animation/commands.js";
-import { StreamCommandTransport } from "./animation/transport.js";
+import { SOCKET_NAME, StreamCommandTransport } from "./animation/transport.js";
+import { VOICE_PATH, VoiceHub, connectVoice } from "./integration/voice.js";
+import { VOICE_ROSTER_SETTING } from "./core/voice.js";
+import { configureVoiceRoster, openVoiceRoster } from "./ui/voice-roster.js";
 import { effectiveWidgetMotion, refreshAnimationPreferences, registerAnimationAction } from "./render/motion.js";
 import { configureLiveControls, openLiveControls, refreshLiveControls, LiveControls } from "./ui/live-controls.js";
 import { resolveCarouselSettings } from "./carousel/schema.js";
@@ -46,6 +49,12 @@ let output;
 let renderer;
 let streamReady = false;
 let status;
+// Discord voice: the stream follows the OBS connector; GM editors preview it or mirror the stream.
+let streamVoice = null;
+let stopVoice = null;
+let stopEditorVoice = null;
+const editorVoice = new VoiceHub({ mode: "design" });
+const DEFAULT_CONNECTOR = "http://localhost:30001";
 const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
 const animationContext = {
   animationRegistry: defaultAnimationRegistry,
@@ -126,6 +135,51 @@ async function refreshOutput({ skipUnchanged = false } = {}) {
   }
 }
 
+function readVoiceRoster() {
+  try { return game.settings.get(MODULE_ID, VOICE_ROSTER_SETTING) ?? {}; } catch { return {}; }
+}
+
+function voiceRosterChanged(roster) {
+  editorVoice.setRoster(roster);
+  streamVoice?.setRoster(roster);
+}
+
+/** Voice state from the stream page reaches GMs (for the editor), at most a few times a second. */
+function sendVoice(state, recipients = game.users?.filter(user => user.isGM && user.active).map(user => user.id) ?? []) {
+  if (!recipients.length || game.socket?.connected === false) return;
+  try { game.socket.emit(SOCKET_NAME, { type: "voice", state }, { recipients }); } catch { /* The editor preview is optional. */ }
+}
+let voiceTimer = null, voicePending = null;
+function forwardVoice(state) {
+  voicePending = state;
+  voiceTimer ??= setTimeout(() => { voiceTimer = null; sendVoice(voicePending); }, 150);
+}
+/**
+ * A GM on the streaming PC reads voice straight from the OBS connector, so the editor shows it
+ * even while OBS is closed. An unreachable connector is asked again on the next request.
+ */
+function connectEditorVoice() {
+  if (stopEditorVoice || broadcast || !game.user?.isGM) return;
+  let url;
+  try { url = new URL(VOICE_PATH, game.settings.get(MODULE_ID, "connectorUrl") || DEFAULT_CONNECTOR).href; } catch { url = new URL(VOICE_PATH, DEFAULT_CONNECTOR).href; }
+  stopEditorVoice = connectVoice({ hub: editorVoice, url, retryAfter: 15000, maxRetry: 300000, waitForConnector: false,
+    onGiveUp: () => { stopEditorVoice = null; } });
+}
+function requestVoice() {
+  connectEditorVoice();
+  const viewerId = getViewerUserId();
+  if (!game.user?.isGM || !viewerId || !game.users?.get(viewerId)?.active) return;
+  try { game.socket.emit(SOCKET_NAME, { type: "voice-request" }, { recipients: [viewerId] }); } catch { /* Offline. */ }
+}
+/** Only the configured viewer may report voice, and only GMs may ask for it. */
+function onVoiceMessage(payload, senderId) {
+  if (!payload || typeof payload !== "object" || typeof senderId !== "string") return;
+  if (payload.type === "voice" && game.user?.isGM) {
+    const viewerId = getViewerUserId();
+    if (senderId === viewerId && isViewerAllowed(game.users?.get(senderId), viewerId)) editorVoice.setState(payload.state);
+  } else if (payload.type === "voice-request" && streamVoice && game.users?.get(senderId)?.isGM) sendVoice(streamVoice.state, [senderId]);
+}
+
 function settingsChanged() {
   // Settings are updated by Foundry's authenticated database socket, including /stream.
   characterData?.refresh();
@@ -164,6 +218,12 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "canvasGuides", { scope: "client", config: false, type: Object, default: {} });
   // Saved layer fragments, shared by every GM of the world.
   game.settings.register(MODULE_ID, "layerFragments", { scope: "world", config: false, restricted: true, type: Array, default: [], onChange: () => refreshFragmentLists() });
+  // Discord players (ID, name, character, glow color) and ignored accounts, shared by every GM.
+  game.settings.register(MODULE_ID, VOICE_ROSTER_SETTING, { scope: "world", config: false, restricted: true, type: Object,
+    default: { speakers: [], ignored: [] }, onChange: voiceRosterChanged });
+  game.settings.register(MODULE_ID, "connectorUrl", localizeSetting({ scope: "client", config: true, type: String, default: DEFAULT_CONNECTOR,
+    onChange: () => { stopEditorVoice?.(); stopEditorVoice = null; connectEditorVoice(); } },
+    { name: "Settings.connectorUrl.Name", hint: "Settings.connectorUrl.Hint" }));
   game.settings.register(MODULE_ID, "viewerUserId", {
     name: "Overlay viewer account", scope: "world", config: false, type: String,
     default: "", onChange: settingsChanged
@@ -197,6 +257,8 @@ Hooks.once("init", () => {
     isReceiver: () => broadcast && streamReady && status !== "disconnected" && status !== "shutdown",
     receive: (command, context) => animationCommands.receive(command, context) });
   commandTransport.start();
+  game.socket?.on?.(SOCKET_NAME, onVoiceMessage);
+  editorVoice.setRoster(readVoiceRoster());
   const liveControls = {
     getState() {
       const state = store.getState(), overlay = state.overlays.find(item => item.id === state.activeOverlayId);
@@ -245,7 +307,9 @@ Hooks.once("init", () => {
   };
   const configuration = { store, widgets, widgetPresets, characterData, openWidgetManager, openWidgetPreset, openLiveControls,
     installDemo: installShowcase, publishTestCommand: liveControls.testCommand, getDebug, setDebug,
-    context: { mode: "preview", widgetPresets, characterData, ...animationContext } };
+    voice: editorVoice, openVoiceRoster, requestVoice,
+    context: { mode: "preview", widgetPresets, characterData, voice: editorVoice, ...animationContext } };
+  configureVoiceRoster({ voice: editorVoice, characterData, requestVoice });
   configureEditor(configuration);
   configureWidgetEditor(configuration);
   game.settings.registerMenu(MODULE_ID, "editor", localizeSetting({
@@ -265,7 +329,7 @@ Hooks.once("init", () => {
     createOverlay, validateOverlay,
     registerWidget: definition => widgets.register(definition),
     registerAdapter: definition => { const adapter = adapters.register(definition); mappingsChanged(); return adapter; },
-    openWidgetManager, openWidgetPreset,
+    openWidgetManager, openWidgetPreset, openVoiceRoster,
     openLiveControls, liveControls, installDemo: installShowcase, installCainPresets: installCainExamples,
     getDebug, setDebug,
     getDiagnostics: () => game.user?.isGM || isViewerAllowed(game.user, getViewerUserId()) ? renderer?.getDiagnostics() ?? [] : [],
@@ -308,6 +372,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   characterData.start();
   if (!game.user?.isGM) return;
+  requestVoice();
   try { store.getState(); }
   catch (error) { notifyError(error); }
 });
@@ -335,7 +400,10 @@ Hooks.once("streamReady", () => {
   output = document.createElement("main");
   output.id = "mso-output";
   document.body.append(output);
-  renderer = new OverlayRenderer(output, { widgets, context: { viewerUserId: game.userId, widgetPresets, characterData, ...animationContext } });
+  streamVoice = new VoiceHub({ roster: readVoiceRoster(), mode: "live" });
+  renderer = new OverlayRenderer(output, { widgets, context: { viewerUserId: game.userId, widgetPresets, characterData, voice: streamVoice, ...animationContext } });
+  // Behind the OBS connector with Discord voice set up, voice layers follow who is speaking.
+  stopVoice = connectVoice({ hub: streamVoice, onState: forwardVoice });
   // Updates while reconnecting must not leave a stale scene on air.
   // Foundry's socket stops retrying after a few seconds; behind the OBS connector the page
   // reloads itself once Foundry is reachable again, so OBS needs no manual refresh.
@@ -369,6 +437,6 @@ Hooks.on("deleteUser", user => {
 });
 
 window.addEventListener("pagehide", () => {
-  renderer?.destroy(); characterData?.stop(); reducedMotion?.removeEventListener?.("change", refreshAnimationPreferences);
+  stopVoice?.(); stopEditorVoice?.(); game.socket?.off?.(SOCKET_NAME, onVoiceMessage); renderer?.destroy(); characterData?.stop(); reducedMotion?.removeEventListener?.("change", refreshAnimationPreferences);
   commandTransport?.stop();
 });

@@ -324,7 +324,13 @@
       "ExportFileHelp": "Save this overlay with the widget designs it uses (or this widget design) as a file, to move it to another world or GM. Images are referenced by path, not included.",
       "ImportFile": "Import from file",
       "ImportFileHelp": "Add an exported overlay, widget design or fragment. Nothing is replaced: taken IDs get new ones.",
-      "RescaleCanvas": "Resize with content…"
+      "RescaleCanvas": "Resize with content…",
+      "VoicePreview": "Voice",
+      "VoicePreviewHint": "Discord voice preview: how layers with Discord voice look in this editor",
+      "VoiceDesign": "Design (no voice)",
+      "VoicePresent": "Everyone in channel",
+      "VoiceSpeaking": "Everyone speaking",
+      "VoiceLive": "Live from Discord"
     },
     "Editor": {
       "Title": "Modular Stream Overlay",
@@ -694,7 +700,28 @@
         "horizontal": "Left and right"
       },
       "FadeSize": "Fade length (%)",
-      "ShapeHelp": "The shape, mask and faded edges clip the whole layer, such as a portrait inside a hexagon or a picture fading into the background. Rounded corners are under Box style."
+      "ShapeHelp": "The shape, mask and faded edges clip the whole layer, such as a portrait inside a hexagon or a picture fading into the background. Rounded corners are under Box style.",
+      "VoiceSection": "Discord voice",
+      "VoiceTarget": "Follows",
+      "VoiceNone": "Nobody",
+      "VoiceUser": "A Discord user",
+      "VoiceActor": "The character's player",
+      "VoiceSlot": "A free slot",
+      "DiscordUserId": "Discord user ID",
+      "VoiceSlotNumber": "Slot number",
+      "VoiceColor": "Glow color",
+      "VoiceShow": "Show",
+      "VoiceShowAlways": "Always",
+      "VoiceShowPresent": "While in the channel",
+      "VoiceShowSpeaking": "While speaking",
+      "VoiceEffect": "Effect",
+      "VoiceGlow": "Glow",
+      "VoiceNoEffect": "None",
+      "VoicePlayers": "Discord players…",
+      "VoiceHelp": "Layers can react to Discord voice: they glow while their person speaks and can appear only while that person is in the channel or speaking. The OBS connector reads Discord on the streaming PC (see its Discord voice setup).",
+      "VoiceUserHelp": "A fixed person, such as the GM for the central frame. Pick a player from the list or paste an ID from Discord (Copy User ID).",
+      "VoiceActorHelp": "Follows the player linked to the character this layer shows in Discord players; on a character card it follows the card's current character, also in a carousel.",
+      "VoiceSlotHelp": "Slot 1 is the first person in the channel who is not in Discord players, not ignored and not bound to another layer, slot 2 the second, in Discord's order. Bots never take a slot."
     },
     "Settings": {
       "LanguageHint": "Choose the language of this module's configuration interface on this client. Auto follows Foundry; unsupported languages use English. Stream content is unchanged.",
@@ -725,7 +752,11 @@
         "Label": "Open Live Controls",
         "Hint": "Show, hide, and animate saved layers on the active stream overlay."
       },
-      "UnavailableCharacter": "Unavailable character"
+      "UnavailableCharacter": "Unavailable character",
+      "connectorUrl": {
+        "Name": "OBS connector address",
+        "Hint": "Where this PC's OBS connector runs, such as http://localhost:30001. The editor reads Discord voice from it for its live preview and Discord players, even while OBS is closed."
+      }
     },
     "Components": {
       "character-portrait": "Character portrait",
@@ -1023,7 +1054,18 @@
       "AdapterResourcesLimit": "Adapter resources must contain at most 64 entries.",
       "AdapterResourceIds": "Adapter resources need unique supported IDs.",
       "AdapterResourceTargets": "Adapter resource targets must be existing numeric fields.",
-      "ResourcePolarity": "Choose a supported resource polarity."
+      "ResourcePolarity": "Choose a supported resource polarity.",
+      "DiscordId": "{label} must be the digits Discord's Copy User ID gives.",
+      "VoiceTarget": "A voice target is a Discord user, the character's player or a free slot.",
+      "VoiceShow": "Show the layer always, while in the channel or while speaking.",
+      "VoiceEffect": "A voice effect is a glow or none.",
+      "VoicePreview": "Choose a supported voice preview.",
+      "VoiceRosterObject": "The Discord player list must be an object.",
+      "VoiceRosterLimit": "The Discord player list holds at most 50 players and 50 ignored accounts.",
+      "VoiceRosterUnique": "Each Discord user ID may appear only once in the player list.",
+      "VoicePlayerObject": "Each Discord player must be an object.",
+      "VoicePlayerColor": "A player's glow color must be a hexadecimal color such as #aa50ff.",
+      "VoiceIgnoredObject": "Each ignored Discord account must be an object."
     },
     "ValidationLabel": {
       "ActiveOverlayID": "Active overlay ID",
@@ -1187,7 +1229,9 @@
       "OpenOrRefreshTheConfiguredOBSOverlaySourceThenTryAgainIfYouJustUpdatedTheModuleRestartFoundryFirst": "Open or refresh the configured OBS overlay source, then try again. If you just updated the module, restart Foundry first.",
       "ConnectionUnavailable": "connection unavailable",
       "NoAcknowledgement": "no acknowledgement",
-      "RendererUnavailable": "renderer unavailable"
+      "RendererUnavailable": "renderer unavailable",
+      "FreeVoiceSlot": "Free voice slot",
+      "VoiceGlowColor": "Voice glow color"
     },
     "Descriptor": {
       "CharacterName": "Character name",
@@ -1495,6 +1539,34 @@
       "KeepRecord": "Keep overlay unchanged: {name} ({id})",
       "Update": "Update",
       "Updated": "Widget designs updated. Existing overlays and the active output were kept."
+    },
+    "Voice": {
+      "Title": "Discord players",
+      "GMOnly": "Only a GM can edit the Discord players.",
+      "Help": "Link Discord accounts to characters and glow colors for voice layers. Layers set to follow \"the character's player\" use these links; free slots skip everyone listed here.",
+      "LiveHeading": "In the voice channel now",
+      "LiveUnavailable": "No voice information yet. Start the OBS connector on this PC with Discord voice set up (node tools/obs-connector.mjs discord-setup, then the connector as usual). The connector's address is in the module settings.",
+      "NotInChannel": "Discord is connected, but the streaming account is not in a voice channel.",
+      "Channel": "Channel: {name}",
+      "Bot": "bot",
+      "IsPlayer": "player",
+      "IsIgnored": "ignored",
+      "AddAsPlayer": "Add as player",
+      "Ignore": "Ignore",
+      "PlayersHeading": "Players",
+      "PlayersHelp": "The color is optional: a layer's own glow color wins, then the player's, then the character's color (in CAIN its blasphemy's), then white.",
+      "IgnoredHeading": "Ignored accounts",
+      "IgnoredHelp": "Ignored accounts, such as a music bot, never take a free slot.",
+      "Name": "Name",
+      "DiscordId": "Discord ID",
+      "Character": "Character",
+      "NoCharacter": "No character",
+      "Color": "Glow color",
+      "Remove": "Remove",
+      "AddPlayer": "Add player",
+      "AddIgnored": "Add account",
+      "Save": "Save",
+      "Saved": "Discord players saved."
     }
   }
 }

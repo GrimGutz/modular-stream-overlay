@@ -15,13 +15,15 @@
 import { createServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { connect as netConnect } from "node:net";
-import { connect as tlsConnect } from "node:tls";
+import tls, { connect as tlsConnect } from "node:tls";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { CONNECTOR_HEADER } from "../scripts/integration/obs.js";
+import { VOICE_PATH } from "../scripts/integration/voice.js";
+import { DEFAULT_REDIRECT, DiscordVoice, VoiceFeed, discordConfigPath, validateDiscordConfig } from "./discord-voice.mjs";
 
 export { CONNECTOR_HEADER };
 const BLOCKED_ROUTES = new Set(["game", "join", "setup", "players", "auth", "license", "update", "create", "quit", "upload"]);
@@ -79,13 +81,19 @@ export function socketProbe(foundryUrl, cookie, { timeout = 6000, WebSocketClass
 }
 
 export class ObsConnector {
-  constructor(config, { fetch = globalThis.fetch, probe = socketProbe, log = message => console.log(`[${new Date().toLocaleTimeString()}] ${message}`), now = () => Date.now() } = {}) {
+  constructor(config, { fetch = globalThis.fetch, probe = socketProbe, log = message => console.log(`[${new Date().toLocaleTimeString()}] ${message}`), now = () => Date.now(), voice = null } = {}) {
     this.config = validateConfig(config);
+    // An optional VoiceFeed: who speaks in Discord, for voice layers on the stream page.
+    this.voice = voice;
     this.upstream = new URL(`${this.config.foundryUrl}/`);
     this.prefix = this.upstream.pathname.replace(/\/$/, "");
     this.fetch = fetch; this.probe = probe; this.log = log; this.now = now;
     this.sessionId = null; this.state = { status: "idle", until: 0 }; this.pending = null;
     this.allowedHosts = new Set([`localhost:${this.config.port}`, `127.0.0.1:${this.config.port}`]);
+    // Foundry's own pages on this PC (the GM's editor) may read voice state, nothing else.
+    const local = ["localhost", "127.0.0.1"].includes(this.upstream.hostname);
+    const port = this.upstream.port ? `:${this.upstream.port}` : "";
+    this.foundryOrigins = new Set([this.upstream.origin, ...(local ? ["localhost", "127.0.0.1"].map(host => `${this.upstream.protocol}//${host}${port}`) : [])]);
   }
 
   get cookie() { return this.sessionId ? `session=${this.sessionId}` : ""; }
@@ -157,6 +165,7 @@ export class ObsConnector {
     if (!this.#local(request)) return send(403, "Only OBS on this computer can use the connector.");
     if (!["GET", "HEAD"].includes(request.method)) return send(405, "The connector only shows the stream.");
     const url = new URL(request.url, "http://connector.invalid");
+    if (url.pathname === VOICE_PATH) return this.#voiceStream(request, response, send);
     const route = this.#route(url);
     if (!route) { response.writeHead(302, { Location: this.streamPath, [CONNECTOR_HEADER]: "1" }); return response.end(); }
     if (BLOCKED_ROUTES.has(route)) return send(403, "The connector only shows the stream.");
@@ -165,6 +174,31 @@ export class ObsConnector {
       if (state !== "ready") return send(200, WAITING_PAGE, "text/html; charset=utf-8");
     }
     this.#forward(request, response, url, route, send);
+  }
+
+  /**
+   * Who is in the Discord voice channel and speaking, as server-sent events for the stream page
+   * and for Foundry's own pages on this PC (the GM's editor preview): the whole state on connect
+   * and after every change. 404 when Discord voice is not set up.
+   */
+  #voiceStream(request, response, send) {
+    const origin = request.headers.origin;
+    const foundry = Boolean(origin) && this.foundryOrigins.has(origin);
+    if (origin && !foundry && ![...this.allowedHosts].some(host => origin === `http://${host}`)) return send(403, "Only the stream page and Foundry can read voice state.");
+    const cors = foundry ? { "Access-Control-Allow-Origin": origin, "Access-Control-Expose-Headers": CONNECTOR_HEADER, Vary: "Origin" } : {};
+    if (!this.voice) {
+      response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", [CONNECTOR_HEADER]: "1", ...cors });
+      return response.end(request.method === "HEAD" ? undefined : "Discord voice is not set up in this connector.");
+    }
+    response.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", [CONNECTOR_HEADER]: "1", ...cors });
+    if (request.method === "HEAD") return response.end();
+    const voice = this.voice;
+    const write = state => response.write(`data: ${JSON.stringify(state)}\n\n`);
+    write(voice.state);
+    voice.on("change", write);
+    const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 15000);
+    heartbeat.unref?.();
+    request.on("close", () => { clearInterval(heartbeat); voice.off("change", write); });
   }
 
   #forward(request, response, url, route, send) {
@@ -264,11 +298,80 @@ async function setup(file) {
   console.log(`OBS Browser Source URL: http://localhost:${config.port}/`);
 }
 
+async function discordSetup(file) {
+  let current = {};
+  try { current = JSON.parse(await readFile(file, "utf8")); } catch { /* First setup. */ }
+  console.log("Discord voice — setup. Create an application at https://discord.com/developers/applications,");
+  console.log(`add the redirect ${DEFAULT_REDIRECT} on its OAuth2 page and enter its values here. Leave a line empty to keep the value in [brackets].`);
+  const clientId = await ask(`Client ID${current.clientId ? ` [${current.clientId}]` : ""}: `, { fallback: current.clientId ?? "" });
+  const clientSecret = await ask(`Client Secret${current.clientSecret ? " [keep current]" : ""} (not shown): `, { hidden: true, fallback: current.clientSecret ?? "" });
+  const redirectUri = await ask(`Redirect [${current.redirectUri ?? DEFAULT_REDIRECT}]: `, { fallback: current.redirectUri ?? DEFAULT_REDIRECT });
+  // A token belongs to the application that issued it.
+  const same = clientId === current.clientId && clientSecret === current.clientSecret;
+  const config = validateDiscordConfig({ clientId, clientSecret, redirectUri, token: same ? current.token : undefined });
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  console.log(`Saved ${file}`);
+  console.log('Next: join a voice channel in Discord and run "node tools/obs-connector.mjs discord-test".');
+}
+
+/** Prints the current voice channel and every start and stop of speaking until Ctrl+C. */
+async function discordTest(file) {
+  let config;
+  try { config = JSON.parse(await readFile(file, "utf8")); }
+  catch { throw new Error(`No Discord settings at ${file}. Run "node tools/obs-connector.mjs discord-setup" first.`); }
+  const log = message => console.log(`[${new Date().toLocaleTimeString()}] ${message}`);
+  const voice = new DiscordVoice(config, {
+    saveToken: async token => {
+      const saved = validateDiscordConfig({ ...config, token });
+      await writeFile(file, `${JSON.stringify(saved, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    }
+  });
+  const label = entry => `${entry.name} (${entry.id})${entry.bot ? " [bot]" : ""}${entry.muted ? " [muted]" : ""}${entry.deafened ? " [deafened]" : ""}`;
+  voice.on("authorizing", () => log("Discord shows an authorization prompt for your application: confirm it there (once)."));
+  voice.on("channel", ({ channel, members }) => {
+    if (!channel) return log("Not in a voice channel. Join one in Discord; this window follows you.");
+    log(`Voice channel "${channel.name}" (channel ${channel.id}, server ${channel.guildId ?? "none"}), ${members.length} in it:`);
+    for (const entry of members) log(`    ${label(entry)}`);
+  });
+  voice.on("member", ({ type, member }) => log(`${type === "join" ? "+ joined " : type === "leave" ? "- left   " : "~ changed"} ${label(member)}`));
+  voice.on("speaking", ({ speaking, member }) => log(`${speaking ? ">> speaks " : "   stopped"} ${member.name} (${member.id})`));
+  voice.on("problem", error => log(`Problem: ${error.message}`));
+  voice.on("close", info => { log(`Discord closed the connection${info?.message ? `: ${info.message}` : ""}.`); process.exit(1); });
+  log("Connecting to the Discord app on this PC…");
+  let user, scopes;
+  try { ({ user, scopes } = await voice.start()); }
+  catch (error) {
+    const text = `${error.message} ${error.code ?? ""}`;
+    if (/client id/i.test(text)) log('Hint: check the Client ID with "discord-setup".');
+    else if (/redirect/i.test(text)) log(`Hint: add ${config.redirectUri ?? DEFAULT_REDIRECT} under OAuth2 → Redirects in the Developer Portal and save.`);
+    else if (/invalid_client|secret/i.test(text)) log('Hint: reset the Client Secret in the Developer Portal and enter it again with "discord-setup".');
+    else if (/scope|tester|approv|4006|5000/i.test(text)) log("Hint: Discord gives voice events only to approved apps and to the testers of your own application.");
+    throw error;
+  }
+  log(`Signed in to Discord as ${user?.global_name || user?.username || "?"} (${user?.id ?? "?"}) with ${scopes.join(", ") || "no scopes"}. Speak in the channel; Ctrl+C stops.`);
+}
+
+/**
+ * Lets Node also trust the Windows certificate store, as browsers do, so HTTPS scanning by
+ * antivirus software (whose root certificate lives only there) does not break discord.com.
+ */
+export function trustSystemCertificates(api = tls) {
+  if (typeof api.setDefaultCACertificates !== "function" || typeof api.getCACertificates !== "function") return false;
+  try {
+    api.setDefaultCACertificates([...new Set([...api.getCACertificates("default"), ...api.getCACertificates("system")])]);
+    return true;
+  } catch { return false; }
+}
+
 async function main(argv) {
+  trustSystemCertificates();
   const configIndex = argv.indexOf("--config");
   const file = configIndex >= 0 ? argv[configIndex + 1] : defaultConfigPath();
   if (!file) throw new Error("--config needs a file path.");
   if (argv[0] === "setup") return setup(file);
+  if (argv[0] === "discord-setup") return discordSetup(discordConfigPath());
+  if (argv[0] === "discord-test") return discordTest(discordConfigPath());
   let config;
   try { config = JSON.parse(await readFile(file, "utf8")); }
   catch { throw new Error(`No settings at ${file}. Run "node tools/obs-connector.mjs setup" first.`); }
@@ -277,6 +380,22 @@ async function main(argv) {
   connector.log(`OBS connector for ${connector.config.foundryUrl} as "${connector.config.userName}".`);
   connector.log(`OBS Browser Source URL: http://localhost:${connector.config.port}/  (keep this window open while streaming)`);
   void connector.ensureSession();
+  await startDiscordVoice(connector);
+}
+
+/** With Discord voice set up (discord-setup), the stream page learns who is speaking. */
+async function startDiscordVoice(connector, file = discordConfigPath()) {
+  let config;
+  try { config = JSON.parse(await readFile(file, "utf8")); }
+  catch { return; }
+  const saveToken = async token => {
+    config = validateDiscordConfig({ ...config, token });
+    await writeFile(file, `${JSON.stringify(config, null, 2)}
+`, { encoding: "utf8", mode: 0o600 });
+  };
+  connector.voice = new VoiceFeed(config, { saveToken, log: message => connector.log(message) });
+  connector.log("Discord voice: connecting to the Discord app on this PC…");
+  void connector.voice.start();
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
