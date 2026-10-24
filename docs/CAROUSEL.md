@@ -2,7 +2,7 @@
 
 Version **0.5.2** coordinates multiple Foundry Actors and multiple information pages in the existing reusable character-widget system. One controller owns the Actor index, page index, transition, and scheduling. With Actors A/B and pages Basic/Attributes, the default combined sequence is **A / Basic → A / Attributes → B / Basic → B / Attributes → A / Basic**.
 
-The installed module remains at `C:\Users\Lev\AppData\Local\FoundryVTT\Data\modules\modular-stream-overlay`. The update preserves uploaded images, shared designs, existing Actor assignments, and Phase 5 animations/triggers. It adds no separate module, Actor write, persistent playback log, or per-step network message.
+The module stays in `Data/modules/modular-stream-overlay` of Foundry's user-data folder. The update preserves uploaded images, shared designs, existing Actor assignments, and Phase 5 animations/triggers. It adds no separate module, Actor write, persistent playback log, or per-step network message.
 
 ## Create the shared design
 
@@ -161,7 +161,7 @@ Canonical-folder validation completed on **2026-10-20**: `npm run check` verifie
 
 Combined regressions exercise the required A/1 → A/2 → B/1 → B/2 order with one scheduling timer, mode/traversal behavior, transition timing, private editor drafts, authenticated semantic commands, slow and superseded Actor reads, permission revocation during preparation, off-screen updates, independent instances, resize geometry, effects and subscription cleanup. They also cover existing single-character page carousels and earlier animation/binding behavior.
 
-**Actual Foundry/OBS/browser acceptance remains unverified.** Complete the checks below alongside [PHASE5.md](PHASE5.md#manual-acceptance), [PHASE3.md](PHASE3.md), and [PHASE2-TESTING.md](PHASE2-TESTING.md). Record Foundry/system/OBS versions, enabled modules, and results. Earlier guides retain historical automated counts.
+**Actual Foundry/OBS/browser acceptance remains unverified.** Complete the checks below alongside [PHASE5.md](internal/PHASE5.md#manual-acceptance), [PHASE3.md](internal/PHASE3.md), and [PHASE2-TESTING.md](internal/PHASE2-TESTING.md). Record Foundry/system/OBS versions, enabled modules, and results. Earlier guides retain historical automated counts.
 
 ## Manual acceptance
 

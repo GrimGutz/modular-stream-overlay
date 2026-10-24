@@ -1,3 +1,19 @@
 # Preserve this existing installation byte-for-byte, including mixed line endings.
 # A future normalization should be an explicit, separately reviewed change.
 * -text
+
+# Left out of release archives (tools/package.mjs): tests, internal reports and development tools.
+/tests export-ignore
+/docs/internal export-ignore
+docs/DEVELOPMENT.md export-ignore
+AGENTS.md export-ignore
+package.json export-ignore
+.gitattributes export-ignore
+.gitignore export-ignore
+tools/check.mjs export-ignore
+tools/package.mjs export-ignore
+tools/foundry-dev.mjs export-ignore
+tools/browser-smoke.mjs export-ignore
+tools/animation-browser-check.mjs export-ignore
+tools/animation-foundry-check.mjs export-ignore
+tools/phase6-browser-check.mjs export-ignore

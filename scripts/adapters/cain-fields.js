@@ -2,7 +2,7 @@ import { CAIN_COLLECTION_FIELDS } from "./cain-collections.js";
 
 /**
  * Verified installed/public CAIN 1.3.26 TypeDataModels. Paths stay in the adapter,
- * never in saved widget bindings. See docs/PHASE6_CAIN_FIELD_MAP_RU.md for sources.
+ * never in saved widget bindings. See docs/internal/PHASE6_CAIN_FIELD_MAP_RU.md for sources.
  */
 export const CAIN_SYSTEM_VERSION = "1.3.26";
 

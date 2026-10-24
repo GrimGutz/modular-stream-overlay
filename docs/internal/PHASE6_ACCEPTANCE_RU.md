@@ -14,7 +14,7 @@
 | 6.4 | Независимый D&D5e PC адаптер: 28 полей HP/effectiveMax/temp/baseMax, AC, prepared level, шесть abilities и три произвольных resource slots. Только schema target 5.3.3; 6.0.6 остаётся исследованной, но недоступной версией. |
 | 6.5 | Unit/integration tests, native Chromium UI/renderer acceptance, read-only проверка настоящих CAIN Actors и интерфейса в Foundry, анимации в настоящем ApplicationV2, базовый визуальный вывод OBS, пользовательская и extension документация. Расширенная OBS приёмка остаётся отдельной. |
 
-Инструкции: [CAIN.md](CAIN.md), [DND5E.md](DND5E.md), [EXTENDING.md](EXTENDING.md), [DEMO_GUIDE.md](../DEMO_GUIDE.md).
+Инструкции: [CAIN.md](../CAIN.md), [DND5E.md](../DND5E.md), [EXTENDING.md](../EXTENDING.md), [DEMO_GUIDE.md](../DEMO_GUIDE_RU.md).
 
 ## Совместимость и права
 

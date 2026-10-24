@@ -1,6 +1,6 @@
 # Extension interfaces
 
-These APIs describe **v0.6.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](../DEMO_GUIDE.md) describes the editable demonstration in Russian.
+These APIs describe **v0.6.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](DEMO_GUIDE_RU.md) describes the editable demonstration in Russian.
 
 ```js
 Hooks.once("modularStreamOverlayInit", api => {
@@ -220,7 +220,7 @@ Pause preserves remaining dwell; Resume continues it and can temporarily run a n
 
 ## System adapters
 
-The built-ins are generic identity, CAIN 1.3.26 and D&D5e 5.3.3 PC. See [CAIN.md](CAIN.md), [DND5E.md](DND5E.md) and the [acceptance report](PHASE6_ACCEPTANCE_RU.md) for schema targets and runtime limits. System paths belong in adapters, not in presets, UI or renderer. External adapters remain trusted JavaScript, not sandboxed expressions.
+The built-ins are generic identity, CAIN 1.3.26 and D&D5e 5.3.3 PC. See [CAIN.md](CAIN.md), [DND5E.md](DND5E.md) and the [acceptance report](internal/PHASE6_ACCEPTANCE_RU.md) for schema targets and runtime limits. System paths belong in adapters, not in presets, UI or renderer. External adapters remain trusted JavaScript, not sandboxed expressions.
 
 ```js
 Hooks.once("modularStreamOverlayInit", api => {
@@ -404,7 +404,7 @@ Manual effects use the public module socket namespace `module.modular-stream-ove
 
 Installed v14.368 relays module events with the authenticated sending User ID as a separate second callback argument. The transport resolves that User and requires GM authority for commands; it never trusts a sender field inside the payload. Acknowledgements require the configured Player's server-supplied identity and a matching pending command ID. Missing sender identity fails closed. Targeting uses recipient User IDs, while normal game tabs ignore stream commands. With multiple OBS sessions, success wins over a stale session's rejection. Delivery is bounded in memory and time, cleared on disconnect/close, and never persisted or retried. Extensions should call the existing `liveControls` or `animations.dispatch` APIs rather than sending transport packets.
 
-Commands contain IDs, active overlay/layer IDs, kind, timestamps, and optional bounded animation/rule/event identifiers. They have a 10-second lifetime, reject invalid/future/expired metadata, and retain only a bounded 256-ID deduplication cache. The sender waits at most 6 seconds for acknowledgment, does not retry, and reports unavailable viewers. No raw documents, expressions, frame snapshots, offline queue, or durable event log travel through this channel. Authentication comes from Foundry's separate callback argument, never a payload `userId`. Actual Foundry/OBS delivery and visual acceptance still require the checks in [PHASE5.md](PHASE5.md#manual-acceptance).
+Commands contain IDs, active overlay/layer IDs, kind, timestamps, and optional bounded animation/rule/event identifiers. They have a 10-second lifetime, reject invalid/future/expired metadata, and retain only a bounded 256-ID deduplication cache. The sender waits at most 6 seconds for acknowledgment, does not retry, and reports unavailable viewers. No raw documents, expressions, frame snapshots, offline queue, or durable event log travel through this channel. Authentication comes from Foundry's separate callback argument, never a payload `userId`. Actual Foundry/OBS delivery and visual acceptance still require the checks in [PHASE5.md](internal/PHASE5.md#manual-acceptance).
 
 ### Editable demonstration and diagnostics (0.5.4)
 

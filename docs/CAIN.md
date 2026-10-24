@@ -1,6 +1,6 @@
 # CAIN 1.3.26 — интеграция персонажей
 
-Модуль 0.6.0 читает подготовленные публичные scalar значения world Actor. Цель схемы — установленная **CAIN 1.3.26**, Foundry v14. Проверенные версии здесь означают изученную схему и синтетические fixtures; результаты настоящего Foundry/OBS прогона отдельно перечислены в [PHASE6_ACCEPTANCE_RU.md](PHASE6_ACCEPTANCE_RU.md).
+Модуль 0.6.0 читает подготовленные публичные scalar значения world Actor. Цель схемы — установленная **CAIN 1.3.26**, Foundry v14. Проверенные версии здесь означают изученную схему и синтетические fixtures; результаты настоящего Foundry/OBS прогона отдельно перечислены в [PHASE6_ACCEPTANCE_RU.md](internal/PHASE6_ACCEPTANCE_RU.md).
 
 ## Настройка
 
@@ -87,4 +87,4 @@ Actor/embedded Item hooks обновляют текущие значения. Д
 
 Мировые настройки CAIN не читаются автоматически. Адаптер не мигрирует world catalog и не создаёт тестовых документов. Дальнейшие коллекции требуют отдельной политики стабильных ссылок, Item permissions, обновления world Items и bounded scalar projection.
 
-Полная исследованная карта, безопасные примеры и точные source references: [PHASE6_CAIN_FIELD_MAP_RU.md](PHASE6_CAIN_FIELD_MAP_RU.md). Реализация: `scripts/adapters/cain.js`, `scripts/adapters/cain-fields.js`; синтетические fixtures: `tests/fixtures/cain-1.3.26.js`. Первичные источники: [официальный пакет](https://foundryvtt.com/packages/cain), [Character v1.3.26](https://github.com/diabeatz96/cain/blob/v1.3.26/module/data/actor-character.mjs), [base Actor](https://github.com/diabeatz96/cain/blob/v1.3.26/module/data/base-actor.mjs).
+Полная исследованная карта, безопасные примеры и точные source references: [PHASE6_CAIN_FIELD_MAP_RU.md](internal/PHASE6_CAIN_FIELD_MAP_RU.md). Реализация: `scripts/adapters/cain.js`, `scripts/adapters/cain-fields.js`; синтетические fixtures: `tests/fixtures/cain-1.3.26.js`. Первичные источники: [официальный пакет](https://foundryvtt.com/packages/cain), [Character v1.3.26](https://github.com/diabeatz96/cain/blob/v1.3.26/module/data/actor-character.mjs), [base Actor](https://github.com/diabeatz96/cain/blob/v1.3.26/module/data/base-actor.mjs).

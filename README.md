@@ -1,27 +1,40 @@
 # Modular Stream Overlay
 
-The configuration interface supports English and Russian. In Foundry's module settings, **Interface Language / Язык интерфейса** offers Auto (follow Foundry), English, or Русский for each client. Switching updates open module windows without reloading or changing stream content. See [localization notes](docs/LOCALIZATION.md) for adding translations.
+Stream overlays for **Foundry VTT v14**, built in a visual editor inside Foundry and shown in OBS as a transparent Browser Source. Character cards read live data from your world's characters, cycle through characters and information pages, animate when values change, and can glow while their player speaks in Discord.
 
-A Foundry VTT **v14** module for transparent OBS overlays. Version **0.6.0** adds native CAIN 1.3.26 character fields, opt-in CAIN example designs, a D&D5e 5.3.3 PC adapter, grouped field discovery, provider selection and scoped mapping previews. Existing presets, bindings, animations and combined character/page cycling remain compatible. There are no runtime dependencies or build step. See [CAIN.md](docs/CAIN.md), [DND5E.md](docs/DND5E.md), and the [Phase 6 acceptance report](docs/PHASE6_ACCEPTANCE_RU.md) for supported schema targets and runtime verification limits.
+- **Visual editor** — image, text, color and character layers; drag, resize, rotate, snap, align, distribute, group, rulers, guides and grid; undo/redo, copy and paste between overlays and worlds, saved versions and reusable fragments; shapes, masks, gradients and text that fits its box.
+- **Reusable character widgets** — design a card once and place it many times, each with its own characters: portraits, names, dynamic text, resource bars and circles.
+- **Carousels** — cycle characters and information pages with transitions.
+- **Animations and triggers** — entrances, exits, emphasis and reactions to value changes such as a damage flash or a low-health warning; **Live Controls** for the GM during the stream.
+- **OBS output** — Foundry's own signed-in `/stream` page; an optional local connector signs OBS in automatically.
+- **Discord voice** — layers glow while their player speaks, without StreamKit.
+- **Game systems** — CAIN 1.3.x and D&D5e 5.3.x fields built in; other systems through field mappings or adapters.
+- **English and Russian** interface.
 
-For agent-authored layouts, start with [AGENTS.md](AGENTS.md) and the [overlay authoring toolkit](docs/OVERLAY_AUTHORING.md). `tools/overlay-author.mjs` generates schema-validated bundles and optional GM import macros from the three JSON templates in `examples/authoring/`, without editing module internals or databases.
+Requirements: Foundry VTT 14. Node.js 22 or later only for the optional OBS connector and the authoring tools. There is no build step and nothing to install with npm.
 
-## Existing installation and development
+## Кратко по-русски
 
-The canonical source on this computer is `C:\Users\Lev\AppData\Local\FoundryVTT\Data\modules\modular-stream-overlay`, confirmed against Foundry's configured `dataPath`. Edit the installed folder directly; the earlier copy under this chat's outputs is package/staging material. Do not copy whole folders over it: the installed module contains a user background image that must be preserved.
+Модуль для Foundry VTT 14: оверлеи для стрима собираются в визуальном редакторе прямо в Foundry и выводятся в OBS прозрачным источником «Браузер». Карточки персонажей берут живые данные из мира (CAIN и D&D5e встроены), листают персонажей и страницы, анимируются при изменениях и подсвечиваются, когда игрок говорит в Discord. Интерфейс на русском и английском (настройка модуля **Язык интерфейса**). Демо-карточка описана в [руководстве по демо](docs/DEMO_GUIDE_RU.md), персонажи CAIN — в [CAIN.md](docs/CAIN.md).
 
-See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for the confirmed paths, direct-edit workflow, and an explicit selective deployment/watch fallback when a development environment must keep source elsewhere. Phase 5 changes are made directly in the installed folder. Existing image files are preserved. Overlay schemas 1–5 normalize in memory to schema 6; widget design schemas 1–3 normalize to schema 4. Older designs retain their shared components with no pages and cycling disabled; legacy single-Actor bindings remain supported. Migration persists only on an explicit save or other settings mutation. Restart Foundry after manifest changes and refresh the GM client and OBS source once to load updated code.
+## Installation
 
-## Use the existing installation
+1. In Foundry's setup screen open **Add-on Modules → Install Module** and paste the manifest URL:
+   `https://github.com/GrimGutz/modular-stream-overlay/releases/latest/download/module.json`
+   Or download `module.zip` from the [releases](https://github.com/GrimGutz/modular-stream-overlay/releases) and unpack it into `Data/modules/modular-stream-overlay` of Foundry's user-data folder.
+2. Launch your world, open **Game Settings → Manage Modules** and enable **Modular Stream Overlay**.
+3. Open **Game Settings → Configure Settings → Module Settings → Modular Stream Overlay → Open Overlay Editor**, or use the **Open Overlay Editor** button added to the Game Settings sidebar. A GM can also run `game.modules.get("modular-stream-overlay").api.openEditor()` in a script macro.
 
-The supplied Foundry user-data path is `C:\Users\Lev\AppData\Local\FoundryVTT`.
+Disable other modules that change Foundry's stream page, so they do not draw over the overlay. After updating the module, restart Foundry and refresh open clients and the OBS Browser Source once.
 
-1. The module is already installed at `C:\Users\Lev\AppData\Local\FoundryVTT\Data\modules\modular-stream-overlay`; do not replace the folder or its uploaded assets with an older staging copy.
-2. Restart Foundry after updating, then refresh open clients and the OBS Browser Source once. The restart enables the module's command socket on the server when upgrading from versions before 0.5.3.
-3. Open your world, choose **Game Settings → Manage Modules**, and enable **Modular Stream Overlay**.
-4. Open **Game Settings → Configure Settings → Module Settings → Modular Stream Overlay → Open Overlay Editor**. An **Open Overlay Editor** button is also added to the Game Settings sidebar. A GM can alternatively run `game.modules.get("modular-stream-overlay").api.openEditor()` in a script macro.
+## Quick start
 
-The other installed overlay modules are separate packages. This module does not migrate or modify their settings. For the first runtime test, disable other modules that customize Foundry's stream page to avoid conflicting output.
+1. In the editor click **Create first overlay**, add images, text or character widgets, and click **Save overlay**. **Install Demo Overlay** adds an animated example card to look at first.
+2. Create a dedicated Foundry user for OBS, select it under **Viewer account** and click **Save viewer** ([details](#one-time-account-setup)).
+3. In OBS add a **Browser Source** with the editor's **Browser Source URL** (usually `http://localhost:30000/stream?mso=1`) at 1920 × 1080.
+4. Sign the source in as the viewer once (right-click → **Interact**), or run the [OBS connector](#obs-connector-optional) and use `http://localhost:30001/`.
+
+Saving in the editor updates OBS by itself; there is no need to refresh the source.
 
 ## Create and edit an overlay
 
@@ -93,7 +106,7 @@ Every instance owns one coordinated local timer. Pause preserves remaining dwell
 
 Module setting **Enable overlay animations** defaults to on. **Respect reduced motion** defaults to off, because the capture PC's preference does not describe the stream audience; worlds that already saved a value keep it. Disabling motion resolves numeric transitions to current values and preserves correct visibility. When the client requests reduced motion, the latter setting suppresses **all effects, including Fade In, Fade Out, Pulse and carousel transitions**; pages and characters still change instantly. To honor the output browser's preference instead, open **Game Settings → Modular Stream Overlay → Respect reduced motion** and turn it on. This leaves Windows and Foundry interface preferences unchanged. The preview test panel explains active blockers before playback. Configured repeat counts and durations are bounded; a continuous warning runs only while its condition remains valid.
 
-On reload, output starts with current Actor values and saved visibility. Old damage flashes and other one-shot effects are not replayed; matching continuous warnings are reconstructed. Offline manual effects are not queued for later playback. [PHASE5.md](docs/PHASE5.md) gives the full workflow, supported effects, synchronization behavior, and live acceptance checklist.
+On reload, output starts with current Actor values and saved visibility. Old damage flashes and other one-shot effects are not replayed; matching continuous warnings are reconstructed. Offline manual effects are not queued for later playback. [EXTENDING.md](docs/EXTENDING.md#animations-and-triggers) lists the supported effects, events and actions.
 
 ### Direct upload storage and validation
 
@@ -244,29 +257,40 @@ styles/                        Editor and output styles
 assets/basic-background.svg   Bundled preset image
 tests/                         Dependency-free Node checks
 docs/EXTENDING.md              Public interfaces and schema contracts
-docs/DEVELOPMENT.md            Canonical directory and development workflow
-docs/PHASE2-TESTING.md          Visual-editor and OBS manual acceptance plan
-docs/PHASE3.md                 Character widgets, fields, security, and acceptance
-docs/PHASE5.md                 Animations, triggers, live controls, and acceptance
+docs/OVERLAY_AUTHORING.md      JSON authoring toolkit and layer fields
 docs/CAROUSEL.md               Combined character/page cycling, timing, API, acceptance
+docs/CAIN.md, docs/DND5E.md    System fields
+docs/DEMO_GUIDE_RU.md          Demo card guide (Russian)
+docs/internal/                 Research and acceptance reports of earlier versions
+tools/obs-connector.mjs        Optional OBS connector (sign-in and Discord voice)
+tools/overlay-author.mjs       Authoring toolkit command line
+tools/package.mjs              Release archive from the committed files
 tools/browser-smoke.mjs        Optional isolated browser harness (requires Playwright)
 ```
 
-## Validation and manual acceptance
+## Development and tests
 
-With Node.js 22 or later, run inside this folder:
+With Node.js 22 or later, run inside the module folder:
 
 ```text
 npm run check
 npm test
 ```
 
-There is nothing to install with npm. Automated checks cover manifest/import/syntax validation, schema migration, safe paths and bindings, widget reuse and independent Actor assignments, both preset stores, revision conflicts, permission filtering, adapters/mappings, event subscription cleanup, resource fallbacks, animation timing and replacement, numeric interpolation, safe trigger evaluation, coordinated Actor/page sequencing and cleanup, coherent presentation, and editor behavior. UI tests use a mocked Foundry environment. They do not prove runtime compatibility or OBS behavior.
+`check` verifies the manifest, assets, relative imports and syntax; `test` runs the dependency-free Node tests: schema migration, safe paths and bindings, widget reuse and Actor assignments, stores and revision conflicts, permission filtering, adapters and mappings, animations and triggers, carousels, the OBS connector and Discord voice, and editor behavior against a mocked Foundry. They do not replace a run in Foundry and OBS. `node tools/package.mjs` builds `dist/module.zip` and `dist/module.json` for a release from the committed files.
 
-**Phase 6 acceptance includes native Chromium checks and read-only checks in Foundry 14.368 / CAIN 1.3.26.** All 56 fields matched four real Characters; the native editor, mapping preview, provider dialog and cleanup passed. Production animations also passed in a real Foundry ApplicationV2 with memory-only demo data. A visual smoke check in OBS 32.2.2 confirmed the existing overlay renders real Characters and cycles pages. See the [acceptance report](docs/PHASE6_ACCEPTANCE_RU.md) for exact scopes and evidence. New CAIN presets in OBS, CEF timing/identity instrumentation and live D&D5e acceptance remain outstanding. Follow [CAROUSEL.md](docs/CAROUSEL.md#manual-acceptance) and [PHASE5.md](docs/PHASE5.md#manual-acceptance), retaining the character-widget checks in [PHASE3.md](docs/PHASE3.md) and editing/upload regressions in [PHASE2-TESTING.md](docs/PHASE2-TESTING.md). Earlier phase guides retain their historical results. The manifest intentionally makes no `verified` runtime-build claim.
+[EXTENDING.md](docs/EXTENDING.md) describes the public API, schemas and extension points (widgets, adapters, animation types, events and actions), [OVERLAY_AUTHORING.md](docs/OVERLAY_AUTHORING.md) the JSON authoring toolkit, [LOCALIZATION.md](docs/LOCALIZATION.md) how to add interface text, and [CAROUSEL.md](docs/CAROUSEL.md) character and page cycling. [AGENTS.md](AGENTS.md) and [DEVELOPMENT.md](docs/DEVELOPMENT.md) are notes for the author's own workspace; `docs/internal/` keeps the research and acceptance reports of earlier versions.
 
-## Current scope and next steps
+## Limitations
 
-Phase 5 adds general animation and trigger configuration to static layers, reusable card designs, grouped instances, and components. Version 0.5.2 coordinates reusable information pages and ordered Actor lists through one sequence per instance. Character values remain read only; playback writes neither Actor documents nor persistent configuration. The existing widget and adapter registries remain supported, with registration APIs for animation types, events, and actions. `configSchema` is extension metadata, not an automatically generated inspector or validation engine. Component style overrides are preserved by the model/API; the editor does not provide a separate style-override inspector.
+- Foundry VTT 14 only. Character values are read only: nothing on the overlay writes to Actors or saves playback.
+- Synthetic unlinked Token Actors, compendium entries, combat tracking and dice visualization are not supported. Carousel instances run independently of each other.
+- System-specific fields are available on the tested major.minor lines (CAIN 1.3.x, D&D5e 5.3.x); other systems use generic fields, mappings or external adapters.
+- Image files are referenced by path and are not part of exports; copy them along when moving to another server.
+- The OBS connector and Discord voice run on the streaming PC (Windows paths shown; any OS with Node.js 22 works). Discord voice needs your own Discord application.
 
-Next, complete live Foundry/OBS acceptance, then add dedicated adapters for additional systems with fixtures from their public schemas. Carousel instances intentionally run independently; synchronized phases across instances are not included. Synthetic unlinked Token Actors, compendium bindings, initiative/combat tracking, dice visualization, and automatic player-to-character assignment remain outside this phase. See [EXTENDING.md](docs/EXTENDING.md) for extension contracts and [PHASE5.md](docs/PHASE5.md) for animation limits.
+## License
+
+Copyright © 2026 Lev Subbota (GrimGutz). Licensed under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) — see [LICENSE](LICENSE). You may copy, share and modify it for free, crediting the author; you may not use it commercially, for example sell it or put it behind a paywall; changed versions must be shared under the same license.
+
+На русском: можно бесплатно копировать, распространять и изменять с указанием автора; продавать и использовать в коммерческих целях нельзя; изменённые версии распространяются на тех же условиях.

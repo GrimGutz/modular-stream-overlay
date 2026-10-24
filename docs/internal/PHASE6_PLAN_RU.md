@@ -6,9 +6,9 @@
 
 Подробные приложения:
 
-- [Аудит архитектуры](C:/Users/Lev/AppData/Local/FoundryVTT/Data/modules/modular-stream-overlay/docs/PHASE6_ARCHITECTURE_AUDIT_RU.md).
-- [Полная карта CAIN: схемы, типы, примеры, происхождение, Items и обновления](C:/Users/Lev/AppData/Local/FoundryVTT/Data/modules/modular-stream-overlay/docs/PHASE6_CAIN_FIELD_MAP_RU.md).
-- [D&D5e: установленная 5.3.3 и сравнение с 6.0.6](C:/Users/Lev/AppData/Local/FoundryVTT/Data/modules/modular-stream-overlay/docs/PHASE6_DND5E_RESEARCH_RU.md).
+- [Аудит архитектуры](PHASE6_ARCHITECTURE_AUDIT_RU.md).
+- [Полная карта CAIN: схемы, типы, примеры, происхождение, Items и обновления](PHASE6_CAIN_FIELD_MAP_RU.md).
+- [D&D5e: установленная 5.3.3 и сравнение с 6.0.6](PHASE6_DND5E_RESEARCH_RU.md).
 
 ## 1. Git: что сохранено и что остаётся сделать
 
@@ -243,7 +243,7 @@ Advanced mappings остаются декларативными: ID, label, numb
 
 Чувствительны: пересоздание DOM на data update; поздние reads после смены Actor; повторный baseline при восстановлении прав; смена владельца carousel timers; disposal до Exit; повторные subscriptions. План меняет extraction/metadata и использует существующие render/motion/carousel lifecycles. Для renderer исправления сначала нужен воспроизводимый regression case.
 
-Reduced-motion настройка остаётся пользовательской. Ранее исследованный suppress-before-animate описан в [ANIMATION_FORENSIC_REPORT_RU.md](C:/Users/Lev/AppData/Local/FoundryVTT/Data/modules/modular-stream-overlay/docs/ANIMATION_FORENSIC_REPORT_RU.md); не обходить механизм и не менять системные настройки. Final state элемента не доказывает воспроизведение промежуточных кадров OBS/CEF.
+Reduced-motion настройка остаётся пользовательской. Ранее исследованный suppress-before-animate описан в [ANIMATION_FORENSIC_REPORT_RU.md](ANIMATION_FORENSIC_REPORT_RU.md); не обходить механизм и не менять системные настройки. Final state элемента не доказывает воспроизведение промежуточных кадров OBS/CEF.
 
 В этой подготовке из canonical module root выполнены:
 
@@ -259,7 +259,7 @@ Reduced-motion настройка остаётся пользовательск�
 - [CAIN Character](https://github.com/diabeatz96/cain/blob/v1.3.26/module/data/actor-character.mjs), [base Actor](https://github.com/diabeatz96/cain/blob/v1.3.26/module/data/base-actor.mjs), [регистрация моделей](https://github.com/diabeatz96/cain/blob/v1.3.26/module/cain.mjs), [sheet и отношения Items](https://github.com/diabeatz96/cain/blob/v1.3.26/module/sheets/actor-sheet.mjs).
 - [D&D5e 5.3.3](https://github.com/foundryvtt/dnd5e/releases/tag/release-5.3.3), [D&D5e 6.0.6](https://github.com/foundryvtt/dnd5e/releases/tag/release-6.0.6), [NPC5.3.3](https://github.com/foundryvtt/dnd5e/blob/release-5.3.3/module/data/actor/npc.mjs).
 - [Foundry v14 Actor public API](https://foundryvtt.com/api/v14/classes/foundry.documents.Actor.html), [Document/permissions API](https://foundryvtt.com/api/v14/classes/foundry.abstract.Document.html).
-- [Extension API модуля](C:/Users/Lev/AppData/Local/FoundryVTT/Data/modules/modular-stream-overlay/docs/EXTENDING.md), [канонический workflow](C:/Users/Lev/AppData/Local/FoundryVTT/Data/modules/modular-stream-overlay/docs/DEVELOPMENT.md).
+- [Extension API модуля](../EXTENDING.md), [канонический workflow](../DEVELOPMENT.md).
 
 **Предлагается утвердить:** последовательность 6.1→6.2→6.3→6.4→6.5; CAIN Character scalar-first границы раздела 3; additive v1 контракт и совместимость legacy IDs/mappings; независимый D&D5e PC адаптер после CAIN; обязательную regression/runtime матрицу. Реализация и публикация GitHub — разные разрешения: одобрение Phase6 не означает публикацию кода.
 

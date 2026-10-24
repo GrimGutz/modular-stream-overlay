@@ -2,7 +2,7 @@
 
 Version **0.5.0** extends the existing installed module in `C:\Users\Lev\AppData\Local\FoundryVTT\Data\modules\modular-stream-overlay`. It adds configurable visual reactions to images, text, grouped character widgets, shared designs, and individual design components. Existing uploads, assets, layout geometry, Actor bindings, preset libraries, and the authenticated `/stream?mso=1` output remain in place.
 
-The **0.5.1 information-page addition** extends this engine with reusable widget pages, local automatic cycling, shared components, seven page transitions, and temporary GM page controls. Current schemas are overlay **5** and widget preset **3**; the schema and validation counts below describe the original 0.5.0 animation milestone. See [CAROUSEL.md](CAROUSEL.md) for current page contracts, timing policy, source inventory, and additional acceptance checks, and [EXTENDING.md](EXTENDING.md) for the current API.
+The **0.5.1 information-page addition** extends this engine with reusable widget pages, local automatic cycling, shared components, seven page transitions, and temporary GM page controls. Current schemas are overlay **5** and widget preset **3**; the schema and validation counts below describe the original 0.5.0 animation milestone. See [CAROUSEL.md](../CAROUSEL.md) for current page contracts, timing policy, source inventory, and additional acceptance checks, and [EXTENDING.md](../EXTENDING.md) for the current API.
 
 ## Configure and preview
 
@@ -94,7 +94,7 @@ Playback uses transforms/opacity where practical, browser-owned animation effect
 
 Overlay state, overlays, and full-overlay presets now use **schema 4**, accepting versions 1, 2, and 3. Widget preset state and designs use **schema 2**, accepting version 1. Reads normalize isolated copies; opening an editor or OBS does not write a migration. Explicit store mutations persist current versions. Missing animation settings become null slots, a zero-duration transition, and no trigger rules.
 
-Layers and reusable designs store `animations` plus `triggers`. Grouped instances additionally store `animationOverrides:false` by default. The full schema, bounds, registries, and API usage are in [EXTENDING.md](EXTENDING.md#animations-and-triggers). Runtime playback, interpolated values, event IDs, and temporary effects are excluded from saved data.
+Layers and reusable designs store `animations` plus `triggers`. Grouped instances additionally store `animationOverrides:false` by default. The full schema, bounds, registries, and API usage are in [EXTENDING.md](../EXTENDING.md#animations-and-triggers). Runtime playback, interpolated values, event IDs, and temporary effects are excluded from saved data.
 
 Trusted extensions can register animation types, event predicates, and actions through `api.animations.registerType`, `registerEvent`, and `registerAction`. GM automation can use `api.liveControls.getState`, `setActive`, `setVisibility`, `play`, and `reset`, or open the panel with `api.openLiveControls()`. Register on `modularStreamOverlayInit` so registrations exist in both ordinary and native stream views.
 

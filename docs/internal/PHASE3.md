@@ -18,7 +18,7 @@ The designer reuses the existing visual editor, coordinate model, layer controls
 
 ## Prepare the viewer and Actors
 
-1. Keep the existing authenticated OBS setup described in [README.md](../README.md#obs-browser-source-setup). The viewer must be the configured dedicated **Player** account, never a GM or Assistant GM account.
+1. Keep the existing authenticated OBS setup described in [README.md](../../README.md#obs-browser-source-setup). The viewer must be the configured dedicated **Player** account, never a GM or Assistant GM account.
 2. Grant that user **Observer** permission on each world Actor intended for the stream. Limited access is insufficient. No assigned user character or Owner permission is needed.
 3. Select and save the viewer account in the overlay editor before choosing preview characters or assigning Actors.
 
@@ -110,7 +110,7 @@ The manager's **Advanced field mappings** dialog accepts a JSON array configured
 
 That path is illustrative, not a promise that any installed system has it. The service reads only mappings explicitly used by components. Missing fields remain unavailable. Mappings may replace system-adapter fields, but cannot replace generic Actor basics. Numeric `character.hp.current` and `character.hp.max` mappings also make a derived `character.hp.percent` available when possible.
 
-Paths cannot traverse arbitrary document properties or include prototype keys, expressions, private fields, notes, biographies, descriptions, flags, ownership, or permission properties. Ordinary widget users choose the resulting field from the inspector; they do not need to write paths or JavaScript. Additional dedicated adapters should be added against public system schemas with fixtures, as described in [EXTENDING.md](EXTENDING.md).
+Paths cannot traverse arbitrary document properties or include prototype keys, expressions, private fields, notes, biographies, descriptions, flags, ownership, or permission properties. Ordinary widget users choose the resulting field from the inspector; they do not need to write paths or JavaScript. Additional dedicated adapters should be added against public system schemas with fixtures, as described in [EXTENDING.md](../EXTENDING.md).
 
 ## Live updates and security
 
@@ -151,7 +151,7 @@ A preset design cannot contain nested `character-widget` instances. The shared c
 
 Saving/loading a full-overlay preset preserves widget references, positions, dimensions, Actor UUIDs, visibility, order, locks, opacity, rotation, and overrides. Actor values are resolved dynamically after loading. Widget designs are kept in their separate library rather than embedded in every instance or full-overlay preset; copying a full-overlay configuration to another world does not also transfer that library.
 
-Both stores use independent revisions, GM-only mutations, validated isolated reads, and stale-draft checks. The public Foundry world-setting API does not provide an atomic lock between truly simultaneous GM clients. Use one writer at a time. Limits remain bounded: 100 overlay layers, 100 widget presets, 100 components per design, canvas sides 64–7680 pixels, layer sides 1–7680 pixels, and 2 MB per settings collection. See [EXTENDING.md](EXTENDING.md) for exact fields and APIs.
+Both stores use independent revisions, GM-only mutations, validated isolated reads, and stale-draft checks. The public Foundry world-setting API does not provide an atomic lock between truly simultaneous GM clients. Use one writer at a time. Limits remain bounded: 100 overlay layers, 100 widget presets, 100 components per design, canvas sides 64–7680 pixels, layer sides 1–7680 pixels, and 2 MB per settings collection. See [EXTENDING.md](../EXTENDING.md) for exact fields and APIs.
 
 ## Validation and remaining runtime acceptance
 
