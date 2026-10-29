@@ -330,7 +330,8 @@
       "VoiceDesign": "Design (no voice)",
       "VoicePresent": "Everyone in channel",
       "VoiceSpeaking": "Everyone speaking",
-      "VoiceLive": "Live from Discord"
+      "VoiceLive": "Live from Discord",
+      "CharacterColors": "Character colors"
     },
     "Editor": {
       "Title": "Modular Stream Overlay",
@@ -762,6 +763,11 @@
       "connectorUrl": {
         "Name": "OBS connector address",
         "Hint": "Where this PC's OBS connector runs, such as http://localhost:30001. The editor reads Discord voice from it for its live preview and Discord players, even while OBS is closed."
+      },
+      "Colors": {
+        "Name": "Character colors",
+        "Label": "Character colors",
+        "Hint": "Colors of characters on overlays: per character, per value of a field (such as a CAIN blasphemy or a class), or the game system's."
       }
     },
     "Components": {
@@ -1071,7 +1077,12 @@
       "VoiceRosterUnique": "Each Discord user ID may appear only once in the player list.",
       "VoicePlayerObject": "Each Discord player must be an object.",
       "VoicePlayerColor": "A player's glow color must be a hexadecimal color such as #aa50ff.",
-      "VoiceIgnoredObject": "Each ignored Discord account must be an object."
+      "VoiceIgnoredObject": "Each ignored Discord account must be an object.",
+      "AccentRulesObject": "Character color rules must be an object.",
+      "AccentRulesMap": "Character color rules must map values to colors.",
+      "AccentRulesLimit": "Character color rules hold at most 200 values.",
+      "AccentRulesColor": "Character colors must be hexadecimal colors such as #9966ff.",
+      "AccentRulesUnique": "Each value may have only one character color."
     },
     "ValidationLabel": {
       "ActiveOverlayID": "Active overlay ID",
@@ -1573,6 +1584,31 @@
       "AddIgnored": "Add account",
       "Save": "Save",
       "Saved": "Discord players saved."
+    },
+    "Colors": {
+      "Title": "Character colors",
+      "GMOnly": "Only a GM can change character colors.",
+      "Help": "Character colors tint names, accents and the Discord voice glow on every overlay. A character's own color wins; otherwise the color set for its value below; otherwise the game system's color.",
+      "ValuesHeading": "Color by value",
+      "Field": "Field",
+      "SystemField": "As the system suggests: {field}",
+      "NoField": "Choose a field",
+      "ChooseField": "Choose the field whose values get colors, such as a class or a blasphemy.",
+      "NoCharacters": "no characters have it",
+      "SystemColor": "System color {color}",
+      "NoSystemColor": "The system gives no color",
+      "ValueColor": "Color for this value",
+      "NewValue": "Another value",
+      "AddValue": "Add value",
+      "ValuesHelp": "Leave a color empty to keep the system's. Values are matched without regard to case; a character with several (two blasphemies) uses the first one listed.",
+      "CharactersHeading": "Color of each character",
+      "NoViewer": "Choose the overlay viewer account in the overlay editor to list this world's characters.",
+      "Effective": "Color shown now",
+      "CharacterColor": "This character's own color",
+      "CharactersHelp": "A character's own color is the same as its Accent color in Character profiles.",
+      "HexHint": "Use a color such as #9966ff.",
+      "Save": "Save",
+      "Saved": "Character colors saved."
     }
   }
 }

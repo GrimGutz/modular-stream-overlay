@@ -5,6 +5,7 @@ import { validateActorUuid } from "../core/schema.js";
 import { DemoDataSource, DEMO_FIELDS, isDemoReference } from "../demo/data.js";
 import { versionCompatible } from "../core/versions.js";
 import { PROFILE_FIELDS, profileValue, validateCharacterProfiles } from "./profiles.js";
+import { ruleColor, validateAccentRules } from "./accent-rules.js";
 
 const WORLD_ACTOR = /^Actor\.[A-Za-z0-9_-]{1,64}$/;
 const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/;
@@ -75,7 +76,7 @@ export class CharacterDataService {
   constructor({ adapters, getUser = () => globalThis.game?.user, resolveUuid = uuid => globalThis.foundry?.utils?.fromUuid(uuid),
     getSystemId = () => globalThis.game?.system?.id, getSystemVersion = () => globalThis.game?.system?.version ?? "",
     getAdapterPreferences = () => ({}), getMappings = () => [], getActors = () => globalThis.game?.actors, getProfiles = null,
-    getUsers = () => globalThis.game?.users,
+    getAccentRules = () => ({}), getUsers = () => globalThis.game?.users,
     hooks = globalThis.Hooks, debounceMs = 40, demoData = new DemoDataSource(), onError = error => console.error("Modular Stream Overlay |", error) } = {}) {
     this.adapters = adapters;
     this.getUser = getUser;
@@ -86,6 +87,7 @@ export class CharacterDataService {
     this.getMappings = getMappings;
     this.getActors = getActors;
     this.getProfiles = getProfiles;
+    this.getAccentRules = getAccentRules;
     this.getUsers = getUsers;
     this.hooks = hooks;
     this.debounceMs = Math.max(0, Math.min(1000, Number(debounceMs) || 0));
@@ -124,6 +126,19 @@ export class CharacterDataService {
   _profiles() {
     try { return validateCharacterProfiles(this.getProfiles?.() ?? {}); }
     catch { return {}; }
+  }
+  _accentRules() {
+    try { return validateAccentRules(this.getAccentRules?.() ?? {}); }
+    catch { return { field: "", colors: {} }; }
+  }
+
+  /**
+   * Where character colors come from in this world: the field whose values color rules use
+   * (the GM's choice, else the system's suggestion) and the system's own color field.
+   */
+  accentFields() {
+    const { selected } = this._selection(), rules = this._accentRules();
+    return { keyField: rules.field || selected?.accentKeyField || "", suggestedKeyField: selected?.accentKeyField ?? "", colorField: selected?.accentField ?? "" };
   }
 
   _catalog({ actorType } = {}) {
@@ -191,7 +206,7 @@ export class CharacterDataService {
     const mappings = validateMappings(input);
     const preview = new CharacterDataService({ adapters: this.adapters, getUser: this.getUser, resolveUuid: this.resolveUuid,
       getSystemId: this.getSystemId, getSystemVersion: this.getSystemVersion, getAdapterPreferences: this.getAdapterPreferences,
-      getMappings: () => mappings, getActors: this.getActors, getProfiles: this.getProfiles, hooks: null, demoData: this.demoData });
+      getMappings: () => mappings, getActors: this.getActors, getProfiles: this.getProfiles, getAccentRules: this.getAccentRules, hooks: null, demoData: this.demoData });
     return preview.resolve(reference, mappings.map(mapping => mapping.id));
   }
 
@@ -248,7 +263,13 @@ export class CharacterDataService {
       // An unset profile accent uses the system adapter's character color, read but not returned.
       const accentSource = selected.includes(ACCENT) ? selection.selected?.accentField : undefined;
       const accentReadable = accentSource && definitions.get(accentSource)?.providerId === selection.selected.id && definitions.get(accentSource)?.status === "available";
-      const readFields = [...new Set([...selected, ...(deriveHealthPercent ? ["character.hp.current", "character.hp.max"] : []), ...(accentReadable ? [accentSource] : [])])];
+      // Then a color rule for the value of one field (a CAIN blasphemy, a class), also read but not returned.
+      const rules = selected.includes(ACCENT) ? this._accentRules() : null;
+      const ruleField = rules && Object.keys(rules.colors).length ? rules.field || selection.selected?.accentKeyField : undefined;
+      const ruleReadable = ruleField && definitions.get(ruleField)?.type === "string" && definitions.get(ruleField)?.status === "available"
+        && definitions.get(ruleField)?.providerId !== "profile";
+      const readFields = [...new Set([...selected, ...(deriveHealthPercent ? ["character.hp.current", "character.hp.max"] : []),
+        ...(accentReadable ? [accentSource] : []), ...(ruleReadable ? [ruleField] : [])])];
       const resolved = {};
       let failed = false;
       for (const adapter of [selection.generic, selection.selected].filter(Boolean)) {
@@ -271,6 +292,7 @@ export class CharacterDataService {
         for (const field of profileFields) resolved[field] = safeScalar(profileValue(profiles, actor.uuid, field), definitions.get(field).type)
           // Without separate art, a full-body slot shows the player's avatar, then the Actor's portrait.
           ?? (field === "character.profile.art" ? playerAvatar(actor, this.getUsers()) ?? safePortrait(actor.img) : null) ?? "";
+        if (resolved[ACCENT] === "" && ruleReadable) resolved[ACCENT] = ruleColor(rules, resolved[ruleField]);
         if (resolved[ACCENT] === "" && accentReadable) resolved[ACCENT] = COLOR.test(resolved[accentSource] ?? "") ? resolved[accentSource] : "";
         // A profile full name replaces the name written in parentheses.
         const fullName = profileValue(profiles, actor.uuid, "character.profile.fullName");

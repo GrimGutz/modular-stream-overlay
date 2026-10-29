@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0
+
+- **Character colors** window (module settings, or the editor's sidebar): a color for each value of a field — a CAIN blasphemy, a class, any text or mapped field, so it works for every game system — and a color for each character. A character's own color wins, then its value's color, then the game system's. Names, accents and the Discord voice glow follow.
+- CAIN: the sheets' pure magenta (Sympathy, Palace, Jaunt) now shows as violet `#9966ff` instead of fuchsia; change it per blasphemy in Character colors.
+- Adapters may name an `accentKeyField` that color rules use by default; new API `getAccentRules`, `setAccentRules` and `openCharacterColors`.
+
 ## 0.6.0
 
 **Systems and data**

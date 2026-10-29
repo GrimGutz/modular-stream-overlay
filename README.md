@@ -81,6 +81,8 @@ Rotation is entered numerically. Resize handles follow the layer's rotation. Mis
 
 Layers can carry borders, rounded corners, drop shadows, line height, highlighted labels, `**bold**` template markup, empty-value captions and value labels; circle indicators accept a fixed count and exact size/spacing. **Character profiles** (accent color, full name, full-body art per Actor) are shared by all widgets showing that character. See [OVERLAY_AUTHORING.md](docs/OVERLAY_AUTHORING.md#optional-presentation-fields).
 
+**Character colors** (module settings, or the button in the editor's sidebar) set the color that names, accents and the Discord voice glow use, for any game system. A character's own color wins; then the color set for the value of one field, such as a CAIN blasphemy, a class or any mapped text field (the window lists the values this world's characters have, with the system's color beside each); then the game system's color. Leave a color empty to keep the system's. In CAIN the sheets' pure magenta (Sympathy, Palace, Jaunt) shows as violet `#9966ff` by default.
+
 Generic fields cover names, profile/token artwork, UUIDs and Actor types. CAIN 1.3.26 adds 56 scalar fields, including CAT, prepared Psyche, Bursts, Stress, Injuries, Divine Agony, Sin Overflow, Kit Points, progression and ten skills; old health/power/level bindings retain their meaning. D&D5e 5.3.3 supports 28 PC fields including effective HP maximum, AC, prepared level, abilities and three resource slots. Other systems retain generic fields and may add mappings or external adapters. New system-specific fields are available on patch releases of their tested major.minor line (for example CAIN 1.3.x, D&D5e 5.3.x) and unavailable on other lines or pre-release builds. Schema/fixture targets do not by themselves certify a live Foundry or OBS run; consult the acceptance report.
 
 Saved widget references contain a preset ID and ordered Actor UUID assignments, never an Actor document snapshot. Actor updates refresh subscribed character components through Foundry's authenticated document updates. Opening OBS resolves current values immediately; normal live updates do not require an OBS refresh. Live Foundry/OBS behavior still requires runtime acceptance.
@@ -246,6 +248,8 @@ scripts/integration/voice.js   Discord voice state for voice layers, from the OB
 scripts/core/voice.js          Discord player list and voice state validation
 scripts/render/voice.js        Voice glow and visibility on a layer element
 scripts/ui/voice-roster.js     Discord players window
+scripts/data/accent-rules.js   Character color rules by field value
+scripts/ui/character-colors.js Character colors window
 tools/discord-voice.mjs        The connector's Discord client (local IPC pipe)
 scripts/authoring/transfer.js  Export and import of overlays, widget designs and fragments as files
 scripts/adapters/generic.js    Permission-aware actor normalization contract

@@ -104,7 +104,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     actions: Object.fromEntries([
       "editOverlay", "createOverlay", "renameOverlay", "deleteOverlay", "saveOverlay", "reloadOverlay",
       "uploadBackground", "browseBackground", "removeBackground", "savePreset", "loadPreset", "renamePreset", "duplicatePreset",
-      "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "installDemo", "resetDemo",
+      "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "characterColors", "installDemo", "resetDemo",
       "toggleCanvasFullscreen", "showVersions", "rescaleCanvas", "exportFile", "importFile"
     ].map(action => [action, OverlayEditor.onAction]))
   };
@@ -681,6 +681,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   async _manageWidgets() { return services.openWidgetManager?.(); }
   async _openWidgetPreset(id) { return services.openWidgetPreset?.(id); }
   async _liveControls() { return (services.openLiveControls ?? this.api?.openLiveControls)?.(); }
+  async _characterColors() { return (services.openCharacterColors ?? this.api?.openCharacterColors)?.(); }
 
   async _installDemo({ reset = false } = {}) {
     if (!await this._discardDraft()) return;

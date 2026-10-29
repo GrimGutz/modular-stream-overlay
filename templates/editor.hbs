@@ -25,6 +25,7 @@
     </div>{{/unless}}
     {{#unless widgetMode}}<button type="button" data-action="manageWidgets"><span data-i18n="Template.WidgetManager">{{msoT "Template.WidgetManager"}}</span></button>{{/unless}}
     {{#unless widgetMode}}<button type="button" data-action="liveControls"><i class="fa-solid fa-play" aria-hidden="true"></i> <span data-i18n="Template.LiveControls">{{msoT "Template.LiveControls"}}</span></button>{{/unless}}
+    <button type="button" data-action="characterColors"><i class="fa-solid fa-palette" aria-hidden="true"></i> <span data-i18n="Template.CharacterColors">{{msoT "Template.CharacterColors"}}</span></button>
     {{#unless widgetMode}}<button type="button" data-action="installDemo">{{#if demoInstalled}}<span data-i18n="Template.OpenDemo">{{msoT "Template.OpenDemo"}}</span>{{else}}<span data-i18n="Template.InstallDemo">{{msoT "Template.InstallDemo"}}</span>{{/if}}</button>{{#if demoInstalled}}<button type="button" data-action="resetDemo" class="mso-danger"><span data-i18n="Template.ResetDemo">{{msoT "Template.ResetDemo"}}</span></button>{{/if}}{{/unless}}
   </aside>
 

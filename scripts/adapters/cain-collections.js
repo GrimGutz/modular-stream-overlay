@@ -192,6 +192,8 @@ function summary(items, nameKey, descriptionKey, category) {
 const HEX = /^#([\da-f]{6})$/i;
 // Bright sheet yellows (Smother, Vector, Track, Gate) are unreadable on light stream panels.
 export const CAIN_READABLE_YELLOW = "#e8a000";
+// The sheets' pure magenta (Sympathy, Palace, Jaunt) stands for the book's violet.
+export const CAIN_VIOLET = "#9966ff";
 const channels = color => [1, 3, 5].map(index => parseInt(color.slice(index, index + 2), 16));
 function brightYellow(color) {
   const [red, green, blue] = channels(color), max = Math.max(red, green, blue), delta = max - Math.min(red, green, blue);
@@ -202,12 +204,14 @@ function brightYellow(color) {
 /**
  * A blasphemy's signature color from its sheet colors. Most catalog entries keep it in
  * accentColor; some (Smother, Vector) use a black or grey accent with a colored text.
- * Bright yellows become a darker yellow-orange so captions stay readable.
+ * Bright yellows become a darker yellow-orange so captions stay readable, and the sheets'
+ * pure magenta becomes violet. Character color rules can change any of them.
  */
 export function cainBlasphemyColor(system = {}) {
   const candidates = ["accentColor", "textColor", "primaryColor"].map(key => HEX.exec(system?.[key] ?? "")?.[0]?.toLowerCase()).filter(Boolean);
   const saturated = candidates.find(color => Math.max(...channels(color)) - Math.min(...channels(color)) >= 40);
   const color = saturated ?? candidates[0] ?? "";
+  if (color === "#ff00ff") return CAIN_VIOLET;
   return color && brightYellow(color) ? CAIN_READABLE_YELLOW : color;
 }
 

@@ -125,6 +125,11 @@ export class AdapterRegistry extends Registry {
       if (fields.get(definition.accentField)?.type !== "string") throw new TypeError("Adapter accentField must name one of its text fields.");
       result.accentField = definition.accentField;
     }
+    // The field whose values character color rules use by default, such as a blasphemy's name.
+    if (definition.accentKeyField !== undefined) {
+      if (fields.get(definition.accentKeyField)?.type !== "string") throw new TypeError("Adapter accentKeyField must name one of its text fields.");
+      result.accentKeyField = definition.accentKeyField;
+    }
     // A legacy adapter may pair with a mapping or another catalog field. Validate unresolved
     // targets against the complete selected catalog, while rejecting known wrong types here.
     for (const field of fields.values()) if (field.maxField !== undefined

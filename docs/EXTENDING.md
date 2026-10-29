@@ -1,6 +1,6 @@
 # Extension interfaces
 
-These APIs describe **v0.6.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](DEMO_GUIDE_RU.md) describes the editable demonstration in Russian.
+These APIs describe **v0.7.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](DEMO_GUIDE_RU.md) describes the editable demonstration in Russian.
 
 ```js
 Hooks.once("modularStreamOverlayInit", api => {
@@ -32,7 +32,7 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 
 | Member | Contract |
 | --- | --- |
-| `version`, `schemaVersion` | API version `0.6.0`, overlay schema version `6` |
+| `version`, `schemaVersion` | API version `0.7.0`, overlay schema version `6` |
 | `registerWidget(definition)` | Registers a unique widget; returns a frozen registration |
 | `registerAdapter(definition)` | Registers a unique system adapter |
 | `widgets`, `adapters` | Registries with `get(id)` and `list()` |
@@ -44,6 +44,8 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 | `openEditor()` | Renders the GM editor from the regular game view |
 | `openWidgetManager()`, `openWidgetPreset(id)` | Open the GM design library or a source preset's visual editor |
 | `openVoiceRoster()` | Open the GM's Discord players window (Discord IDs, names, characters and glow colors for voice layers) |
+| `openCharacterColors()` | Open the GM's Character colors window |
+| `getAccentRules()`, `setAccentRules(rules)` | Read or (GM only) save character color rules `{ field, colors }`: `field` is a text field ID ("" uses the adapter's `accentKeyField`), `colors` maps a field value to `#rrggbb` (at most 200, matched without regard to case; a value listing several names one per line uses the first with a color) |
 | `openLiveControls()`, `liveControls` | GM controls for the saved active overlay; see animation contracts below |
 | `animations` | Trusted animation/event/action registrations and semantic event dispatch |
 | `getAdapterPreferences()`, `setAdapterPreferences(map)` | Read/set explicit system providers; mutation is GM-only |
@@ -251,6 +253,8 @@ Hooks.once("modularStreamOverlayInit", api => {
 ```
 
 `id`, `label` and `normalize` remain required; `systemId` is optional. Older registrations without metadata remain v1. Registrations without fields do not automatically supply dynamic component fields. The only supported explicit `interfaceVersion` is 1. Optional `actorTypes` and `testedSystemVersions` are arrays of 1–32 unique supported strings. Adapter-level tested versions are descriptive: **strict version checks belong on field descriptors**. Field actorTypes overrides the adapter default; this lets CAIN retain legacy field applicability while restricting new native fields.
+
+An adapter may name `accentField`, a text field holding the character's own color (`#rrggbb`), and `accentKeyField`, the text field whose values character color rules use by default (CAIN: the blasphemy's color and name). A character's color resolves as its profile accent, then the world's color rule for the `accentKeyField` (or GM-chosen field) value, then `accentField`.
 
 Field descriptors require unique normalized `id`, printable `label`, and `type: string|number|image`. Optional `group`, `unit` and `role` are printable strings up to80 characters. `format: integer|decimal|percent` remains descriptive metadata, not a new renderer formatter. `maxField` must refer to a numeric field; existing targets are checked at registration. A legacy cross-catalog target may be supplied by a mapping; unresolved targets are validated against the complete selected catalog before reads. A scope/provider change that removes a maximum marks only the affected descriptor unavailable (invalidMaximum:true) and removes its suggested maxField; generic identity and unrelated fields remain available. Malformed saved mappings are ignored with a warning while adapter fields remain usable. Resources are bounded to64 records `{id,label,currentField,maxField,polarity}`; both referenced fields must exist as numeric descriptors in the adapter. Polarity is `lower-is-worse`, `higher-is-worse` or `neutral`. IDs and fields are limited to128 entries per adapter; the request limit remains128. Stored resources remain separate scalar values, not nested resource objects.
 

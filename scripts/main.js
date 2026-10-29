@@ -10,6 +10,8 @@ import { WidgetPresetStore, registerWidgetSettings } from "./core/widget-presets
 import { CharacterDataService, validateAdapterPreferences } from "./data/character-data.js";
 import { validateMappings } from "./data/mappings.js";
 import { validateCharacterProfiles } from "./data/profiles.js";
+import { ACCENT_RULES_SETTING, validateAccentRules } from "./data/accent-rules.js";
+import { CharacterColors, configureCharacterColors, openCharacterColors, refreshCharacterColors } from "./ui/character-colors.js";
 import { OverlayRenderer } from "./render/renderer.js";
 import { OverlayEditor, configureEditor, refreshEditors, refreshFragmentLists } from "./ui/editor.js";
 import { WidgetPresetManager, configureWidgetEditor, openWidgetManager, openWidgetPreset, refreshWidgetEditors } from "./ui/widget-editor.js";
@@ -239,7 +241,12 @@ Hooks.once("init", () => {
   // Values reach widgets through the data service, so no stage rebuild is needed.
   game.settings.register(MODULE_ID, "characterProfiles", {
     name: "Character profiles", scope: "world", config: false, type: Object,
-    restricted: true, default: {}, onChange: mappingsChanged
+    restricted: true, default: {}, onChange: () => { mappingsChanged(); refreshCharacterColors(); }
+  });
+  // Character colors by the value of one field (a CAIN blasphemy, a D&D class), for every widget.
+  game.settings.register(MODULE_ID, ACCENT_RULES_SETTING, {
+    name: "Character color rules", scope: "world", config: false, type: Object,
+    restricted: true, default: { field: "", colors: {} }, onChange: () => { mappingsChanged(); refreshCharacterColors(); }
   });
   store = new OverlayStore();
   widgetPresets = new WidgetPresetStore();
@@ -247,7 +254,8 @@ Hooks.once("init", () => {
     getSystemVersion: () => game.system?.version ?? "",
     getAdapterPreferences: () => game.settings.get(MODULE_ID, "adapterPreferences") ?? {},
     getMappings: () => game.settings.get(MODULE_ID, "fieldMappings") ?? [],
-    getProfiles: () => game.settings.get(MODULE_ID, "characterProfiles") ?? {} });
+    getProfiles: () => game.settings.get(MODULE_ID, "characterProfiles") ?? {},
+    getAccentRules: () => game.settings.get(MODULE_ID, ACCENT_RULES_SETTING) ?? {} });
   animationCommands = new AnimationCommands({ getState: () => store.getState(), getUser: () => game.user,
     getViewer: () => game.users?.get(getViewerUserId()), getRenderer: () => renderer,
     send: command => commandTransport.send(command), now: serverNow,
@@ -310,6 +318,7 @@ Hooks.once("init", () => {
     voice: editorVoice, openVoiceRoster, requestVoice,
     context: { mode: "preview", widgetPresets, characterData, voice: editorVoice, ...animationContext } };
   configureVoiceRoster({ voice: editorVoice, characterData, requestVoice });
+  configureCharacterColors({ characterData });
   configureEditor(configuration);
   configureWidgetEditor(configuration);
   game.settings.registerMenu(MODULE_ID, "editor", localizeSetting({
@@ -320,16 +329,19 @@ Hooks.once("init", () => {
     icon: "fa-solid fa-id-card",
     type: WidgetPresetManager, restricted: true
   }, { name: "Settings.Widgets.Name", label: "Settings.Widgets.Label", hint: "Settings.Widgets.Hint" }));
+  game.settings.registerMenu(MODULE_ID, "characterColors", localizeSetting({
+    icon: "fa-solid fa-palette", type: CharacterColors, restricted: true
+  }, { name: "Settings.Colors.Name", label: "Settings.Colors.Label", hint: "Settings.Colors.Hint" }));
   game.settings.registerMenu(MODULE_ID, "liveControls", localizeSetting({
     icon: "fa-solid fa-play", type: LiveControls, restricted: true
   }, { name: "Settings.Live.Name", label: "Settings.Live.Label", hint: "Settings.Live.Hint" }));
   const api = Object.freeze({
-    version: "0.6.0", schemaVersion: SCHEMA_VERSION, store, widgets, adapters, widgetPresets, characterData,
+    version: "0.7.0", schemaVersion: SCHEMA_VERSION, store, widgets, adapters, widgetPresets, characterData,
     localization: Object.freeze({ t, getLanguage, getPreference: getLanguagePreference, setPreference: setLanguagePreference }),
     createOverlay, validateOverlay,
     registerWidget: definition => widgets.register(definition),
     registerAdapter: definition => { const adapter = adapters.register(definition); mappingsChanged(); return adapter; },
-    openWidgetManager, openWidgetPreset, openVoiceRoster,
+    openWidgetManager, openWidgetPreset, openVoiceRoster, openCharacterColors,
     openLiveControls, liveControls, installDemo: installShowcase, installCainPresets: installCainExamples,
     getDebug, setDebug,
     getDiagnostics: () => game.user?.isGM || isViewerAllowed(game.user, getViewerUserId()) ? renderer?.getDiagnostics() ?? [] : [],
@@ -347,6 +359,11 @@ Hooks.once("init", () => {
       return game.settings.set(MODULE_ID, "fieldMappings", validateMappings(value));
     },
     getCharacterProfiles: () => validateCharacterProfiles(game.settings.get(MODULE_ID, "characterProfiles") ?? {}),
+    getAccentRules: () => validateAccentRules(game.settings.get(MODULE_ID, ACCENT_RULES_SETTING) ?? {}),
+    async setAccentRules(value) {
+      if (!game.user?.isGM) throw Error("Only a GM can configure character colors.");
+      return game.settings.set(MODULE_ID, ACCENT_RULES_SETTING, validateAccentRules(value));
+    },
     async setCharacterProfiles(value) {
       if (!game.user?.isGM) throw Error("Only a GM can configure character profiles.");
       return game.settings.set(MODULE_ID, "characterProfiles", validateCharacterProfiles(value));
