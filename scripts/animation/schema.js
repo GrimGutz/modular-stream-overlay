@@ -2,18 +2,36 @@
 export const ANIMATION_DEFINITIONS = Object.freeze([
   ...[
     ["fade-in", "Fade In"], ["slide-in-left", "Slide In Left"], ["slide-in-right", "Slide In Right"],
-    ["slide-in-top", "Slide In Top"], ["slide-in-bottom", "Slide In Bottom"], ["scale-in", "Scale In"], ["pop-in", "Pop In"]
+    ["slide-in-top", "Slide In Top"], ["slide-in-bottom", "Slide In Bottom"], ["scale-in", "Scale In"], ["pop-in", "Pop In"],
+    ["shrink-in", "Shrink In"], ["blur-in", "Blur In"], ["flip-in-x", "Flip In Vertically"], ["flip-in-y", "Flip In Horizontally"],
+    ["rotate-in", "Rotate In"], ["drop-in", "Drop In"], ["bounce-in", "Bounce In"],
+    ["wipe-in-left", "Wipe In From Left"], ["wipe-in-right", "Wipe In From Right"], ["wipe-in-top", "Wipe In From Top"],
+    ["wipe-in-bottom", "Wipe In From Bottom"], ["circle-in", "Circle In"], ["glitch-in", "Glitch In"]
   ].map(([type, label]) => Object.freeze({ type, label, category: "entrance" })),
   ...[
     ["fade-out", "Fade Out"], ["slide-out-left", "Slide Out Left"], ["slide-out-right", "Slide Out Right"],
-    ["slide-out-top", "Slide Out Top"], ["slide-out-bottom", "Slide Out Bottom"], ["scale-out", "Scale Out"]
+    ["slide-out-top", "Slide Out Top"], ["slide-out-bottom", "Slide Out Bottom"], ["scale-out", "Scale Out"],
+    ["grow-out", "Grow Out"], ["blur-out", "Blur Out"], ["flip-out-x", "Flip Out Vertically"], ["flip-out-y", "Flip Out Horizontally"],
+    ["rotate-out", "Rotate Out"], ["fall-out", "Fall Out"], ["bounce-out", "Bounce Out"],
+    ["wipe-out-left", "Wipe Out To Left"], ["wipe-out-right", "Wipe Out To Right"], ["wipe-out-top", "Wipe Out To Top"],
+    ["wipe-out-bottom", "Wipe Out To Bottom"], ["circle-out", "Circle Out"], ["glitch-out", "Glitch Out"]
   ].map(([type, label]) => Object.freeze({ type, label, category: "exit" })),
   ...[
     ["pulse", "Pulse"], ["flash", "Flash"], ["shake", "Shake"], ["bounce", "Bounce"],
-    ["glow", "Glow"], ["color-flash", "Color Flash"], ["scale-pulse", "Scale Pulse"]
+    ["glow", "Glow"], ["color-flash", "Color Flash"], ["scale-pulse", "Scale Pulse"],
+    ["heartbeat", "Heartbeat"], ["wobble", "Wobble"], ["tada", "Tada"], ["rubber-band", "Rubber Band"], ["jello", "Jello"],
+    ["float", "Float"], ["shake-vertical", "Vertical Shake"], ["spin", "Spin"], ["flicker", "Flicker"], ["glitch", "Glitch"]
   ].map(([type, label]) => Object.freeze({ type, label, category: "emphasis" }))
 ]);
-export const EASINGS = Object.freeze(["linear", "ease-in", "ease-out", "ease-in-out"]);
+export const EASINGS = Object.freeze(["linear", "ease-in", "ease-out", "ease-in-out", "back-in", "back-out", "back-in-out", "expo-out", "steps"]);
+// CSS timing functions for the named easings; the browser and OBS both understand these forms.
+const EASING_CURVES = Object.freeze({
+  "back-in": "cubic-bezier(0.36, 0, 0.66, -0.56)", "back-out": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+  "back-in-out": "cubic-bezier(0.68, -0.6, 0.32, 1.6)", "expo-out": "cubic-bezier(0.16, 1, 0.3, 1)", steps: "steps(6, end)"
+});
+export function cssEasing(easing) {
+  return EASING_CURVES[easing] ?? (EASINGS.includes(easing) ? easing : "ease-out");
+}
 export const TRIGGER_EVENTS = Object.freeze(["visible", "hidden", "field-changed", "increased", "decreased", "crossed-above", "crossed-below", "manual"]);
 export const CONDITION_OPERATORS = Object.freeze(["eq", "ne", "gt", "lt", "gte", "lte", "increased", "decreased", "crossed-above", "crossed-below"]);
 export const ACTION_TYPES = Object.freeze(["play-animation", "show", "hide", "glow", "color-flash", "animate-number"]);

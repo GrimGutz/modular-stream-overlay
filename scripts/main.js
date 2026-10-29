@@ -336,7 +336,7 @@ Hooks.once("init", () => {
     icon: "fa-solid fa-play", type: LiveControls, restricted: true
   }, { name: "Settings.Live.Name", label: "Settings.Live.Label", hint: "Settings.Live.Hint" }));
   const api = Object.freeze({
-    version: "0.7.0", schemaVersion: SCHEMA_VERSION, store, widgets, adapters, widgetPresets, characterData,
+    version: "0.8.0", schemaVersion: SCHEMA_VERSION, store, widgets, adapters, widgetPresets, characterData,
     localization: Object.freeze({ t, getLanguage, getPreference: getLanguagePreference, setPreference: setLanguagePreference }),
     createOverlay, validateOverlay,
     registerWidget: definition => widgets.register(definition),

@@ -1,6 +1,6 @@
 # Extension interfaces
 
-These APIs describe **v0.7.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](DEMO_GUIDE_RU.md) describes the editable demonstration in Russian.
+These APIs describe **v0.8.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](DEMO_GUIDE_RU.md) describes the editable demonstration in Russian.
 
 ```js
 Hooks.once("modularStreamOverlayInit", api => {
@@ -32,7 +32,7 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 
 | Member | Contract |
 | --- | --- |
-| `version`, `schemaVersion` | API version `0.7.0`, overlay schema version `6` |
+| `version`, `schemaVersion` | API version `0.8.0`, overlay schema version `6` |
 | `registerWidget(definition)` | Registers a unique widget; returns a frozen registration |
 | `registerAdapter(definition)` | Registers a unique system adapter |
 | `widgets`, `adapters` | Registries with `get(id)` and `list()` |
@@ -204,7 +204,7 @@ Design saves affect all linked instances. Full-overlay preset saves keep referen
   loop: true, startPageId: null }
 ```
 
-Durations are integer milliseconds: default/per-page dwell 100–3600000, page/character transition duration 0–10000. A null page duration inherits the default. Both transition slots accept `fade`, `slide-left`, `slide-right`, `slide-up`, `slide-down`, `scale`, and `instant`; `startPageId` is null or an existing design page. Conversion helpers preserve pages and cycling settings. Active Actor/page indices, remaining time, pause state, timers and frames are runtime state and are never saved.
+Durations are integer milliseconds: default/per-page dwell 100–3600000, page/character transition duration 0–10000. A null page duration inherits the default. Both transition slots accept `fade`, `fade-over`, `slide-left`, `slide-right`, `slide-up`, `slide-down`, `scale`, `zoom-in`, `zoom-out`, `blur`, `flip-horizontal`, `flip-vertical`, `rotate`, `drop`, `wipe-left`, `wipe-right`, `wipe-up`, `wipe-down`, `circle`, `glitch`, and `instant`; `PAGE_TRANSITIONS` in `scripts/carousel/schema.js` gives each one's entrance, exit and mode (`together`, `over` or `sequence`), and `transitionEffects(id)` returns that entry or null for `instant`; `startPageId` is null or an existing design page. Conversion helpers preserve pages and cycling settings. Active Actor/page indices, remaining time, pause state, timers and frames are runtime state and are never saved.
 
 `scripts/carousel/schema.js` exports `PAGE_TRANSITIONS` (`{id,label}` metadata), `PAGE_LIMIT=20`, `ACTOR_LIMIT=20`, `COMPONENT_LIMIT=100`, frozen string arrays `CAROUSEL_MODES` and `CAROUSEL_TRAVERSALS`, `validatePages(input,{canvas,normalizeLayer,sharedLayers})`, `validateCycling(settings,pages)`, `validateCarousel(input,options)`, `validateActorUuids(input)`, `validateInstanceCarousel(input,{actors}?)`, and `resolveCarouselSettings(instance,preset)`. The core injects its existing layer validator to avoid circular imports. Draft-only helpers `createPage`, `addPage`, `duplicatePage`, `renamePage`, `deletePage`, and `reorderPage(draft,id,action)` retain their established signatures; reorder actions are `up`, `down`, `first`, and `last`. They and the resolution helper/mode metadata are re-exported by `scripts/core/widget-presets.js`. These helpers never save settings or write Actors.
 
@@ -366,7 +366,7 @@ Layers, overlay roots, and reusable widget designs accept:
 }
 ```
 
-Entrance types are `fade-in`, `slide-in-left/right/top/bottom`, `scale-in`, and `pop-in`; exit types are `fade-out`, `slide-out-left/right/top/bottom`, and `scale-out`. Emphasis types are `pulse`, `flash`, `shake`, `bounce`, `glow`, `color-flash`, and `scale-pulse`. Slashes here enumerate separate IDs. Glow/color-flash use temporary filter highlights. Duration is 1–10000 ms, delay 0–10000 ms, intensity 0–2, repeat an integer 1–20; delay plus duration times repeat cannot exceed 60000 ms. Directions are `normal`, `reverse`, and `alternate`. Easing is `linear`, `ease-in`, `ease-out`, or `ease-in-out`; colors are hexadecimal. Transition duration allows zero for immediate behavior. Numeric interpolation is optional.
+Entrance types are `fade-in`, `slide-in-left/right/top/bottom`, `scale-in`, `pop-in`, `shrink-in`, `blur-in`, `flip-in-x/y`, `rotate-in`, `drop-in`, `bounce-in`, `wipe-in-left/right/top/bottom`, `circle-in`, and `glitch-in`; exit types are `fade-out`, `slide-out-left/right/top/bottom`, `scale-out`, `grow-out`, `blur-out`, `flip-out-x/y`, `rotate-out`, `fall-out`, `bounce-out`, `wipe-out-left/right/top/bottom`, `circle-out`, and `glitch-out`. Emphasis types are `pulse`, `flash`, `shake`, `bounce`, `glow`, `color-flash`, `scale-pulse`, `heartbeat`, `wobble`, `tada`, `rubber-band`, `jello`, `float`, `shake-vertical`, `spin`, `flicker`, and `glitch`. Slashes here enumerate separate IDs. Glow/color-flash use temporary filter highlights. Wipes and circles reveal through a temporary `clip-path`; on a layer cut to a shape they fade instead, so the shape stays. Duration is 1–10000 ms, delay 0–10000 ms, intensity 0–2, repeat an integer 1–20; delay plus duration times repeat cannot exceed 60000 ms. Directions are `normal`, `reverse`, and `alternate`. Easing is `linear`, `ease-in`, `ease-out`, `ease-in-out`, `back-in` (anticipate), `back-out` (overshoot), `back-in-out`, `expo-out` (snappy), or `steps` (six steps); `cssEasing(name)` in `scripts/animation/schema.js` gives the CSS timing function. Colors are hexadecimal. Transition duration allows zero for immediate behavior. Numeric interpolation is optional.
 
 Each element permits at most 32 rules, together bounded to 64 KiB. Events are `visible`, `hidden`, `field-changed`, `increased`, `decreased`, `crossed-above`, `crossed-below`, and `manual`. Data events require a normalized `character.*` field. Conditions are null or `{operator,value,field?}`. Operators are `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `increased`, `decreased`, `crossed-above`, and `crossed-below`. An omitted condition field uses the event field; numeric operators require finite numbers. Crossings compare valid previous/current values, including equality on the previous side. Missing values do not match. There are no executable expressions or arbitrary system paths.
 

@@ -2,11 +2,7 @@ import { UnifiedCarouselController } from "../carousel/sequence.js";
 import { requestedFields } from "../data/bindings.js";
 import { LayerMotion } from "./motion.js";
 import { pageHasInformation } from "./carousel.js";
-
-// Whole-character changes run exit then entrance; Fade Over behaves as Fade there.
-const EFFECTS = { fade: ["fade-in", "fade-out"], "fade-over": ["fade-in", "fade-out"], "slide-left": ["slide-in-right", "slide-out-left"],
-  "slide-right": ["slide-in-left", "slide-out-right"], "slide-up": ["slide-in-bottom", "slide-out-top"],
-  "slide-down": ["slide-in-top", "slide-out-bottom"], scale: ["scale-in", "scale-out"] };
+import { transitionEffects } from "../carousel/schema.js";
 
 /** A single sequence owns scheduling; prepared Actor presentations contain no automatic timer. */
 export class ActorCarousel {
@@ -135,18 +131,19 @@ export class ActorCarousel {
     const animate = !initial && previous && this.parentMotion.controller.canPlay();
     const kind = animate ? this.configuration.settings.characterTransition : "instant";
     const ms = animate ? this.configuration.settings.characterTransitionDuration : 0;
-    const types = ms > 0 ? EFFECTS[kind] : null;
-    // Exit and entrance share one configured duration and never mix identities in one card.
+    const effects = ms > 0 ? transitionEffects(kind) : null;
+    // Exit and entrance share one configured duration and never mix identities in one card,
+    // whatever the transition's page mode: Fade Over behaves as Fade, a wipe wipes out, then in.
     if (previous && previous !== next) {
       const exitDuration = Math.floor(ms / 2);
-      previous.gate.settings.exit = types && exitDuration ? { type: types[1], duration: exitDuration, easing: "ease-in-out" } : null;
+      previous.gate.settings.exit = effects && exitDuration ? { type: effects.exit, duration: exitDuration, easing: "ease-in-out" } : null;
       await previous.gate.setVisible(false);
       if (!isCurrent() || this.disposed) return;
       previous.element.style.display = "none";
     }
     this.activeSlot = next; next.element.style.display = "";
     const entranceDuration = ms - Math.floor(ms / 2);
-    next.gate.settings.entrance = types && entranceDuration ? { type: types[0], duration: entranceDuration, easing: "ease-in-out" } : null;
+    next.gate.settings.entrance = effects && entranceDuration ? { type: effects.entrance, duration: entranceDuration, easing: "ease-in-out" } : null;
     await next.gate.setVisible(true);
     if (!isCurrent() || this.disposed) return;
     for (const slot of this.slots.values()) if (slot !== next) slot.element.style.display = "none";

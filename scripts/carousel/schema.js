@@ -6,17 +6,43 @@ export const ACTOR_LIMIT = 20;
 export const COMPONENT_LIMIT = 100;
 export const CAROUSEL_MODES = Object.freeze(["static", "information", "character", "combined"]);
 export const CAROUSEL_TRAVERSALS = Object.freeze(["pages-first", "characters-first"]);
+/**
+ * Page and character transitions: the incoming page's entrance, the outgoing page's exit and how
+ * they meet. "together" plays both at once; "over" reveals the incoming page above the outgoing
+ * one, which is hidden afterwards; "sequence" plays the exit, then the entrance, each for half the
+ * duration. Character changes always play exit, then entrance.
+ */
+const transition = (id, label, entrance = "", exit = "", mode = "together") => Object.freeze({ id, label, entrance, exit, mode });
 export const PAGE_TRANSITIONS = Object.freeze([
-  Object.freeze({ id: "fade", label: "Fade" }),
-  Object.freeze({ id: "fade-over", label: "Fade Over" }),
-  Object.freeze({ id: "slide-left", label: "Slide Left" }),
-  Object.freeze({ id: "slide-right", label: "Slide Right" }),
-  Object.freeze({ id: "slide-up", label: "Slide Up" }),
-  Object.freeze({ id: "slide-down", label: "Slide Down" }),
-  Object.freeze({ id: "scale", label: "Scale" }),
-  Object.freeze({ id: "instant", label: "Instant Switch" })
+  transition("fade", "Fade", "fade-in", "fade-out"),
+  transition("fade-over", "Fade Over", "fade-in", "fade-out", "over"),
+  transition("slide-left", "Slide Left", "slide-in-right", "slide-out-left"),
+  transition("slide-right", "Slide Right", "slide-in-left", "slide-out-right"),
+  transition("slide-up", "Slide Up", "slide-in-bottom", "slide-out-top"),
+  transition("slide-down", "Slide Down", "slide-in-top", "slide-out-bottom"),
+  transition("scale", "Scale", "scale-in", "scale-out"),
+  transition("zoom-in", "Zoom Through", "scale-in", "grow-out"),
+  transition("zoom-out", "Zoom Back", "shrink-in", "scale-out"),
+  transition("blur", "Blur", "blur-in", "blur-out"),
+  transition("flip-horizontal", "Flip Horizontal", "flip-in-y", "flip-out-y", "sequence"),
+  transition("flip-vertical", "Flip Vertical", "flip-in-x", "flip-out-x", "sequence"),
+  transition("rotate", "Rotate", "rotate-in", "rotate-out", "sequence"),
+  transition("drop", "Drop", "drop-in", "fall-out", "sequence"),
+  transition("wipe-left", "Wipe Left", "wipe-in-right", "wipe-out-left", "over"),
+  transition("wipe-right", "Wipe Right", "wipe-in-left", "wipe-out-right", "over"),
+  transition("wipe-up", "Wipe Up", "wipe-in-bottom", "wipe-out-top", "over"),
+  transition("wipe-down", "Wipe Down", "wipe-in-top", "wipe-out-bottom", "over"),
+  transition("circle", "Circle Reveal", "circle-in", "circle-out", "over"),
+  transition("glitch", "Glitch", "glitch-in", "glitch-out", "sequence"),
+  transition("instant", "Instant Switch")
 ]);
-const TRANSITIONS = new Set(PAGE_TRANSITIONS.map(entry => entry.id));
+export const TRANSITION_IDS = Object.freeze(PAGE_TRANSITIONS.map(entry => entry.id));
+/** The transition's effects, or null for an instant switch or an unknown ID. */
+export function transitionEffects(id) {
+  const entry = PAGE_TRANSITIONS.find(value => value.id === id);
+  return entry?.entrance ? entry : null;
+}
+const TRANSITIONS = new Set(TRANSITION_IDS);
 const FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/;
 

@@ -1,4 +1,6 @@
-const TRANSITIONS = new Set(["fade", "fade-over", "slide-left", "slide-right", "slide-up", "slide-down", "scale", "instant"]);
+import { TRANSITION_IDS } from "./schema.js";
+
+const TRANSITIONS = new Set(TRANSITION_IDS);
 const duration = (value, fallback, minimum = 100, maximum = 3600000) => Number.isFinite(value)
   ? Math.max(minimum, Math.min(maximum, value)) : fallback;
 

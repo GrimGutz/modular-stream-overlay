@@ -1,4 +1,4 @@
-import { validateAnimationConfig } from "./schema.js";
+import { ANIMATION_DEFINITIONS, cssEasing, validateAnimationConfig } from "./schema.js";
 
 const TYPE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/;
 const finite = value => typeof value === "number" && Number.isFinite(value);
@@ -52,24 +52,104 @@ function effectFrames(type, { intensity = 1, color = "#ff4040" }) {
     const glow = `drop-shadow(0 0 ${Math.max(1, 12 * amount)}px ${color})`;
     return [{ filter: "none" }, { filter: `${glow}${type === "color-flash" ? ` brightness(${1 + 0.25 * amount})` : ""}` }, { filter: "none" }];
   }
+  return motionFrames(type, amount, distance) ?? revealFrames(type) ?? emphasisFrames(type, amount);
+}
+
+// An exit plays its entrance backwards, offsets included.
+const reverse = frames => frames.map(({ offset, ...frame }) => offset === undefined ? frame : { ...frame, offset: 1 - offset }).reverse();
+
+// Rotations list the same functions at both ends so the browser turns them instead of
+// interpolating matrices.
+function motionFrames(type, amount, distance) {
+  const flip = axis => [{ transform: `perspective(800px) rotate${axis}(${Math.min(90, 90 * amount)}deg)`, opacity: 0 },
+    { transform: `perspective(800px) rotate${axis}(0deg)`, opacity: 1 }];
+  const entrances = {
+    "shrink-in": () => [{ transform: `scale(${1 + 0.5 * amount})`, opacity: 0 }, { transform: "none", opacity: 1 }],
+    "blur-in": () => [{ filter: `blur(${12 * amount}px)`, opacity: 0 }, { filter: "blur(0px)", opacity: 1 }],
+    "flip-in-x": () => flip("X"),
+    "flip-in-y": () => flip("Y"),
+    "rotate-in": () => [{ transform: `rotate(${-180 * amount}deg) scale(0.5)`, opacity: 0 }, { transform: "rotate(0deg) scale(1)", opacity: 1 }],
+    "drop-in": () => [{ transform: `translateY(${-1.5 * distance}px)`, opacity: 0 }, { transform: "translateY(0px)", opacity: 1, offset: 0.6 },
+      { transform: `translateY(${-12 * amount}px)`, opacity: 1, offset: 0.8 }, { transform: "translateY(0px)", opacity: 1 }],
+    "bounce-in": () => [{ transform: "scale(0.3)", opacity: 0 }, { transform: `scale(${1 + 0.1 * amount})`, opacity: 1, offset: 0.5 },
+      { transform: `scale(${1 - 0.05 * amount})`, opacity: 1, offset: 0.75 }, { transform: "scale(1)", opacity: 1 }],
+    "glitch-in": () => [[0, -8, 0], [0.2, 6, 1], [0.4, -4, 0.3], [0.6, 3, 1], [0.8, -2, 0.7], [1, 0, 1]].map(([offset, x, opacity]) =>
+      ({ transform: `translateX(${x * amount}px)`, opacity, offset }))
+  };
+  const exits = { "grow-out": "shrink-in", "blur-out": "blur-in", "flip-out-x": "flip-in-x", "flip-out-y": "flip-in-y",
+    "rotate-out": "rotate-in", "bounce-out": "bounce-in", "glitch-out": "glitch-in" };
+  if (entrances[type]) return entrances[type]();
+  if (exits[type]) return reverse(entrances[exits[type]]());
+  if (type === "fall-out") return [{ transform: "translateY(0px) rotate(0deg)", opacity: 1 },
+    { transform: `translateY(${1.5 * distance}px) rotate(${8 * amount}deg)`, opacity: 0 }];
   return null;
 }
 
-for (const [category, types] of Object.entries({
-  entrance: ["fade-in", "slide-in-left", "slide-in-right", "slide-in-top", "slide-in-bottom", "scale-in", "pop-in"],
-  exit: ["fade-out", "slide-out-left", "slide-out-right", "slide-out-top", "slide-out-bottom", "scale-out"],
-  emphasis: ["pulse", "flash", "shake", "bounce", "glow", "color-flash", "scale-pulse"]
-})) for (const id of types) defaultAnimationRegistry.register({ id, category, keyframes: config => effectFrames(id, config) });
+// Wipes and circles uncover the layer through clip-path; every inset() keeps four values.
+function revealFrames(type) {
+  const hidden = { left: "inset(0 100% 0 0)", right: "inset(0 0 0 100%)", top: "inset(0 0 100% 0)", bottom: "inset(100% 0 0 0)" };
+  const shown = "inset(0 0 0 0)";
+  const wipe = type.match(/^wipe-(in|out)-(left|right|top|bottom)$/);
+  // In "from the left" uncovers the left edge first; out "to the left" leaves it last.
+  if (wipe) return wipe[1] === "in" ? [{ clipPath: hidden[wipe[2]] }, { clipPath: shown }] : [{ clipPath: shown }, { clipPath: hidden[wipe[2]] }];
+  if (type === "circle-in") return [{ clipPath: "circle(0% at 50% 50%)" }, { clipPath: "circle(75% at 50% 50%)" }];
+  if (type === "circle-out") return [{ clipPath: "circle(75% at 50% 50%)" }, { clipPath: "circle(0% at 50% 50%)" }];
+  return null;
+}
 
+function emphasisFrames(type, amount) {
+  const spread = (values, frame) => values.map((value, index) => ({ ...frame(value * amount), offset: index / (values.length - 1) }));
+  if (type === "heartbeat") return [[0, 0], [0.14, 1], [0.28, 0], [0.42, 1], [0.7, 0], [1, 0]]
+    .map(([offset, beat]) => ({ transform: `scale(${1 + 0.14 * amount * beat})`, offset }));
+  if (type === "wobble") return spread([0, -1, 0.8, -0.6, 0.4, -0.2, 0], value => ({ transform: `translateX(${value * 12}px) rotate(${value * 4}deg)` }));
+  if (type === "tada") return [[1, 0], [0.92, -3], [1.08, 3], [1.08, -3], [1.08, 3], [1.08, -3], [1, 0]].map(([scale, angle], index, all) =>
+    ({ transform: `scale(${1 + (scale - 1) * amount}) rotate(${angle * amount}deg)`, offset: index / (all.length - 1) }));
+  if (type === "rubber-band") return [[0, 0], [0.3, 0.25], [0.4, -0.25], [0.5, 0.15], [0.65, -0.05], [0.75, 0.05], [1, 0]]
+    .map(([offset, stretch]) => ({ transform: `scale(${1 + stretch * amount}, ${1 - stretch * amount})`, offset }));
+  if (type === "jello") return spread([0, -12.5, 6.25, -3.125, 1.5625, -0.78, 0], value => ({ transform: `skewX(${value}deg) skewY(${value}deg)` }));
+  if (type === "float") return [{ transform: "translateY(0px)" }, { transform: `translateY(${-10 * amount}px)` }, { transform: "translateY(0px)" }];
+  if (type === "shake-vertical") return [0, -1, 1, -0.7, 0.7, 0].map(value => ({ transform: `translateY(${value * 7 * amount}px)` }));
+  if (type === "spin") return [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }];
+  if (type === "flicker") return [[0, 0], [0.1, 0.7], [0.15, 0], [0.3, 0.9], [0.33, 0], [0.5, 0.4], [0.55, 0], [0.8, 0.8], [0.84, 0], [1, 0]]
+    .map(([offset, dip]) => ({ opacity: 1 - dip * Math.min(1, amount), offset }));
+  if (type === "glitch") return [[0, 0, 0, 0], [0.2, -3, 1, -4], [0.4, 3, -1, 4], [0.6, -2, -1, 0], [0.8, 2, 1, -2], [1, 0, 0, 0]]
+    .map(([offset, x, y, skew]) => ({ transform: `translate(${2 * x * amount}px, ${2 * y * amount}px) skewX(${skew * amount}deg)`,
+      filter: `hue-rotate(${Math.abs(skew) * 20 * amount}deg)`, offset }));
+  return null;
+}
+
+for (const { type, category } of ANIMATION_DEFINITIONS) defaultAnimationRegistry.register({ id: type, category, keyframes: config => effectFrames(type, config) });
+
+// JavaScript forms of the CSS curves in schema.js, for numbers counted frame by frame.
+const BACK = 1.70158;
 function easingValue(progress, easing) {
   if (easing === "ease-in") return progress * progress;
   if (easing === "ease-out") return 1 - (1 - progress) ** 2;
   if (easing === "ease-in-out") return progress < 0.5 ? 2 * progress * progress : 1 - (-2 * progress + 2) ** 2 / 2;
+  if (easing === "back-in") return (BACK + 1) * progress ** 3 - BACK * progress ** 2;
+  if (easing === "back-out") return 1 + (BACK + 1) * (progress - 1) ** 3 + BACK * (progress - 1) ** 2;
+  if (easing === "back-in-out") {
+    const back = BACK * 1.525;
+    return progress < 0.5 ? (2 * progress) ** 2 * ((back + 1) * 2 * progress - back) / 2
+      : ((2 * progress - 2) ** 2 * ((back + 1) * (progress * 2 - 2) + back) + 2) / 2;
+  }
+  if (easing === "expo-out") return progress === 1 ? 1 : 1 - 2 ** (-10 * progress);
+  if (easing === "steps") return Math.floor(progress * 6) / 6;
   return progress;
 }
 
-function preserveBaseFrames(frames, element) {
+/** A layer's own clip-path is its shape; a reveal there would erase it, so it fades instead. */
+function keepShape(frames, element, category) {
+  const shape = element.style?.clipPath;
+  if (!shape || shape === "none" || !frames.some(frame => frame.clipPath !== undefined)) return frames;
+  if (!["entrance", "exit"].includes(category)) return frames.map(({ clipPath, ...frame }) => frame);
+  const [from, to] = category === "exit" ? [1, 0] : [0, 1];
+  return frames.map(({ clipPath, ...frame }, index) => ({ ...frame, opacity: from + (to - from) * index / (frames.length - 1) }));
+}
+
+function preserveBaseFrames(frames, element, category) {
   if (!Array.isArray(frames)) throw new TypeError("Animation keyframes must be an array.");
+  frames = keepShape(frames, element, category);
   const transform = element.style?.transform;
   const filter = element.style?.filter;
   const opacity = Number.parseFloat(element.style?.opacity);
@@ -94,7 +174,7 @@ export function applyTransition(element, config = {}, properties = [], { enabled
   const duration = enabled && !reducedMotion && finite(config.duration) ? Math.max(0, Math.min(60000, config.duration)) : 0;
   element.style.transitionProperty = duration > 0 && selected.length ? selected.join(", ") : "none";
   element.style.transitionDuration = `${duration}ms`;
-  element.style.transitionTimingFunction = ["linear", "ease-in", "ease-out", "ease-in-out"].includes(config.easing) ? config.easing : "ease-out";
+  element.style.transitionTimingFunction = cssEasing(config.easing);
   element.style.transitionDelay = "0ms";
 }
 
@@ -168,9 +248,9 @@ export class AnimationController {
     try {
       frames = definition.keyframes(config);
       if (!frames) return skip("unknown");
-      frames = preserveBaseFrames(frames, this.element);
+      frames = preserveBaseFrames(frames, this.element, definition.category);
       animation = this.element.animate(frames, { duration: config.duration, delay: config.delay,
-        easing: config.easing, direction: config.direction, iterations: persistent ? Infinity : config.repeat,
+        easing: cssEasing(config.easing), direction: config.direction, iterations: persistent ? Infinity : config.repeat,
         // Hold the initial frame through delay and the final frame until the
         // visibility owner has hidden the outgoing surface in the same task.
         fill: "both" });

@@ -241,3 +241,35 @@ test("fade over keeps the outgoing page fully visible until the incoming page ha
   incoming.animations[0].finish(); await change;
   assert.deepEqual(active(a), ["attributes"]); assert.equal(outgoing.animations.length, 0, "It is then hidden without its own fade");
 });
+
+test("wipes reveal the incoming page above the outgoing one, which is then hidden without its own effect", async t => {
+  const f = fixture(t, { enabled: false });
+  f.preset.cycling.transition = "wipe-left";
+  await f.renderer.render(f.overlay); const a = f.carousel(f.a);
+  holdTransitions = true;
+  const change = a.next(); await settle();
+  const incoming = a.views.get("attributes").element, outgoing = a.views.get("basic").element;
+  assert.equal(incoming.style.zIndex, "1");
+  assert.deepEqual(incoming.animations.map(animation => animation.frames.map(frame => frame.clipPath)), [["inset(0 0 0 100%)", "inset(0 0 0 0)"]]);
+  assert.equal(outgoing.animations.length, 0);
+  incoming.animations[0].finish(); await change;
+  assert.deepEqual(active(a), ["attributes"]); assert.equal(outgoing.animations.length, 0);
+});
+
+test("sequence transitions play the outgoing exit, then the incoming entrance, each for half the duration", async t => {
+  const f = fixture(t, { enabled: false });
+  f.preset.cycling.transition = "flip-horizontal";
+  await f.renderer.render(f.overlay); const a = f.carousel(f.a);
+  holdTransitions = true;
+  const change = a.next(); await settle();
+  const incoming = a.views.get("attributes").element, outgoing = a.views.get("basic").element;
+  assert.equal(outgoing.animations.length, 1); assert.equal(outgoing.animations[0].options.duration, 200);
+  assert.equal(outgoing.animations[0].frames.at(-1).transform, "perspective(800px) rotateY(90deg)");
+  assert.equal(incoming.animations.length, 0, "The incoming page waits for the outgoing one to leave");
+  outgoing.animations[0].finish(); await settle();
+  assert.equal(outgoing.style.display, "none"); assert.equal(incoming.style.display, "");
+  assert.equal(incoming.animations.length, 1); assert.equal(incoming.animations[0].options.duration, 200);
+  assert.equal(incoming.animations[0].frames[0].transform, "perspective(800px) rotateY(90deg)");
+  incoming.animations[0].finish(); await change;
+  assert.deepEqual(active(a), ["attributes"]);
+});

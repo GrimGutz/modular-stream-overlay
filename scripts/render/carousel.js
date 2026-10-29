@@ -1,12 +1,8 @@
 import { CarouselController } from "../carousel/runtime.js";
 import { LayerMotion } from "./motion.js";
 import { templateFields } from "../data/bindings.js";
+import { transitionEffects } from "../carousel/schema.js";
 
-const TRANSITIONS = {
-  fade: ["fade-in", "fade-out"], "fade-over": ["fade-in", "fade-out"], "slide-left": ["slide-in-right", "slide-out-left"],
-  "slide-right": ["slide-in-left", "slide-out-right"], "slide-up": ["slide-in-bottom", "slide-out-top"],
-  "slide-down": ["slide-in-top", "slide-out-bottom"], scale: ["scale-in", "scale-out"]
-};
 const finite = value => typeof value === "number" && Number.isFinite(value);
 const available = value => finite(value) || typeof value === "boolean" || typeof value === "string" && value.length > 0;
 
@@ -87,14 +83,31 @@ export class WidgetCarousel {
 
   async changePage({ to, transition, duration, initial, isCurrent }) {
     if (this.disposed) return;
-    const types = !initial && duration > 0 ? TRANSITIONS[transition] : null;
-    // Fade over: the incoming page fades in above the outgoing one, which is hidden only
+    const effects = !initial && duration > 0 ? transitionEffects(transition) : null;
+    // Over: the incoming page appears above the outgoing one, which is hidden only
     // afterwards, so content repeated on both pages stays steady instead of dimming.
-    const over = Boolean(types) && transition === "fade-over";
+    const over = effects?.mode === "over";
+    if (effects?.mode === "sequence") {
+      // The outgoing page leaves first, then the incoming one arrives in the same place.
+      const half = Math.floor(duration / 2);
+      const leaving = [...this.views].filter(([id]) => id !== to).map(([, { gate }]) => {
+        gate.settings.exit = half ? { type: effects.exit, duration: half, easing: "ease-in" } : null;
+        return gate.setVisible(false);
+      });
+      await Promise.all(leaving);
+      if (this.disposed || !isCurrent()) return;
+      const { element, gate } = this.views.get(to) ?? {};
+      for (const [id, view] of this.views) view.element.style.display = id === to ? "" : "none";
+      if (!gate) return;
+      element.style.zIndex = "";
+      gate.settings.entrance = { type: effects.entrance, duration: duration - half, easing: "ease-out" };
+      await gate.setVisible(true);
+      return;
+    }
     const operations = [];
     for (const [id, { element, gate }] of this.views) {
-      gate.settings.entrance = types ? { type: types[0], duration, easing: "ease-in-out" } : null;
-      gate.settings.exit = types && !over ? { type: types[1], duration, easing: "ease-in-out" } : null;
+      gate.settings.entrance = effects ? { type: effects.entrance, duration, easing: "ease-in-out" } : null;
+      gate.settings.exit = effects && !over ? { type: effects.exit, duration, easing: "ease-in-out" } : null;
       element.style.zIndex = over && id === to ? "1" : "";
       if (id === to) element.style.display = "";
       if (id === to || !over) operations.push(gate.setVisible(id === to));

@@ -198,6 +198,18 @@ test("page and character transitions use their configured effects without duplic
   assert.ok(view.activeSlot.element.animations.every(animation => animation.frames.every(frame => frame.transform === undefined)));
 });
 
+test("a character change plays the transition's exit, then its entrance, even for a reveal", async t => {
+  const f = fixture(t, { enabled: false });
+  f.preset.cycling.characterTransition = "circle";
+  await f.renderer.render(f.overlay); const view = f.composition();
+  const first = view.activeSlot;
+  await view.next(); await view.next();
+  assert.deepEqual(pair(view), ["Actor.b", "basic"]);
+  assert.deepEqual(first.element.animations.at(-1).frames.map(frame => frame.clipPath), ["circle(75% at 50% 50%)", "circle(0% at 50% 50%)"]);
+  assert.equal(first.element.animations.at(-1).options.duration, 250);
+  assert.deepEqual(view.activeSlot.element.animations.at(-1).frames.map(frame => frame.clipPath), ["circle(0% at 50% 50%)", "circle(75% at 50% 50%)"]);
+});
+
 test("parent hide preserves dwell, pauses the single scheduler, and clears descendant effects", async t => {
   const f = fixture(t); await f.renderer.render(f.overlay); const view = f.composition(), timer = clock();
   await timer.install(view); await timer.advance(1700);

@@ -43,8 +43,8 @@ Pages First is the default traversal: finish the information pages for one Actor
 | Initial Actor / page | Configured starting pair, with a first-available fallback |
 | Default page duration | 5 seconds by default; 0.1–3600 seconds |
 | Per-page duration | Optional design duration or instance override; otherwise the default |
-| Page transition | Fade, four slide directions, Scale, or Instant Switch |
-| Character transition | Independent choice from the same seven effects; Fade/500 milliseconds by default |
+| Page transition | Fade, Fade Over, four slide directions, Scale, Zoom Through, Zoom Back, Blur, two flips, Rotate, Drop, four wipes, Circle Reveal, Glitch, or Instant Switch |
+| Character transition | Independent choice from the same effects; Fade/500 milliseconds by default |
 | Transition durations | Page default 400 milliseconds; each accepts 0–10000 milliseconds |
 | Loop | Return to the first eligible pair after the last; default on |
 | Page enabled | Includes or excludes a page from all Actor sequences |
@@ -169,7 +169,7 @@ Combined regressions exercise the required A/1 → A/2 → B/1 → B/2 order wit
 - [ ] Create Basic/Attributes pages and assign Actors A/B. Confirm the default required order A/Basic → A/Attributes → B/Basic → B/Attributes, then loop to A/Basic.
 - [ ] Exercise Information Only, Character Only, Combined and Static. Confirm Static never auto-advances. Test Characters First separately.
 - [ ] Add/remove/reorder Actors with both picker and supported drag/drop. Reorder and disable pages, set starts and overrides, save/reopen, and inspect the sequence preview.
-- [ ] Verify all seven transitions, separate Actor/page effects, zero durations, rotation, clipping, opacity, scaling and editor zoom. A character boundary must use one coherent transition.
+- [ ] Verify every transition, separate Actor/page effects, zero durations, rotation, clipping, opacity, scaling and editor zoom. A character boundary must use one coherent transition.
 - [ ] Use 5-second and 8-second dwells with a 500-millisecond character transition. Confirm dwell starts after preparation/transition and no competing timer advances a second index.
 - [ ] Change Actor values while visible and off screen. Returning presentations must show the correct portrait, name and all current statistics without mixed identities, old damage flashes or sequence restart.
 - [ ] Pause midway through a dwell, wait and Resume. Next/Previous, page/character selection and Reset must preserve pause state and use a full selected dwell.

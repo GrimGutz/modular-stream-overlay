@@ -2,7 +2,7 @@ import { validateOverlay, validateLayer, validateWidgetPreset, validateAssetPath
 import { widgetPresetToOverlay } from "../core/widget-presets.js";
 import { isCharacterComponent, mountCharacterComponent } from "./character-components.js";
 import { LayerMotion, effectiveWidgetMotion } from "./motion.js";
-import { validateAnimationSettings } from "../animation/schema.js";
+import { cssEasing, validateAnimationSettings } from "../animation/schema.js";
 import { WidgetCarousel } from "./carousel.js";
 import { ActorCarousel } from "./actor-carousel.js";
 import { resolveCarouselSettings } from "../carousel/schema.js";
@@ -407,7 +407,7 @@ export class OverlayRenderer {
       const element = motion.element.children[0] ?? motion.element;
       try {
         motion.colorAnimation?.cancel?.();
-        const animation = element.animate?.([{ color: before.color }, { color: motion.layer.color }], { duration: config.duration, easing: config.easing, fill: "none" });
+        const animation = element.animate?.([{ color: before.color }, { color: motion.layer.color }], { duration: config.duration, easing: cssEasing(config.easing), fill: "none" });
         if (animation) {
           motion.colorAnimation = animation;
           animation.finished?.then(() => animation.cancel(), () => {}).catch(() => {});

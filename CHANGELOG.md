@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0
+
+- **More animations:** 13 new entrances (Shrink In, Blur In, two flips, Rotate In, Drop In, Bounce In, four wipes, Circle In, Glitch In), their 13 exits, and 10 new emphasis effects (Heartbeat, Wobble, Tada, Rubber Band, Jello, Float, Vertical Shake, Spin, Flicker, Glitch).
+- **More carousel transitions** for pages and characters: Zoom Through, Zoom Back, Blur, Flip Horizontal, Flip Vertical, Rotate, Drop, Wipe Left/Right/Up/Down, Circle Reveal and Glitch. Wipes and the circle reveal the new page over the old one; flips, Rotate, Drop and Glitch play the old page out, then the new one in.
+- **New easings:** Anticipate, Overshoot, Anticipate and Overshoot, Snappy and Stepped, for effects and value transitions.
+- Wipes and circles on a layer cut to a shape fade instead, so the shape stays.
+
 ## 0.7.0
 
 - **Character colors** window (module settings, or the editor's sidebar): a color for each value of a field — a CAIN blasphemy, a class, any text or mapped field, so it works for every game system — and a color for each character. A character's own color wins, then its value's color, then the game system's. Names, accents and the Discord voice glow follow.

@@ -13,12 +13,12 @@ const flash = () => validateAnimationConfig({ type: "color-flash", duration: 400
 const damageRule = () => ({ id: "damage", name: "Damage", event: "decreased", field: "character.hp.current", action: { type: "color-flash", target: "portrait", animation: flash() } });
 
 test("animation metadata covers supported types, presets and bounded editable defaults", () => {
-  assert.equal(ANIMATION_DEFINITIONS.length, 20);
+  assert.equal(ANIMATION_DEFINITIONS.length, 56);
   assert.equal(new Set(ANIMATION_DEFINITIONS.map(entry => entry.type)).size, ANIMATION_DEFINITIONS.length);
-  assert.equal(ANIMATION_DEFINITIONS.filter(entry => entry.category === "entrance").length, 7);
-  assert.equal(ANIMATION_DEFINITIONS.filter(entry => entry.category === "exit").length, 6);
-  assert.equal(ANIMATION_DEFINITIONS.filter(entry => entry.category === "emphasis").length, 7);
-  assert.deepEqual(EASINGS, ["linear", "ease-in", "ease-out", "ease-in-out"]);
+  assert.equal(ANIMATION_DEFINITIONS.filter(entry => entry.category === "entrance").length, 20);
+  assert.equal(ANIMATION_DEFINITIONS.filter(entry => entry.category === "exit").length, 19);
+  assert.equal(ANIMATION_DEFINITIONS.filter(entry => entry.category === "emphasis").length, 17);
+  assert.deepEqual(EASINGS, ["linear", "ease-in", "ease-out", "ease-in-out", "back-in", "back-out", "back-in-out", "expo-out", "steps"]);
   assert.equal(TRIGGER_EVENTS.includes("manual"), true);
   assert.equal(CONDITION_OPERATORS.includes("crossed-below"), true);
   assert.equal(ACTION_TYPES.includes("animate-number"), true);

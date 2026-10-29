@@ -1,7 +1,8 @@
 import { CarouselController } from "./runtime.js";
+import { TRANSITION_IDS } from "./schema.js";
 
 const MODES = new Set(["information", "character", "combined", "static"]);
-const TRANSITIONS = new Set(["fade", "slide-left", "slide-right", "slide-up", "slide-down", "scale", "instant"]);
+const TRANSITIONS = new Set(TRANSITION_IDS);
 const milliseconds = (value, fallback, minimum = 100, maximum = 3600000) => Number.isFinite(value)
   ? Math.max(minimum, Math.min(maximum, value)) : fallback;
 const pairKey = ({ actorUuid, pageId }) => JSON.stringify([actorUuid, pageId]);

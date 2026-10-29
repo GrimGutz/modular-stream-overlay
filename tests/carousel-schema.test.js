@@ -34,7 +34,7 @@ test("information pages and all transition settings round trip through reusable 
   }
   assert.equal(SCHEMA_VERSION, 6);
   assert.equal(WIDGET_PRESET_SCHEMA_VERSION, 4);
-  assert.equal(PAGE_TRANSITIONS.length, 8);
+  assert.equal(PAGE_TRANSITIONS.length, 21);
   assert(PAGE_TRANSITIONS.some(entry => entry.id === "fade-over"));
   assert.equal(Object.isFrozen(PAGE_TRANSITIONS[0]), true);
 });
