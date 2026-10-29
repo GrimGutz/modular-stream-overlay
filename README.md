@@ -8,14 +8,14 @@ Stream overlays for **Foundry VTT v14**, built in a visual editor inside Foundry
 - **Animations and triggers** — entrances, exits, emphasis and reactions to value changes such as a damage flash or a low-health warning; **Live Controls** for the GM during the stream.
 - **OBS output** — Foundry's own signed-in `/stream` page; an optional local connector signs OBS in automatically.
 - **Discord voice** — layers glow while their player speaks, without StreamKit.
-- **Game systems** — CAIN 1.3.x and D&D5e 5.3.x fields built in; other systems through field mappings or adapters.
+- **Game systems** — CAIN 1.3.x, D&D5e 5.3.x, PF2e 8.6.x and Cyberpunk RED fields built in; other systems through field mappings or adapters.
 - **English and Russian** interface.
 
 Requirements: Foundry VTT 14. Node.js 22 or later only for the optional OBS connector and the authoring tools. There is no build step and nothing to install with npm.
 
 ## Кратко по-русски
 
-Модуль для Foundry VTT 14: оверлеи для стрима собираются в визуальном редакторе прямо в Foundry и выводятся в OBS прозрачным источником «Браузер». Карточки персонажей берут живые данные из мира (CAIN и D&D5e встроены), листают персонажей и страницы, анимируются при изменениях и подсвечиваются, когда игрок говорит в Discord. Интерфейс на русском и английском (настройка модуля **Язык интерфейса**). Демо-карточка описана в [руководстве по демо](docs/DEMO_GUIDE_RU.md), персонажи CAIN — в [CAIN.md](docs/CAIN.md).
+Модуль для Foundry VTT 14: оверлеи для стрима собираются в визуальном редакторе прямо в Foundry и выводятся в OBS прозрачным источником «Браузер». Карточки персонажей берут живые данные из мира (встроены CAIN, D&D5e, PF2e и Cyberpunk RED), листают персонажей и страницы, анимируются при изменениях и подсвечиваются, когда игрок говорит в Discord. Интерфейс на русском и английском (настройка модуля **Язык интерфейса**). Демо-карточка описана в [руководстве по демо](docs/DEMO_GUIDE_RU.md), персонажи CAIN — в [CAIN.md](docs/CAIN.md).
 
 ## Installation
 
@@ -83,7 +83,7 @@ Layers can carry borders, rounded corners, drop shadows, line height, highlighte
 
 **Character colors** (module settings, or the button in the editor's sidebar) set the color that names, accents and the Discord voice glow use, for any game system. A character's own color wins; then the color set for the value of one field, such as a CAIN blasphemy, a class or any mapped text field (the window lists the values this world's characters have, with the system's color beside each); then the game system's color. Leave a color empty to keep the system's. In CAIN the sheets' pure magenta (Sympathy, Palace, Jaunt) shows as violet `#9966ff` by default.
 
-Generic fields cover names, profile/token artwork, UUIDs and Actor types. CAIN 1.3.26 adds 56 scalar fields, including CAT, prepared Psyche, Bursts, Stress, Injuries, Divine Agony, Sin Overflow, Kit Points, progression and ten skills; old health/power/level bindings retain their meaning. D&D5e 5.3.3 supports 28 PC fields including effective HP maximum, AC, prepared level, abilities and three resource slots. Other systems retain generic fields and may add mappings or external adapters. New system-specific fields are available on patch releases of their tested major.minor line (for example CAIN 1.3.x, D&D5e 5.3.x) and unavailable on other lines or pre-release builds. Schema/fixture targets do not by themselves certify a live Foundry or OBS run; consult the acceptance report.
+Generic fields cover names, profile/token artwork, UUIDs and Actor types. CAIN 1.3.26 adds 56 scalar fields, including CAT, prepared Psyche, Bursts, Stress, Injuries, Divine Agony, Sin Overflow, Kit Points, progression and ten skills; old health/power/level bindings retain their meaning. D&D5e 5.3.3 supports 28 PC fields including effective HP maximum, AC, prepared level, abilities and three resource slots. PF2e 8.6.1 adds 34 fields for characters and NPCs: HP, AC, level, perception, saves, attribute modifiers, dying/wounded/doomed, conditions, hero and focus points, shield, experience, class, ancestry and heritage. Cyberpunk RED 0.92.4 adds 29 fields for characters and mooks: HP, wound state, death save, humanity, the ten stats, armor SP, role, reputation and eurobucks; it waits for a Foundry 14 release of that system. Health, AC, level and attribute modifier IDs are shared, so one design reads several systems. Other systems retain generic fields and may add mappings or external adapters. New system-specific fields are available on patch releases of their tested major.minor line (for example CAIN 1.3.x, D&D5e 5.3.x) and unavailable on other lines or pre-release builds. Schema/fixture targets do not by themselves certify a live Foundry or OBS run; consult the acceptance report.
 
 Saved widget references contain a preset ID and ordered Actor UUID assignments, never an Actor document snapshot. Actor updates refresh subscribed character components through Foundry's authenticated document updates. Opening OBS resolves current values immediately; normal live updates do not require an OBS refresh. Live Foundry/OBS behavior still requires runtime acceptance.
 
@@ -263,7 +263,7 @@ tests/                         Dependency-free Node checks
 docs/EXTENDING.md              Public interfaces and schema contracts
 docs/OVERLAY_AUTHORING.md      JSON authoring toolkit and layer fields
 docs/CAROUSEL.md               Combined character/page cycling, timing, API, acceptance
-docs/CAIN.md, docs/DND5E.md    System fields
+docs/CAIN.md, docs/DND5E.md, docs/PF2E.md, docs/CYBERPUNK_RED.md    System fields
 docs/DEMO_GUIDE_RU.md          Demo card guide (Russian)
 docs/internal/                 Research and acceptance reports of earlier versions
 tools/obs-connector.mjs        Optional OBS connector (sign-in and Discord voice)
@@ -289,7 +289,7 @@ npm test
 
 - Foundry VTT 14 only. Character values are read only: nothing on the overlay writes to Actors or saves playback.
 - Synthetic unlinked Token Actors, compendium entries, combat tracking and dice visualization are not supported. Carousel instances run independently of each other.
-- System-specific fields are available on the tested major.minor lines (CAIN 1.3.x, D&D5e 5.3.x); other systems use generic fields, mappings or external adapters.
+- System-specific fields are available on the tested major.minor lines (CAIN 1.3.x, D&D5e 5.3.x, PF2e 8.6.x, Cyberpunk RED 0.92.x); other systems use generic fields, mappings or external adapters.
 - Image files are referenced by path and are not part of exports; copy them along when moving to another server.
 - The OBS connector and Discord voice run on the streaming PC (Windows paths shown; any OS with Node.js 22 works). Discord voice needs your own Discord application.
 

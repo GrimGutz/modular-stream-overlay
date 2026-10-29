@@ -1,0 +1,69 @@
+{
+  "format": "mso-authoring",
+  "version": 1,
+  "actors": { "p1": "First player character", "p2": "Second player character", "p3": "Third player character", "p4": "Fourth player character" },
+  "widgetPresets": [
+    {
+      "id": "recipe-spotlight",
+      "name": "Recipe — Spotlight card",
+      "canvas": { "width": 640, "height": 300 },
+      "animations": {
+        "entrance": { "type": "fade-in", "duration": 600, "easing": "ease-out" },
+        "exit": { "type": "fade-out", "duration": 400, "easing": "ease-in" },
+        "transition": { "duration": 450, "easing": "ease-out", "bar": true, "numeric": true }
+      },
+      "layers": [
+        { "id": "recipe-spotlight-panel", "type": "color", "name": "Panel", "x": 0, "y": 0, "width": 640, "height": 300, "z": 0,
+          "color": "#101521", "gradientTo": "#1b2236", "gradientAngle": 135, "cornerRadius": 18, "borderWidth": 2, "borderColor": "#ffffff1f",
+          "boxShadowColor": "#00000099", "boxShadowBlur": 24, "boxShadowY": 8 },
+        { "id": "recipe-spotlight-portrait", "type": "character-portrait", "name": "Portrait", "x": 16, "y": 16, "width": 200, "height": 268, "z": 1,
+          "binding": "character.portrait", "fit": "cover", "imagePosition": "top", "cornerRadius": 12, "borderWidth": 2, "borderColor": "#ffffff26",
+          "voiceTarget": "actor", "voiceShow": "always", "voiceEffect": "glow" },
+        { "id": "recipe-spotlight-name", "type": "character-name", "name": "Callsign", "x": 240, "y": 18, "width": 380, "height": 48, "z": 2,
+          "binding": "character.callsign", "fallback": "Assign characters", "fontFamily": "Georgia", "fontSize": 36, "fontWeight": "700",
+          "color": "#ffffff", "accent": true, "autoFit": true, "minFontSize": 18 },
+        { "id": "recipe-spotlight-rule", "type": "color", "name": "Divider", "x": 240, "y": 74, "width": 380, "height": 2, "z": 2, "color": "#ffffff26" }
+      ],
+      "pages": [
+        { "id": "recipe-spotlight-vitals", "name": "Vitals", "duration": null, "skipIfUnavailable": true, "layers": [
+          { "id": "recipe-spotlight-hp-label", "type": "text", "name": "HP caption", "x": 240, "y": 96, "width": 380, "height": 26, "z": 3,
+            "text": "Hit points", "fontFamily": "Georgia", "fontSize": 18, "fontWeight": "700", "color": "#aab4c8", "uppercase": true, "letterSpacing": 2 },
+          { "id": "recipe-spotlight-hp", "type": "resource-bar", "name": "Hit points", "x": 240, "y": 128, "width": 380, "height": 34, "z": 3,
+            "binding": "character.hp.current", "maxBinding": "character.hp.max", "accent": true, "backgroundColor": "#ffffff1a",
+            "showValue": true, "fontFamily": "Georgia", "fontSize": 18, "fontWeight": "700", "color": "#ffffff" },
+          { "id": "recipe-spotlight-hp-note", "type": "dynamic-text", "name": "HP percent", "x": 240, "y": 176, "width": 380, "height": 30, "z": 3,
+            "text": "{character.hp.percent}% of maximum", "fallback": " ", "fontFamily": "Georgia", "fontSize": 18, "color": "#d6dbe6" }
+        ] },
+        { "id": "recipe-spotlight-identity", "name": "Identity", "duration": null, "skipIfUnavailable": true, "layers": [
+          { "id": "recipe-spotlight-real-label", "type": "text", "name": "Name caption", "x": 240, "y": 96, "width": 380, "height": 26, "z": 3,
+            "text": "Real name", "fontFamily": "Georgia", "fontSize": 18, "fontWeight": "700", "color": "#aab4c8", "uppercase": true, "letterSpacing": 2 },
+          { "id": "recipe-spotlight-real", "type": "dynamic-text", "name": "Full name", "x": 240, "y": 126, "width": 380, "height": 80, "z": 3,
+            "text": "{character.realName}", "fallback": " ", "emptyText": "Unknown", "fontFamily": "Georgia", "fontSize": 30, "color": "#ffffff",
+            "autoFit": true, "minFontSize": 16 }
+        ] },
+        { "id": "recipe-spotlight-art", "name": "Art", "duration": 4000, "skipIfUnavailable": true, "layers": [
+          { "id": "recipe-spotlight-full-art", "type": "character-portrait", "name": "Full-body art", "x": 240, "y": 88, "width": 380, "height": 196, "z": 3,
+            "binding": "character.profile.art", "fit": "contain", "fadeEdge": "bottom", "fadeSize": 20 }
+        ] }
+      ],
+      "cycling": {
+        "enabled": true, "mode": "combined", "traversal": "pages-first", "duration": 6000,
+        "transition": "wipe-left", "transitionDuration": 600,
+        "characterTransition": "flip-horizontal", "characterTransitionDuration": 800,
+        "loop": true, "startPageId": "recipe-spotlight-vitals"
+      }
+    }
+  ],
+  "overlays": [
+    {
+      "id": "recipe-spotlight-overlay",
+      "name": "Recipe — Character spotlight",
+      "canvas": { "width": 1920, "height": 1080 },
+      "layers": [
+        { "id": "recipe-spotlight-card", "type": "character-widget", "name": "Spotlight", "x": 48, "y": 732, "width": 640, "height": 300, "z": 10,
+          "presetId": "recipe-spotlight", "dataSource": "actors", "actorUuids": ["$actor:p1", "$actor:p2", "$actor:p3", "$actor:p4"],
+          "carousel": { "enabled": true, "mode": "combined", "traversal": "pages-first" } }
+      ]
+    }
+  ]
+}

@@ -15,7 +15,7 @@ Use public Foundry v14 APIs. Keep configuration UI and rendering separate. Befor
 
 ## Authoring overlays and widget designs
 
-For a new layout, use the existing JSON authoring toolkit described in [docs/OVERLAY_AUTHORING.md](docs/OVERLAY_AUTHORING.md). Start from `examples/authoring/basic.json`, `character.json` or `animated.json`; generate with `node tools/overlay-author.mjs generate <source.json> --out work/generated/<name>.json`, then validate the generated bundle with `node tools/overlay-author.mjs validate <bundle.json>`.
+For a new layout, use the existing JSON authoring toolkit described in [docs/OVERLAY_AUTHORING.md](docs/OVERLAY_AUTHORING.md). Start from `examples/authoring/basic.json`, `character.json` or `animated.json`; generate with `node tools/overlay-author.mjs generate <source.json> --out work/generated/<name>.json`, then validate the generated bundle with `node tools/overlay-author.mjs validate <bundle.json>`. The project skill `.claude/skills/overlay-builder` wraps this workflow for building a layout from a description: starter recipes with fresh IDs, a field listing per game system, and a headless preview that renders a bundle to PNGs through the real renderer.
 
 Use real layer/schema fields and normalized `character.*` bindings. Keep Actor assignments on overlay instances, not reusable presets. Declare Actor slots as `$actor:name` and resolve them with repeatable `--actor name=Actor.ID` or during runtime installation; use `$preset:name` plus `--ref name=existing-preset-id` for existing designs. Preserve ordered carousel assignments and choose fresh record IDs. Do not invent CSS/schema properties, embed Documents, modify database files, or rewrite rendering/animation engines to create a layout.
 

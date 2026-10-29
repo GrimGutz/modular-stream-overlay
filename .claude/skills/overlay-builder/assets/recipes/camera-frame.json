@@ -1,0 +1,21 @@
+{
+  "format": "mso-authoring",
+  "version": 1,
+  "overlays": [
+    {
+      "id": "recipe-camera-overlay",
+      "name": "Recipe — Camera frame",
+      "canvas": { "width": 1920, "height": 1080 },
+      "layers": [
+        { "id": "recipe-camera-frame", "type": "color", "name": "Webcam frame (OBS camera sits inside)", "x": 1392, "y": 762, "width": 480, "height": 270, "z": 5,
+          "color": "transparent", "borderWidth": 6, "borderColor": "#e8a000", "cornerRadius": 18,
+          "boxShadowColor": "#000000a0", "boxShadowBlur": 24 },
+        { "id": "recipe-camera-plate", "type": "text", "name": "Name plate", "x": 1392, "y": 712, "width": 480, "height": 44, "z": 6,
+          "text": "Game master", "fontFamily": "Trebuchet MS", "fontSize": 22, "fontWeight": "700", "color": "#0d0d12", "align": "center",
+          "uppercase": true, "letterSpacing": 3, "verticalAlign": "middle", "padding": 8, "highlightColor": "#e8a000" },
+        { "id": "recipe-camera-outline", "type": "color", "name": "Outer outline", "x": 1380, "y": 750, "width": 504, "height": 294, "z": 4,
+          "color": "transparent", "borderWidth": 2, "borderColor": "#e8a00066", "cornerRadius": 26 }
+      ]
+    }
+  ]
+}

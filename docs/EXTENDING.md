@@ -222,7 +222,7 @@ Pause preserves remaining dwell; Resume continues it and can temporarily run a n
 
 ## System adapters
 
-The built-ins are generic identity, CAIN 1.3.26 and D&D5e 5.3.3 PC. See [CAIN.md](CAIN.md), [DND5E.md](DND5E.md) and the [acceptance report](internal/PHASE6_ACCEPTANCE_RU.md) for schema targets and runtime limits. System paths belong in adapters, not in presets, UI or renderer. External adapters remain trusted JavaScript, not sandboxed expressions.
+The built-ins are generic identity, CAIN 1.3.26, D&D5e 5.3.3 PC, PF2e 8.6.1 characters and NPCs, and Cyberpunk RED 0.92.4 characters and mooks. See [CAIN.md](CAIN.md), [DND5E.md](DND5E.md), [PF2E.md](PF2E.md), [CYBERPUNK_RED.md](CYBERPUNK_RED.md) and the [acceptance report](internal/PHASE6_ACCEPTANCE_RU.md) for schema targets and runtime limits. System paths belong in adapters, not in presets, UI or renderer. External adapters remain trusted JavaScript, not sandboxed expressions.
 
 ```js
 Hooks.once("modularStreamOverlayInit", api => {

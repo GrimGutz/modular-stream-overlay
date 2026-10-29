@@ -1,0 +1,71 @@
+{
+  "format": "mso-authoring",
+  "version": 1,
+  "actors": { "p1": "First player character", "p2": "Second player character", "p3": "Third player character", "p4": "Fourth player character" },
+  "widgetPresets": [
+    {
+      "id": "recipe-party-card",
+      "name": "Recipe — Party card",
+      "canvas": { "width": 420, "height": 150 },
+      "animations": {
+        "entrance": { "type": "slide-in-bottom", "duration": 600, "easing": "back-out" },
+        "exit": { "type": "fade-out", "duration": 400, "easing": "ease-in" },
+        "transition": { "duration": 450, "easing": "ease-out", "bar": true, "numeric": true }
+      },
+      "layers": [
+        { "id": "recipe-party-panel", "type": "color", "name": "Card panel", "x": 0, "y": 0, "width": 420, "height": 150, "z": 0,
+          "color": "#0b1020d9", "cornerRadius": 16, "borderWidth": 2, "borderColor": "#ffffff26",
+          "boxShadowColor": "#00000080", "boxShadowBlur": 18, "boxShadowY": 6 },
+        { "id": "recipe-party-portrait", "type": "character-portrait", "name": "Portrait", "x": 15, "y": 15, "width": 120, "height": 120, "z": 1,
+          "binding": "character.portrait", "fit": "cover", "circular": true, "cornerRadius": 60, "borderWidth": 3, "borderColor": "#ffffff33",
+          "voiceTarget": "actor", "voiceShow": "always", "voiceEffect": "glow" },
+        { "id": "recipe-party-name", "type": "character-name", "name": "Callsign", "x": 152, "y": 16, "width": 252, "height": 40, "z": 2,
+          "binding": "character.callsign", "fallback": "Assign a character", "fontFamily": "Trebuchet MS", "fontSize": 28, "fontWeight": "700",
+          "color": "#ffffff", "accent": true, "autoFit": true, "minFontSize": 16 },
+        { "id": "recipe-party-subtitle", "type": "dynamic-text", "name": "Real name", "x": 152, "y": 56, "width": 252, "height": 26, "z": 2,
+          "text": "{character.realName}", "fallback": " ", "fontFamily": "Trebuchet MS", "fontSize": 17, "color": "#aab4c8", "autoFit": true, "minFontSize": 12 },
+        { "id": "recipe-party-hp", "type": "resource-bar", "name": "Hit points", "x": 152, "y": 96, "width": 252, "height": 30, "z": 2,
+          "binding": "character.hp.current", "maxBinding": "character.hp.max", "accent": true, "backgroundColor": "#ffffff1f",
+          "showValue": true, "fontFamily": "Trebuchet MS", "fontSize": 16, "fontWeight": "700", "color": "#ffffff",
+          "triggers": [
+            { "id": "recipe-party-damage", "name": "Damage flash", "event": "decreased", "field": "character.hp.current",
+              "action": { "type": "color-flash", "target": "self", "animation": { "type": "color-flash", "duration": 450, "color": "#ff4d4d" } } },
+            { "id": "recipe-party-heal", "name": "Healing flash", "event": "increased", "field": "character.hp.current",
+              "action": { "type": "color-flash", "target": "self", "animation": { "type": "color-flash", "duration": 450, "color": "#55cc88" } } }
+          ] }
+      ]
+    }
+  ],
+  "overlays": [
+    {
+      "id": "recipe-party-overlay",
+      "name": "Recipe — Party HUD",
+      "canvas": { "width": 1920, "height": 1080 },
+      "layers": [
+        { "id": "recipe-party-title", "type": "text", "name": "Session title", "x": 48, "y": 40, "width": 620, "height": 56, "z": 1,
+          "text": "Campaign name · Session 1", "fontFamily": "Trebuchet MS", "fontSize": 26, "fontWeight": "700", "color": "#ffffff",
+          "uppercase": true, "letterSpacing": 2, "verticalAlign": "middle", "padding": 12, "highlightColor": "#0b1020cc" },
+        { "id": "recipe-party-1", "type": "character-widget", "name": "Party card 1", "x": 84, "y": 882, "width": 420, "height": 150, "z": 10,
+          "presetId": "recipe-party-card", "dataSource": "actors", "actorUuids": ["$actor:p1"] },
+        { "id": "recipe-party-2", "type": "character-widget", "name": "Party card 2", "x": 528, "y": 882, "width": 420, "height": 150, "z": 10,
+          "presetId": "recipe-party-card", "dataSource": "actors", "actorUuids": ["$actor:p2"],
+          "animationOverrides": true, "animations": {
+            "entrance": { "type": "slide-in-bottom", "duration": 600, "delay": 120, "easing": "back-out" },
+            "exit": { "type": "fade-out", "duration": 400, "easing": "ease-in" },
+            "transition": { "duration": 450, "easing": "ease-out", "bar": true, "numeric": true } } },
+        { "id": "recipe-party-3", "type": "character-widget", "name": "Party card 3", "x": 972, "y": 882, "width": 420, "height": 150, "z": 10,
+          "presetId": "recipe-party-card", "dataSource": "actors", "actorUuids": ["$actor:p3"],
+          "animationOverrides": true, "animations": {
+            "entrance": { "type": "slide-in-bottom", "duration": 600, "delay": 240, "easing": "back-out" },
+            "exit": { "type": "fade-out", "duration": 400, "easing": "ease-in" },
+            "transition": { "duration": 450, "easing": "ease-out", "bar": true, "numeric": true } } },
+        { "id": "recipe-party-4", "type": "character-widget", "name": "Party card 4", "x": 1416, "y": 882, "width": 420, "height": 150, "z": 10,
+          "presetId": "recipe-party-card", "dataSource": "actors", "actorUuids": ["$actor:p4"],
+          "animationOverrides": true, "animations": {
+            "entrance": { "type": "slide-in-bottom", "duration": 600, "delay": 360, "easing": "back-out" },
+            "exit": { "type": "fade-out", "duration": 400, "easing": "ease-in" },
+            "transition": { "duration": 450, "easing": "ease-out", "bar": true, "numeric": true } } }
+      ]
+    }
+  ]
+}

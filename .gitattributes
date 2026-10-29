@@ -5,6 +5,7 @@
 # Left out of release archives (tools/package.mjs): tests, internal reports and development tools.
 /tests export-ignore
 /docs/internal export-ignore
+/.claude export-ignore
 docs/DEVELOPMENT.md export-ignore
 AGENTS.md export-ignore
 package.json export-ignore

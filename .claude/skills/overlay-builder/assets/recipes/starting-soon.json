@@ -1,0 +1,52 @@
+{
+  "format": "mso-authoring",
+  "version": 1,
+  "actors": { "p1": "First player character", "p2": "Second player character", "p3": "Third player character", "p4": "Fourth player character" },
+  "widgetPresets": [
+    {
+      "id": "recipe-soon-portrait",
+      "name": "Recipe — Lobby portrait",
+      "canvas": { "width": 260, "height": 330 },
+      "animations": {
+        "entrance": { "type": "shrink-in", "duration": 700, "easing": "expo-out" },
+        "exit": { "type": "fade-out", "duration": 400, "easing": "ease-in" }
+      },
+      "layers": [
+        { "id": "recipe-soon-art", "type": "character-portrait", "name": "Portrait", "x": 0, "y": 0, "width": 260, "height": 260, "z": 1,
+          "binding": "character.portrait", "fit": "cover", "imagePosition": "top", "cornerRadius": 22, "borderWidth": 3, "borderColor": "#ffffff40",
+          "boxShadowColor": "#00000099", "boxShadowBlur": 30, "boxShadowY": 10, "voiceTarget": "actor", "voiceShow": "always", "voiceEffect": "glow" },
+        { "id": "recipe-soon-name", "type": "character-name", "name": "Callsign", "x": 0, "y": 274, "width": 260, "height": 48, "z": 2,
+          "binding": "character.callsign", "fallback": "Player", "fontFamily": "Georgia", "fontSize": 30, "fontWeight": "700",
+          "color": "#ffffff", "align": "center", "accent": true, "autoFit": true, "minFontSize": 16 }
+      ]
+    }
+  ],
+  "overlays": [
+    {
+      "id": "recipe-soon-overlay",
+      "name": "Recipe — Starting soon",
+      "canvas": { "width": 1920, "height": 1080 },
+      "layers": [
+        { "id": "recipe-soon-bg", "type": "color", "name": "Background with a soft center glow", "x": 0, "y": 0, "width": 1920, "height": 1080, "z": 0,
+          "color": "#3a1d63", "gradientTo": "#0d0818", "gradientType": "radial" },
+        { "id": "recipe-soon-title", "type": "text", "name": "Title", "x": 0, "y": 250, "width": 1920, "height": 150, "z": 2,
+          "text": "Starting soon", "fontFamily": "Georgia", "fontSize": 104, "fontWeight": "700", "color": "#ffffff", "align": "center",
+          "uppercase": true, "letterSpacing": 10, "verticalAlign": "middle",
+          "animations": { "entrance": { "type": "blur-in", "duration": 1200, "easing": "ease-out" } } },
+        { "id": "recipe-soon-subtitle", "type": "text", "name": "Subtitle", "x": 0, "y": 410, "width": 1920, "height": 60, "z": 2,
+          "text": "Grab a drink — the session begins shortly", "fontFamily": "Georgia", "fontSize": 34, "color": "#d8c8f0", "align": "center",
+          "animations": { "entrance": { "type": "fade-in", "duration": 900, "delay": 500, "easing": "ease-out" } } },
+        { "id": "recipe-soon-p1", "type": "character-widget", "name": "Player 1", "x": 368, "y": 560, "width": 260, "height": 330, "z": 10,
+          "presetId": "recipe-soon-portrait", "dataSource": "actors", "actorUuids": ["$actor:p1"] },
+        { "id": "recipe-soon-p2", "type": "character-widget", "name": "Player 2", "x": 676, "y": 560, "width": 260, "height": 330, "z": 10,
+          "presetId": "recipe-soon-portrait", "dataSource": "actors", "actorUuids": ["$actor:p2"] },
+        { "id": "recipe-soon-p3", "type": "character-widget", "name": "Player 3", "x": 984, "y": 560, "width": 260, "height": 330, "z": 10,
+          "presetId": "recipe-soon-portrait", "dataSource": "actors", "actorUuids": ["$actor:p3"] },
+        { "id": "recipe-soon-p4", "type": "character-widget", "name": "Player 4", "x": 1292, "y": 560, "width": 260, "height": 330, "z": 10,
+          "presetId": "recipe-soon-portrait", "dataSource": "actors", "actorUuids": ["$actor:p4"] },
+        { "id": "recipe-soon-footer", "type": "text", "name": "Footer", "x": 0, "y": 960, "width": 1920, "height": 50, "z": 2,
+          "text": "Channel name · Schedule · Discord", "fontFamily": "Georgia", "fontSize": 24, "color": "#b9a8d9", "align": "center", "letterSpacing": 2 }
+      ]
+    }
+  ]
+}

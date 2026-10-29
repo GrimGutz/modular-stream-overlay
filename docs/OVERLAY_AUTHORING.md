@@ -21,6 +21,8 @@ To reference a design that already exists in the target world, declare a named `
 
 The examples cover a static layout, a reusable character design, and animation/page cycling. Generated output under `work/` is a local artifact. Creating or validating it does not install anything in the world.
 
+In the source repository, the Claude Code skill `.claude/skills/overlay-builder` builds overlays from a description with this toolkit. It adds four starter recipes (party HUD, character spotlight with pages, starting-soon screen, webcam frame), `fields.mjs` to list bindable fields per game system, and `preview.mjs` to render a bundle with sample characters in headless Chrome or Edge, saving PNGs and a problem report. The skill is not part of the release archive.
+
 ## Source format
 
 An authoring source is a plain JSON object:
@@ -105,7 +107,7 @@ Resource indicators default to the existing continuous `display: "bar"`. Choose 
 
 Image/background `src` references an existing managed relative path such as `modules/modular-stream-overlay/assets/demo-warrior.svg`. Do not embed image data, OS file paths or remote static-image URLs. Generation does not copy assets. Preserve the user's images and `storage/`.
 
-Bindings use normalized `character.*` IDs. Text templates use literal tokens such as `"{character.name} — Stress {character.stress.current}/{character.stress.max}"`; plain `text` layers do not resolve them. System paths such as `system.stress.value` belong in adapters or explicitly configured field mappings, never in a widget binding. Unknown fields remain saved but render unavailable. Use [CAIN.md](CAIN.md) and [DND5E.md](DND5E.md) for current field names and exact version/type limits.
+Bindings use normalized `character.*` IDs. Text templates use literal tokens such as `"{character.name} — Stress {character.stress.current}/{character.stress.max}"`; plain `text` layers do not resolve them. System paths such as `system.stress.value` belong in adapters or explicitly configured field mappings, never in a widget binding. Unknown fields remain saved but render unavailable. Use [CAIN.md](CAIN.md), [DND5E.md](DND5E.md), [PF2E.md](PF2E.md) and [CYBERPUNK_RED.md](CYBERPUNK_RED.md) for current field names and exact version/type limits.
 
 Useful bounds: canvas width/height 64–7680 integers; layer width/height 1–7680; x/y −32768–32768; rotation −360–360 degrees; opacity 0–1; integer z −10000–10000; text 10000 characters; fallback 1000. IDs are at most 96 ASCII letters/digits/`_.:-`, beginning with a letter/digit. Components must have unique IDs across a preset's shared layers and all its pages. Each preset supports at most 100 components and 20 pages; each instance at most 20 unique Actors.
 

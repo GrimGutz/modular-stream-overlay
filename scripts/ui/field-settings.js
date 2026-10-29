@@ -10,7 +10,7 @@ const STATUS_LABELS = Object.freeze({
 
 export function fieldLabel(field) {
   const custom = field.providerId === "mapping";
-  const builtIn = ["generic", "cain", "dnd5e", "derived"].includes(field.providerId);
+  const builtIn = ["generic", "cain", "dnd5e", "pf2e", "cyberpunk-red", "derived"].includes(field.providerId);
   const group = field.group ? `${builtIn ? uiText(field.group) : field.group} · ` : custom ? `${t("Fields.CustomFields")} · ` : "";
   const status = STATUS_LABELS[field.status] ? uiText(STATUS_LABELS[field.status]) : "";
   return `${group}${builtIn ? uiText(field.label) : field.label}${field.legacyGlobal ? ` · ${t("Fields.AllSystems")}` : ""}${status ? ` · ${status}` : ""}`;
@@ -48,7 +48,7 @@ export async function openAdapterSettings({ api, characterData }) {
   const candidates = api.adapters.list().filter(adapter => adapter.systemId === state.systemId);
   for (const adapter of candidates) {
     const entry = option(select, adapter.id, adapter.label, preferences[state.systemId] === adapter.id);
-    const key = { cain: "Fields.CainProvider", dnd5e: "Fields.DndProvider" }[adapter.id];
+    const key = { cain: "Fields.CainProvider", dnd5e: "Fields.DndProvider", pf2e: "Fields.Pf2eProvider", "cyberpunk-red": "Fields.CprProvider" }[adapter.id];
     if (key) setText(entry, key);
   }
   if (preferences[state.systemId] && !candidates.some(adapter => adapter.id === preferences[state.systemId])) {

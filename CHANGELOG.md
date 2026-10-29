@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **PF2e adapter** (8.6.x, Foundry 14): 34 fields for characters and NPCs — HP, AC, level, perception, saves, attribute modifiers, dying/wounded/doomed, active conditions, hero and focus points, shield, experience, class, ancestry and heritage. Character colors suggest a color per class.
+- **Cyberpunk RED adapter** (0.92.x): 29 fields for characters and mooks — HP, wound state, death save, humanity, the ten stats, armor SP, role, reputation and eurobucks. Character colors suggest a color per role. Cyberpunk RED has no Foundry 14 release yet, so it can run once that release is checked and added.
+- Health, AC, level and attribute modifier fields share their IDs across D&D5e, PF2e and Cyberpunk RED, so one design reads several systems.
+- The overlay-builder Claude Code skill builds overlays from a description (source repository only).
+
 ## 0.8.0
 
 - **More animations:** 13 new entrances (Shrink In, Blur In, two flips, Rotate In, Drop In, Bounce In, four wipes, Circle In, Glitch In), their 13 exits, and 10 new emphasis effects (Heartbeat, Wobble, Tada, Rubber Band, Jello, Float, Vertical Shake, Spin, Flicker, Glitch).
