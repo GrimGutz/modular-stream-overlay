@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { STREAMER_LIMIT, STUDIO_SETTINGS, isPlayerStreamer, overlayActorUuids, studioSettings, validateStreamers } from "../scripts/core/streamers.js";
+import { STREAMER_LIMIT, STUDIO_SETTINGS, isPlayerStreamer, overlayActorUuids, studioAccountChoices, studioAccountId, studioServedBy, studioSettings,
+  validateStreamers } from "../scripts/core/streamers.js";
 import { viewerAccessMessage } from "../scripts/integration/obs.js";
 import { AnimationCommands } from "../scripts/animation/commands.js";
 import { OverlayStore } from "../scripts/core/store.js";
@@ -105,4 +106,41 @@ test("a streaming player publishes to their own stream page, which obeys only th
   assert.equal((await commands.receive(command("from-other"), { user: { id: OTHER, isGM: false } })).accepted, false);
   assert.equal((await commands.receive(command("own"), { user: player })).accepted, true);
   assert.deepEqual(played, ["own"]);
+});
+
+test("a studio streams through the free account its player chose, else their own; the first listed player keeps a shared choice", () => {
+  const users = new Map([player, viewer, gm, { id: OTHER, isGM: false }, { id: "FreeAccount00001", isGM: false }, { id: "FreeAccount00002", isGM: false }].map(user => [user.id, user]));
+  const chosen = { [PLAYER]: "FreeAccount00001", [OTHER]: "FreeAccount00001" };
+  const context = { streamers: [PLAYER, OTHER], viewerUserId: VIEWER, getUser: id => users.get(id), chosenBy: id => chosen[id] ?? "" };
+  assert.equal(studioAccountId(PLAYER, context), "FreeAccount00001");
+  assert.equal(studioAccountId(OTHER, context), OTHER, "The account already carries the first player's stream");
+  assert.equal(studioServedBy("FreeAccount00001", context), PLAYER);
+  assert.equal(studioServedBy(PLAYER, context), null, "A player's own account is not served by another studio");
+  for (const taken of [VIEWER, GM, OTHER, "Missing000000001"]) {
+    assert.equal(studioAccountId(PLAYER, { ...context, chosenBy: id => id === PLAYER ? taken : "" }), PLAYER, `${taken} cannot carry a studio`);
+  }
+  assert.deepEqual(studioAccountChoices(OTHER, context, [...users.values()]).map(user => user.id), ["FreeAccount00002"],
+    "GMs, the main viewer, streaming players and accounts other studios use are not offered");
+  assert.deepEqual(studioAccountChoices(PLAYER, context, [...users.values()]).map(user => user.id), ["FreeAccount00001", "FreeAccount00002"]);
+});
+
+test("a stream account reads its player's studio read-only; colors and profiles follow the world's until the player saves their own", async () => {
+  const docs = new Map([[`${PLAYER}/modular-stream-overlay.studioState`, { from: "player" }]]);
+  const values = new Map([["accentRules", { field: "world", colors: {} }]]);
+  const settings = {
+    get: (_namespace, key) => values.get(key),
+    async set(_namespace, key, value) { values.set(key, value); docs.set(`${PLAYER}/modular-stream-overlay.${key}`, value); return value; },
+    settings: new Map([["modular-stream-overlay.studioWidgetPresets", { default: { presets: [] } }]]),
+    storage: new Map([["world", { getSetting: (key, user) => docs.has(`${user}/${key}`) ? { value: docs.get(`${user}/${key}`) } : undefined }]])
+  };
+  const asAccount = studioSettings(settings, () => ({ id: PLAYER, own: false }));
+  assert.deepEqual(asAccount.get("modular-stream-overlay", "state"), { from: "player" });
+  assert.deepEqual(asAccount.get("modular-stream-overlay", "widgetPresets"), { presets: [] }, "Unsaved studio settings read as their defaults");
+  assert.deepEqual(asAccount.get("modular-stream-overlay", "accentRules"), { field: "world", colors: {} }, "Colors follow the world's");
+  assert.throws(() => asAccount.set("modular-stream-overlay", "state", {}), /Only the streaming player/);
+  const own = studioSettings(settings, () => ({ id: PLAYER, own: true }));
+  await own.set("modular-stream-overlay", "accentRules", { field: "studio", colors: {} });
+  assert.deepEqual(values.get("studioAccentRules"), { field: "studio", colors: {} });
+  assert.deepEqual(asAccount.get("modular-stream-overlay", "accentRules"), { field: "studio", colors: {} }, "Once saved, the studio's own colors apply");
+  assert.deepEqual(values.get("accentRules"), { field: "world", colors: {} }, "The world's colors are untouched");
 });

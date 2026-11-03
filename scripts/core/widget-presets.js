@@ -75,14 +75,14 @@ export function validateWidgetPresetState(input) {
 }
 
 /** A streaming player's studio registers its own designs with `scope: "user"`, as registerSettings does. */
-export function registerWidgetSettings(onChange = () => {}, { key = WIDGET_SETTINGS_KEY, scope = "world" } = {}) {
+export function registerWidgetSettings(onChange = () => {}, { key = WIDGET_SETTINGS_KEY, scope = "world", concerns = userId => userId === globalThis.game?.userId } = {}) {
   if (!globalThis.game?.settings?.register) throw new Error("Foundry settings are unavailable.");
   if (typeof onChange !== "function") throw new TypeError("Widget settings onChange must be a function.");
   game.settings.register(MODULE_ID, key, {
     name: "Character widget presets", scope, config: false, type: Object,
     default: createWidgetPresetState(), restricted: scope === "world",
     onChange: (value, _options, userId) => {
-      if (scope === "user" && userId !== globalThis.game?.userId) return;
+      if (scope === "user" && !concerns(userId)) return;
       let state;
       try { state = validateWidgetPresetState(value); }
       catch (error) { onChange(null, error); return; }

@@ -7,14 +7,15 @@ export const SETTINGS_KEY = "state";
  * player's studio registers the same configuration under another key with `scope: "user"`; only
  * that player's own changes are reported.
  */
-export function registerSettings(onChange = () => {}, { key = SETTINGS_KEY, scope = "world" } = {}) {
+/** `concerns(userId)` picks the user-scope changes this client follows: its own, by default. */
+export function registerSettings(onChange = () => {}, { key = SETTINGS_KEY, scope = "world", concerns = userId => userId === globalThis.game?.userId } = {}) {
   if (!globalThis.game?.settings?.register) throw new Error("Foundry settings are unavailable.");
   if (typeof onChange !== "function") throw new TypeError("Settings onChange must be a function.");
   globalThis.game.settings.register(MODULE_ID, key, {
     name: "Stream overlay configuration", scope, config: false, type: Object,
     default: createState(), restricted: scope === "world",
     onChange: (value, _options, userId) => {
-      if (scope === "user" && userId !== globalThis.game?.userId) return;
+      if (scope === "user" && !concerns(userId)) return;
       let state;
       try { state = validateState(value); }
       catch (error) { onChange(null, error); return; }

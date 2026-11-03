@@ -1,7 +1,8 @@
 /**
  * Character colors for every widget and voice glow: a color per value of one field (a CAIN
  * blasphemy, a D&D class, any text field) and a color per character. The order is the
- * character's own color, then its value's color, then the game system's color.
+ * character's own color, then its value's color, then the game system's color. A player the GM
+ * allowed to stream edits their studio's own colors and profiles, which start from the world's.
  */
 import { t, setText, setAttr, errorText } from "./i18n.js";
 import { fieldLabel } from "./field-settings.js";
@@ -16,8 +17,11 @@ let app = null;
 
 export function configureCharacterColors(configuration) { services = { ...services, ...configuration }; }
 
+/** GMs edit the world's colors, a streaming player their studio's. */
+const mayEdit = () => Boolean(game.user?.isGM) || api()?.canEditLibrary?.() === true;
+
 export async function openCharacterColors() {
-  if (!game.user?.isGM) throw new Error(t("Colors.GMOnly"));
+  if (!mayEdit()) throw new Error(t("Colors.GMOnly"));
   app ??= new CharacterColors();
   await app.render({ force: true });
   return app;
@@ -71,7 +75,7 @@ export class CharacterColors extends ApplicationV2 {
   }
 
   get title() { return t("Colors.Title"); }
-  _canRender(options) { return game.user?.isGM ? super._canRender(options) : false; }
+  _canRender(options) { return mayEdit() ? super._canRender(options) : false; }
 
   /** Saved settings, the world's characters and, for each, the chosen field's value and the system color. */
   async _load() {
@@ -113,6 +117,7 @@ export class CharacterColors extends ApplicationV2 {
     this._painters = [];
     const root = element("div", { className: "mso-colors-content" });
     root.append(element("p", { className: "mso-help", key: "Colors.Help" }));
+    if (api()?.inStudio?.()) root.append(element("p", { className: "mso-help", key: "Colors.StudioHelp" }));
     root.append(this._valuesSection(state), this._charactersSection(state));
     const footer = element("div", { className: "mso-voice-footer" });
     const save = element("button", { key: "Colors.Save" });

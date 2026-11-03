@@ -21,7 +21,8 @@ class Element {
 }
 
 // `studio` boots as a player the GM allowed to stream: their overlay lives in their own studio.
-async function boot({ stream = true, characters = false, configureOverlay = () => {}, studio = false } = {}) {
+// `account` is the free account that player chose for their stream; `asAccount` boots as that account.
+async function boot({ stream = true, characters = false, configureOverlay = () => {}, studio = false, account = null, asAccount = false, extraUsers = [] } = {}) {
   const listeners = new Map();
   function add(name, fn, once) { const values = listeners.get(name) ?? []; values.push({ fn, once }); listeners.set(name, values); }
   globalThis.Hooks = {
@@ -40,22 +41,37 @@ async function boot({ stream = true, characters = false, configureOverlay = () =
   if (characters) overlay.layers = actors.map((actor, index) => ({ id: `card-${index}`, type: "character-widget",
     presetId: "widget-basic-character-card", actorUuid: actor.uuid, x: index * 450, width: 400, height: 180 }));
   configureOverlay(overlay);
-  values.set(studio ? "studioState" : "state", { schemaVersion: 1, revision: 1, activeOverlayId: overlay.id, overlays: [overlay], presets: [] });
+  const initial = { schemaVersion: 1, revision: 1, activeOverlayId: overlay.id, overlays: [overlay], presets: [] };
+  const streamer = { id: studio ? "PlayerAccount001" : "viewer", name: "Player", role: 1, isGM: false };
+  const accountUser = account ? { id: account, name: "Stream", role: 1, isGM: false } : null;
+  const player = asAccount ? accountUser : streamer;
+  // Saved user settings by "userId/key", as Foundry's world settings collection holds them for every user.
+  const docs = new Map();
+  if (!asAccount) values.set(studio ? "studioState" : "state", initial);
+  if (studio) { docs.set(`${streamer.id}/studioState`, initial); values.set("streamers", [streamer.id]); }
+  if (account) docs.set(`${streamer.id}/studioViewer`, account);
   values.set("viewerUserId", studio ? "" : "viewer");
-  const player = { id: studio ? "PlayerAccount001" : "viewer", role: 1, isGM: false };
-  if (studio) values.set("streamers", [player.id]);
   const socket = new EventEmitter();
   const state = { reloads: 0, errors: [] };
   globalThis.game = {
     view: stream ? "stream" : "game", user: player, userId: player.id, socket,
     system: { id: "cain" }, actors: { contents: actors },
-    users: new Map([[player.id, player]]), modules: new Map([["modular-stream-overlay", {}]]),
+    users: new Map([streamer, accountUser, ...extraUsers].filter(Boolean).map(user => [user.id, user])), modules: new Map([["modular-stream-overlay", {}]]),
     settings: {
       register(_id, key, config) { settings.set(key, config); if (!values.has(key)) values.set(key, config.default); },
       registerMenu(_id, key, config) { menus.set(key, config); },
       get(_id, key) { return values.get(key); },
       // Foundry reports the user who made the change; studio settings react only to their own player.
-      async set(_id, key, value) { values.set(key, value); settings.get(key)?.onChange?.(value, {}, game.userId); return value; }
+      async set(_id, key, value) {
+        values.set(key, value);
+        if (settings.get(key)?.scope === "user") docs.set(`${game.userId}/${key}`, value);
+        settings.get(key)?.onChange?.(value, {}, game.userId); return value;
+      },
+      settings: { get: id => settings.get(id.replace("modular-stream-overlay.", "")) },
+      storage: new Map([["world", { getSetting(id, user) {
+        const key = `${user}/${id.replace("modular-stream-overlay.", "")}`;
+        return docs.has(key) ? { value: docs.get(key) } : undefined;
+      } }]])
     }
   };
   globalThis.ui = { notifications: { error: value => state.errors.push(value), info() {}, warn() {} } };
@@ -75,7 +91,7 @@ async function boot({ stream = true, characters = false, configureOverlay = () =
   Hooks.callAll("init");
   if (stream) Hooks.callAll("streamReady"); else Hooks.callAll("ready");
   await setImmediate();
-  return { ...state, state, values, settings, menus, overlay, player, socket, actors,
+  return { ...state, state, values, settings, menus, overlay, player, streamer, accountUser, docs, socket, actors,
     api: game.modules.get("modular-stream-overlay").api, windowListeners,
     output: document.body.children.find(child => child.id === "mso-output") };
 }
@@ -443,5 +459,59 @@ test("a streaming player's game client edits their studio and sends live command
   assert.equal(f.api.inStudio(), false); assert.equal(f.api.canEditLibrary(), false);
   await assert.rejects(f.api.store.setActive(null), /Only a Game Master/);
   await assert.rejects(f.api.liveControls.play("card-0"), /Only a Game Master/);
+  f.socket.off(SOCKET_NAME, accept); f.windowListeners.get("pagehide")();
+});
+
+test("a streaming player's stream can sign in with a free account they chose; that page shows their studio and obeys only them", async () => {
+  const f = await boot({ studio: true, account: "StreamAccount001", asAccount: true, characters: true, configureOverlay(overlay) {
+    Object.assign(overlay.layers[0], { animationOverrides: true, triggers: [
+      { id: "salute", event: "manual", action: { type: "play-animation", animation: { type: "bounce", duration: 350 } } }] });
+  } });
+  assert.equal(f.output.children[0].children[0].src, "/prefix/assets/original.webp", "The chosen account shows the player's studio");
+  const now = Date.now();
+  const command = id => ({ id, overlayId: f.overlay.id, layerId: "card-0", kind: "manual", ruleId: "salute", createdAt: now, expiresAt: now + 10000 });
+  assert.equal((await deliverCommand(f, command("from-gm"), { id: "GameMaster000001", isGM: true, role: 4 })).accepted, false);
+  assert.equal((await deliverCommand(f, command("from-account"), f.player)).accepted, false, "The account itself does not run the stream");
+  assert.equal((await deliverCommand(f, command("from-player"), f.streamer)).accepted, true);
+  // The player saves in their editor: Foundry reports their change on this client too.
+  const saved = structuredClone(f.docs.get(`${f.streamer.id}/studioState`));
+  saved.revision++; saved.overlays[0].background.src = "assets/changed.webp";
+  f.docs.set(`${f.streamer.id}/studioState`, saved);
+  f.settings.get("studioState").onChange(saved, {}, f.streamer.id);
+  await setImmediate();
+  assert.equal(f.output.children[0].children[0].src, "/prefix/assets/changed.webp");
+  // Back to their own account: this page no longer carries the studio.
+  f.docs.set(`${f.streamer.id}/studioViewer`, "");
+  f.settings.get("studioViewer").onChange("", {}, f.streamer.id);
+  await setImmediate();
+  assert.match(f.output.children.find(child => child.className === "mso-message")?.textContent ?? "", /disabled/);
+  f.socket.emit("disconnect");
+});
+
+test("with a stream account chosen, the player's own page points there and their game client controls it; only free accounts are offered", async t => {
+  const page = await boot({ studio: true, account: "StreamAccount001", characters: true });
+  assert.match(page.output.children.find(child => child.className === "mso-message")?.textContent ?? "", /signs in to Foundry as Stream/);
+  page.socket.emit("disconnect");
+  t.mock.method(globalThis, "fetch", async () => { throw new Error("No OBS connector in tests"); });
+  const gm = { id: "GameMaster000001", name: "GM", isGM: true, role: 4 }, free = { id: "PlayerAccount002", name: "Free", isGM: false, role: 1 };
+  const f = await boot({ stream: false, studio: true, account: "StreamAccount001", characters: true, extraUsers: [gm, free] });
+  assert.equal(f.api.getStudioAccount(), "StreamAccount001");
+  assert.deepEqual(f.api.getStudioAccountChoices().sort(), ["PlayerAccount002", "StreamAccount001"], "GMs are not offered");
+  f.accountUser.active = true;
+  let recipients;
+  const accept = (payload, options) => {
+    if (payload.type !== "command") return;
+    recipients = options.recipients;
+    f.socket.emit(SOCKET_NAME, { type: "ack", gmId: f.player.id, id: payload.command.id, accepted: true }, f.accountUser.id);
+  };
+  f.socket.on(SOCKET_NAME, accept);
+  assert.deepEqual(await f.api.liveControls.play("card-0"), { accepted: true });
+  assert.deepEqual(recipients, ["StreamAccount001"], "Live commands reach the chosen account's stream page");
+  await assert.rejects(f.api.setStudioAccount(gm.id), /free player account/);
+  await f.api.setStudioAccount(f.player.id);
+  assert.equal(f.values.get("studioViewer"), "", "Choosing their own account clears the choice");
+  assert.equal(f.api.getStudioAccount(), f.player.id);
+  await f.api.setStudioAccount(free.id);
+  assert.equal(f.api.getStudioAccount(), free.id);
   f.socket.off(SOCKET_NAME, accept); f.windowListeners.get("pagehide")();
 });

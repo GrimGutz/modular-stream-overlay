@@ -1,8 +1,9 @@
 /**
  * Player streams. The GM only chooses which players may stream from their own account. Such a
  * player opens the overlay editor from their Settings sidebar and runs their stream themselves:
- * their own studio, live controls and the OBS connector on their PC. This window shows what each
- * one has on stream and which of its characters their account cannot observe.
+ * their own studio, live controls, the account their OBS signs in with and the OBS connector on
+ * their PC. This window shows what each one has on stream, through which account, and which of its
+ * characters that account cannot observe.
  */
 import { t, setText, setAttr, errorText } from "./i18n.js";
 import { validateState } from "../core/schema.js";
@@ -93,6 +94,8 @@ export class PlayerStreams extends ApplicationV2 {
     const section = element("section", { className: "mso-voice-section" });
     // GMs and Assistant GMs already edit the world library; the viewer account shows the main stream.
     const players = [...game.users].filter(user => !user.isGM && user.id !== viewerId).sort((left, right) => left.name.localeCompare(right.name));
+    // Free accounts a studio's stream signs in with, by the player whose stream they carry.
+    this._carried = new Map(api().getStreamers().map(id => [api().getStudioAccountFor?.(id) ?? id, id]).filter(([account, id]) => account !== id));
     if (!players.length) section.append(element("p", { className: "mso-help", key: "Streams.NoPlayers" }));
     for (const user of players) section.append(this._row(user));
     root.append(section, addressRow(), element("p", { className: "mso-help", key: "Streams.AddressHelp" }));
@@ -126,14 +129,20 @@ export class PlayerStreams extends ApplicationV2 {
     const status = element("p", { className: "mso-help mso-streams-status" });
     const describe = () => {
       status.replaceChildren();
-      if (!this._draft.has(user.id)) return;
+      const carried = game.users?.get(this._carried?.get(user.id));
+      if (!this._draft.has(user.id)) {
+        if (carried) status.append(element("span", { key: "Streams.CarriesStudio", params: { name: carried.name } }));
+        return;
+      }
       const state = studioState(user);
+      const account = game.users?.get(api().getStudioAccountFor?.(user.id)) ?? user;
+      if (account.id !== user.id) status.append(element("span", { key: "Streams.StudioAccount", params: { name: account.name } }), " ");
       const overlay = state?.overlays.find(entry => entry.id === state.activeOverlayId);
       const summary = element("span", { key: !state?.overlays.length ? "Streams.StudioEmpty"
         : overlay ? "Streams.StudioLive" : "Streams.StudioIdle", params: { count: state?.overlays.length ?? 0, name: overlay?.name ?? "" } });
       status.append(summary);
       if (!overlay) return;
-      const hidden = hiddenCharacters(overlay, user);
+      const hidden = hiddenCharacters(overlay, account);
       const access = !overlayActorUuids(overlay).length ? { key: "Streams.NoCharacters" }
         : hidden.length ? { key: "Streams.Hidden", params: { names: hidden.map(actor => actor?.name ?? t("Streams.UnknownCharacter")).join(", ") } }
           : { key: "Streams.AllVisible" };

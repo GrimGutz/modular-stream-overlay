@@ -14,13 +14,14 @@ import { validateMappings } from "./data/mappings.js";
 import { validateCharacterProfiles } from "./data/profiles.js";
 import { ACCENT_RULES_SETTING, validateAccentRules } from "./data/accent-rules.js";
 import { CharacterColors, configureCharacterColors, openCharacterColors, refreshCharacterColors } from "./ui/character-colors.js";
-import { STREAMERS_SETTING, STUDIO_SETTINGS, validateStreamers, isPlayerStreamer, studioSettings } from "./core/streamers.js";
+import { STREAMERS_SETTING, STUDIO_ACCOUNT_SETTING, STUDIO_SETTINGS, validateStreamers, isPlayerStreamer, studioSettings, studioAccountId, studioServedBy,
+  studioAccountChoices } from "./core/streamers.js";
 import { PlayerStreams, openPlayerStreams, refreshPlayerStreams } from "./ui/player-streams.js";
 import { uploadBackground } from "./core/background-upload.js";
 import { OverlayRenderer } from "./render/renderer.js";
 import { OverlayEditor, configureEditor, refreshEditors, refreshFragmentLists } from "./ui/editor.js";
 import { WidgetPresetManager, configureWidgetEditor, openWidgetManager, openWidgetPreset, refreshWidgetEditors } from "./ui/widget-editor.js";
-import { isOverlayRequest, overlayURL, isViewerAllowed, viewerAccessMessage, watchForConnector } from "./integration/obs.js";
+import { isOverlayRequest, overlayURL, isViewerAllowed, viewerAccessMessage, studioAccountMessage, watchForConnector } from "./integration/obs.js";
 import { defaultAnimationRegistry } from "./animation/playback.js";
 import { registerTriggerEvent } from "./animation/triggers.js";
 import { AnimationCommands } from "./animation/commands.js";
@@ -94,18 +95,38 @@ function getStreamers() {
 }
 /** A player the GM allowed to stream: their library is their own studio and they run their own stream. */
 const inStudio = () => isPlayerStreamer(game.user, getStreamers(), getViewerUserId());
+/** Another account's user-scoped setting; Foundry sends every user's settings to every client. */
+function userSetting(key, userId) {
+  try { return game.settings.storage?.get?.("world")?.getSetting?.(`${MODULE_ID}.${key}`, userId)?.value; } catch { return undefined; }
+}
+const studioContext = () => ({ streamers: getStreamers(), viewerUserId: getViewerUserId(), getUser: id => game.users?.get(id),
+  chosenBy: id => { const value = userSetting(STUDIO_ACCOUNT_SETTING, id); return typeof value === "string" ? value : ""; } });
+/**
+ * The streaming player whose studio this client works with: the player themself ({ own: true },
+ * editing it), or the player whose stream signs in with this account ({ own: false }, showing it).
+ */
+function studioOwner() {
+  if (inStudio()) return { id: game.userId, own: true };
+  const id = game.userId ? studioServedBy(game.userId, studioContext()) : null;
+  return id ? { id, own: false } : null;
+}
+/** The account a studio's stream signs in with: the player's own or the free account they chose. */
+const studioAccount = (owner = studioOwner()) => owner ? game.users?.get(studioAccountId(owner.id, studioContext())) ?? null : null;
 /** Who may change the library here: GMs (the world's) and a streaming player (their studio). */
 const canEdit = user => Boolean(user?.isGM) || (Boolean(user?.id) && user.id === game.userId && inStudio());
-/** Who may send live commands, and whose a stream obeys: GMs for the main viewer, a streamer for their own stream. */
-const canControl = user => inStudio() ? Boolean(user?.id) && user.id === game.userId : Boolean(user?.isGM);
+/** Who may send live commands, and whose a stream obeys: GMs for the main viewer, the streaming player for their studio's stream. */
+const canControl = user => {
+  const owner = studioOwner();
+  return owner ? Boolean(user?.id) && user.id === owner.id : Boolean(user?.isGM);
+};
 /** The account whose stream page live commands reach. */
-const streamTarget = () => inStudio() ? game.user : game.users?.get(getViewerUserId());
+const streamTarget = () => studioOwner() ? studioAccount() : game.users?.get(getViewerUserId());
 function getPresentationUser() {
   const id = getViewerUserId();
   const viewer = game.users?.get(id);
   if (isViewerAllowed(viewer, id) && (game.user?.isGM || game.user?.id === id)) return viewer;
-  // A streaming player reads characters with their own account's permissions, in the editor and on stream.
-  return inStudio() ? game.user : null;
+  // A studio reads characters with its stream account's permissions, in the player's editor and on stream.
+  return studioOwner() ? studioAccount() : null;
 }
 const streamPageLive = () => broadcast && streamReady && status !== "disconnected" && status !== "shutdown";
 function showMessage(message) {
@@ -139,12 +160,15 @@ let outputSignature = null;
 async function refreshOutput({ skipUnchanged = false } = {}) {
   if (!broadcast || !streamReady || status === "disconnected" || status === "shutdown") return;
   try {
-    const denied = viewerAccessMessage(game.user, getViewerUserId(), getStreamers());
-    // A streaming player's page shows their studio's active overlay; the store reads it.
+    // A studio's stream shows on the account it signs in with; the store reads that studio.
+    const owner = studioOwner(), account = owner ? studioAccount(owner) : null;
+    const denied = !owner ? viewerAccessMessage(game.user, getViewerUserId(), getStreamers())
+      : account?.id === game.userId ? "" : studioAccountMessage(account?.name ?? "");
     const state = denied ? null : store.getState();
     const overlay = state?.overlays.find(item => item.id === state.activeOverlayId) ?? null;
     // Saves of other overlays or unused presets must not rebuild the stage, restart carousels or re-resolve Actors.
-    const signature = JSON.stringify({ viewer: getViewerUserId(), studio: inStudio(), denied, overlay, presets: overlay ? usedPresets(overlay) : [] });
+    const signature = JSON.stringify({ viewer: getViewerUserId(), studio: owner?.id ?? null, account: account?.id ?? null, denied, overlay,
+      presets: overlay ? usedPresets(overlay) : [] });
     if (skipUnchanged && signature === outputSignature) return;
     outputSignature = signature;
     if (denied) {
@@ -174,9 +198,10 @@ function voiceRosterChanged() {
   streamVoice?.setRoster(roster);
 }
 
-/** Editors previewing a stream's voice: GMs for the main stream, a streamer's own game client for theirs. */
+/** Editors previewing a stream's voice: GMs for the main stream, the streaming player for their studio's. */
 function voiceListeners() {
-  return inStudio() ? [game.userId] : game.users?.filter(user => user.isGM && user.active).map(user => user.id) ?? [];
+  const owner = studioOwner();
+  return owner ? [owner.id] : game.users?.filter(user => user.isGM && user.active).map(user => user.id) ?? [];
 }
 
 /** Voice state from the stream page reaches the editors, at most a few times a second. */
@@ -202,7 +227,8 @@ function connectEditorVoice() {
 }
 function requestVoice() {
   connectEditorVoice();
-  const target = inStudio() ? game.userId : game.user?.isGM ? getViewerUserId() : "";
+  const owner = studioOwner();
+  const target = owner?.own ? studioAccount(owner)?.id : game.user?.isGM ? getViewerUserId() : "";
   if (!target || !game.users?.get(target)?.active) return;
   try { game.socket.emit(SOCKET_NAME, { type: "voice-request" }, { recipients: [target] }); } catch { /* Offline. */ }
 }
@@ -210,8 +236,8 @@ function requestVoice() {
 function onVoiceMessage(payload, senderId) {
   if (!payload || typeof payload !== "object" || typeof senderId !== "string") return;
   if (payload.type === "voice" && !broadcast) {
-    const viewerId = getViewerUserId();
-    const reporter = inStudio() ? senderId === game.userId
+    const viewerId = getViewerUserId(), owner = studioOwner();
+    const reporter = owner ? senderId === studioAccount(owner)?.id
       : Boolean(game.user?.isGM) && senderId === viewerId && isViewerAllowed(game.users?.get(senderId), viewerId);
     if (reporter) editorVoice.setState(payload.state);
   } else if (payload.type === "voice-request" && streamVoice && canControl(game.users?.get(senderId))) sendVoice(streamVoice.state, [senderId]);
@@ -242,8 +268,17 @@ function streamersChanged() {
   if (inStudio()) requestVoice();
 }
 
-/** A studio setting changed; only the player's own changes concern this client. */
-const ownStudio = handler => (_value, _options, userId) => { if (userId === game.userId) handler(); };
+/** Studio changes this client follows: its own, and on a stream account the changes of the player it streams for. */
+const studioConcerns = userId => userId === game.userId || userId === studioOwner()?.id;
+const ownStudio = handler => (_value, _options, userId) => { if (studioConcerns(userId)) handler(); };
+
+/** A streaming player chose another stream account: stream pages, editors and the GM's window follow. */
+function studioAccountChanged() {
+  settingsChanged();
+  voiceRosterChanged();
+  refreshPlayerStreams();
+  if (studioOwner()?.own && !broadcast) requestVoice();
+}
 
 function mappingsChanged() {
   characterData?.refresh();
@@ -256,8 +291,9 @@ Hooks.once("init", () => {
   registerSettings(settingsChanged);
   registerWidgetSettings(widgetSettingsChanged);
   // A streaming player's studio: the same library, saved under their own account.
-  registerSettings(settingsChanged, { key: STUDIO_SETTINGS.state, scope: "user" });
-  registerWidgetSettings(widgetSettingsChanged, { key: STUDIO_SETTINGS.widgetPresets, scope: "user" });
+  registerSettings(settingsChanged, { key: STUDIO_SETTINGS.state, scope: "user", concerns: studioConcerns });
+  registerWidgetSettings(widgetSettingsChanged, { key: STUDIO_SETTINGS.widgetPresets, scope: "user", concerns: studioConcerns });
+  game.settings.register(MODULE_ID, STUDIO_ACCOUNT_SETTING, { scope: "user", config: false, type: String, default: "", onChange: studioAccountChanged });
   // The capture PC's motion preference is not the audience's, so broadcasts animate by default.
   for (const [key, initial] of [["animationsEnabled", true], ["respectReducedMotion", false]]) game.settings.register(MODULE_ID, key,
     localizeSetting({ scope: "world", config: true, restricted: true,
@@ -309,15 +345,20 @@ Hooks.once("init", () => {
     name: "Character color rules", scope: "world", config: false, type: Object,
     restricted: true, default: { field: "", colors: {} }, onChange: () => { mappingsChanged(); refreshCharacterColors(); }
   });
-  library = studioSettings(game.settings, inStudio);
+  // A studio's own character colors and profiles; until the player saves theirs, the world's apply.
+  for (const [key, initial] of [[STUDIO_SETTINGS.accentRules, { field: "", colors: {} }], [STUDIO_SETTINGS.characterProfiles, {}]]) {
+    game.settings.register(MODULE_ID, key, { scope: "user", config: false, type: Object, default: initial,
+      onChange: ownStudio(() => { mappingsChanged(); refreshCharacterColors(); }) });
+  }
+  library = studioSettings(game.settings, studioOwner);
   store = new OverlayStore({ settings: library, canEdit });
   widgetPresets = new WidgetPresetStore({ settings: library, canEdit });
   characterData = new CharacterDataService({ adapters, getUser: getPresentationUser,
     getSystemVersion: () => game.system?.version ?? "",
     getAdapterPreferences: () => game.settings.get(MODULE_ID, "adapterPreferences") ?? {},
     getMappings: () => game.settings.get(MODULE_ID, "fieldMappings") ?? [],
-    getProfiles: () => game.settings.get(MODULE_ID, "characterProfiles") ?? {},
-    getAccentRules: () => game.settings.get(MODULE_ID, ACCENT_RULES_SETTING) ?? {} });
+    getProfiles: () => library.get(MODULE_ID, "characterProfiles") ?? {},
+    getAccentRules: () => library.get(MODULE_ID, ACCENT_RULES_SETTING) ?? {} });
   // A streaming player's game client controls the stream page of their own account.
   animationCommands = new AnimationCommands({ getState: () => store.getState(), getUser: () => game.user,
     getViewer: streamTarget, getRenderer: () => renderer, canControl,
@@ -413,7 +454,7 @@ Hooks.once("init", () => {
     openWidgetManager, openWidgetPreset, openVoiceRoster, openCharacterColors, openPlayerStreams,
     openLiveControls, liveControls, installDemo: installShowcase, installCainPresets: installCainExamples,
     getDebug, setDebug,
-    getDiagnostics: () => game.user?.isGM || inStudio() || isViewerAllowed(game.user, getViewerUserId()) ? renderer?.getDiagnostics() ?? [] : [],
+    getDiagnostics: () => game.user?.isGM || studioOwner() || isViewerAllowed(game.user, getViewerUserId()) ? renderer?.getDiagnostics() ?? [] : [],
     animations: Object.freeze({ registry: defaultAnimationRegistry, registerType: definition => defaultAnimationRegistry.register(definition),
       registerEvent: registerTriggerEvent, registerAction: registerAnimationAction,
       dispatch: (id, eventType) => animationCommands.publish(id, { kind: "event", eventType }) }),
@@ -427,21 +468,37 @@ Hooks.once("init", () => {
       if (!game.user?.isGM) throw Error("Only a GM can configure character fields.");
       return game.settings.set(MODULE_ID, "fieldMappings", validateMappings(value));
     },
-    getCharacterProfiles: () => validateCharacterProfiles(game.settings.get(MODULE_ID, "characterProfiles") ?? {}),
-    getAccentRules: () => validateAccentRules(game.settings.get(MODULE_ID, ACCENT_RULES_SETTING) ?? {}),
+    // In a studio these are the player's own; the world's stay the GM's.
+    getCharacterProfiles: () => validateCharacterProfiles(library.get(MODULE_ID, "characterProfiles") ?? {}),
+    getAccentRules: () => validateAccentRules(library.get(MODULE_ID, ACCENT_RULES_SETTING) ?? {}),
     async setAccentRules(value) {
-      if (!game.user?.isGM) throw Error("Only a GM can configure character colors.");
-      return game.settings.set(MODULE_ID, ACCENT_RULES_SETTING, validateAccentRules(value));
+      if (!canEdit(game.user)) throw Error("Only a GM can configure character colors.");
+      return library.set(MODULE_ID, ACCENT_RULES_SETTING, validateAccentRules(value));
     },
     async setCharacterProfiles(value) {
-      if (!game.user?.isGM) throw Error("Only a GM can configure character profiles.");
-      return game.settings.set(MODULE_ID, "characterProfiles", validateCharacterProfiles(value));
+      if (!canEdit(game.user)) throw Error("Only a GM can configure character profiles.");
+      return library.set(MODULE_ID, "characterProfiles", validateCharacterProfiles(value));
     },
     getViewerUserId,
     getStreamers,
     /** Whether this client works in a streaming player's own studio rather than the world library. */
     inStudio,
     canEditLibrary: () => canEdit(game.user),
+    /** The account a studio's stream signs in with, for this client's studio (empty outside one). */
+    getStudioAccount: () => studioAccount()?.id ?? "",
+    /** The account a streaming player's stream signs in with, for the GM's overview. */
+    getStudioAccountFor: playerId => studioAccountId(playerId, studioContext()),
+    /** Accounts this streaming player may choose for their stream besides their own. */
+    getStudioAccountChoices: () => inStudio() ? studioAccountChoices(game.userId, studioContext(), [...game.users?.values?.() ?? []]).map(user => user.id) : [],
+    async setStudioAccount(id) {
+      if (!inStudio()) throw Error("Only a player the GM allowed to stream chooses a stream account.");
+      if (typeof id !== "string") throw Error("Choose your own account or a free player account for your stream.");
+      const value = id === game.userId ? "" : id;
+      if (value && !studioAccountChoices(game.userId, studioContext(), [...game.users?.values?.() ?? []]).some(user => user.id === value)) {
+        throw Error("Choose your own account or a free player account for your stream.");
+      }
+      return game.settings.set(MODULE_ID, STUDIO_ACCOUNT_SETTING, value);
+    },
     async setStreamers(value) {
       if (!game.user?.isGM) throw Error("Only a GM can choose who streams.");
       const streamers = validateStreamers(value);
@@ -529,7 +586,8 @@ Hooks.once("streamReady", () => {
 });
 
 Hooks.on("updateUser", user => {
-  if (broadcast && user.id === game.userId) void refreshOutput();
+  // Roles decide which account a studio streams through, so any user's change may matter here.
+  if (broadcast) void refreshOutput({ skipUnchanged: user.id !== game.userId });
 });
 Hooks.on("deleteUser", user => {
   if (broadcast && user.id === game.userId) { outputSignature = null; void renderer?.render(null); }

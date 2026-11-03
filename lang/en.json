@@ -376,11 +376,15 @@
       "PlayerStreams": "Player streams…",
       "StudioHeading": "Your stream",
       "StudioBadge": "Your own studio",
-      "StudioHelp": "The GM allowed you to stream. Overlays, widget designs, fragments and Discord players you make here are saved under your account and show only on your stream; the world's library stays the GM's. Characters are read with your account's access.",
-      "StudioHidden": "Characters on your live overlay hidden from your account: {count}. They stay empty until the GM gives you Observer access.",
+      "StudioHelp": "The GM allowed you to stream. Overlays, widget designs, fragments, Discord players and character colors and profiles you make here are saved under your account and show only on your stream; the world's library and character fields stay the GM's. Characters are read with the stream account's access.",
+      "StudioHidden": "Characters on your live overlay hidden from the stream account: {count}. They stay empty until the GM gives that account Observer access.",
       "StudioConnector": "Recommended: run the OBS connector on your PC (tools/obs-connector.bat in the module archive, needs Node.js). In its setup enter this Foundry's address, the account “{name}” and its password, then add a Browser source in OBS with the address it prints. It signs in by itself and reconnects after restarts.",
       "StudioDownload": "Download the module archive",
-      "StudioDirect": "Without the connector: add a Browser source with the address below, choose Interact and sign in to Foundry as “{name}”."
+      "StudioDirect": "Without the connector: add a Browser source with the address below, choose Interact and sign in to Foundry as “{name}”.",
+      "StudioAccount": "Stream account",
+      "StudioAccountOwn": "{name} (your account)",
+      "SaveStudioAccount": "Save account",
+      "StudioAccountHelp": "OBS signs in to Foundry with this account, and your stream shows characters with its permissions. A separate account keeps what you see off stream: ask the GM for one and for Observer access to the characters. Accounts of GMs, the main viewer and other streaming players are not offered."
     },
     "Editor": {
       "Title": "Modular Stream Overlay",
@@ -785,7 +789,8 @@
       "ImportedImages": "Images from the file: {stored} saved to this module's storage, {kept} already on this server.",
       "ImportImagesBlocked": "Your Foundry account may not upload files, so these images from the file were not saved and keep their old paths: {paths}. Ask the GM for the Upload Files permission and import again.",
       "ImportImagesFailed": "These images could not be uploaded and keep their old paths: {paths}.",
-      "ImportImagesMissing": "These images are neither in the file nor on this server: {paths}. Put them on the server or choose other images."
+      "ImportImagesMissing": "These images are neither in the file nor on this server: {paths}. Put them on the server or choose other images.",
+      "StudioAccountSaved": "Stream account saved."
     },
     "Settings": {
       "LanguageHint": "Choose the language of this module's configuration interface on this client. Auto follows Foundry; unsupported languages use English. Stream content is unchanged.",
@@ -1160,7 +1165,10 @@
       "AssetDamaged": "An image in the file is damaged.",
       "AssetSize": "Each image in the file must be at most 25 MiB.",
       "AssetsSize": "The images in a file must be at most 100 MiB together.",
-      "ImportedImageFormat": "Imported images must be PNG, JPEG, WebP or GIF files of at most 25 MiB."
+      "ImportedImageFormat": "Imported images must be PNG, JPEG, WebP or GIF files of at most 25 MiB.",
+      "StudioAccountOnly": "Only a player the GM allowed to stream chooses a stream account.",
+      "StudioAccountChoice": "Choose your own account or a free player account for your stream.",
+      "StudioReadOnly": "Only the streaming player changes their studio."
     },
     "ValidationLabel": {
       "ActiveOverlayID": "Active overlay ID",
@@ -1731,7 +1739,7 @@
     },
     "Colors": {
       "Title": "Character colors",
-      "GMOnly": "Only a GM can change character colors.",
+      "GMOnly": "Only a GM, or a player the GM allowed to stream, can change character colors.",
       "Help": "Character colors tint names, accents and the Discord voice glow on every overlay. A character's own color wins; otherwise the color set for its value below; otherwise the game system's color.",
       "ValuesHeading": "Color by value",
       "Field": "Field",
@@ -1752,12 +1760,13 @@
       "CharactersHelp": "A character's own color is the same as its Accent color in Character profiles.",
       "HexHint": "Use a color such as #9966ff.",
       "Save": "Save",
-      "Saved": "Character colors saved."
+      "Saved": "Character colors saved.",
+      "StudioHelp": "These are your studio's colors and profiles, shown only on your stream. Until you save your own, the world's apply."
     },
     "Streams": {
       "Title": "Player streams",
       "GMOnly": "Only a GM can choose who streams.",
-      "Help": "Players checked here stream on their own, with their own Foundry account. From their Settings sidebar they open the overlay editor with their own studio: overlays, widget designs, fragments and Discord players saved under their account. They choose what is on stream, control it live and run the OBS connector on their PC; you only allow it. The main stream keeps using the viewer account, and a player's stream shows only characters their account may observe.",
+      "Help": "Players checked here stream on their own. From their Settings sidebar they open the overlay editor with their own studio: overlays, widget designs, fragments, Discord players and character colors and profiles saved under their account. They choose what is on stream and which account their OBS signs in with (their own or a free one), control it live and run the OBS connector on their PC; you only allow it. The main stream keeps using the viewer account, and a player's stream shows only characters its account may observe.",
       "MainViewer": "Main stream: {name}",
       "NoMainViewer": "Main stream: no viewer account selected yet.",
       "NoPlayers": "This world has no player accounts yet.",
@@ -1776,7 +1785,9 @@
       "Saved": "Player streams saved.",
       "StudioEmpty": "Nothing saved yet: the player builds overlays in the editor from their Settings sidebar.",
       "StudioLive": "Studio: {count} overlays, on stream: {name}.",
-      "StudioIdle": "Studio: {count} overlays, nothing on stream yet."
+      "StudioIdle": "Studio: {count} overlays, nothing on stream yet.",
+      "StudioAccount": "Streams as {name}.",
+      "CarriesStudio": "Carries {name}'s stream."
     }
   }
 }

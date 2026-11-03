@@ -106,7 +106,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     actions: Object.fromEntries([
       "editOverlay", "createOverlay", "renameOverlay", "deleteOverlay", "saveOverlay", "reloadOverlay",
       "uploadBackground", "browseBackground", "removeBackground", "savePreset", "loadPreset", "renamePreset", "duplicatePreset",
-      "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "characterColors", "playerStreams", "installDemo", "resetDemo",
+      "deletePreset", "saveViewer", "saveStudioAccount", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "characterColors", "playerStreams", "installDemo", "resetDemo",
       "toggleCanvasFullscreen", "showVersions", "rescaleCanvas", "exportFile", "importFile"
     ].map(action => [action, OverlayEditor.onAction]))
   };
@@ -446,12 +446,16 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     const selectedPreset = presets.find(preset => preset.id === this._selectedPresetId);
     const viewerId = this.api?.getViewerUserId?.() ?? "";
     const studio = this._inStudio();
-    // Characters on the studio's live overlay that the player's own account cannot observe stay empty on stream.
+    // The studio's stream signs in with the player's account or a free one they chose; characters
+    // on its live overlay that account cannot observe stay empty on stream.
+    const account = studio ? game.users?.get(this.api?.getStudioAccount?.() || game.userId) ?? game.user : null;
     const live = studio ? state.overlays.find(overlay => overlay.id === state.activeOverlayId) : null;
-    const studioHidden = overlayActorUuids(live).filter(uuid => !game.actors?.get(uuid.slice(6))?.testUserPermission?.(game.user, "OBSERVER")).length;
+    const studioHidden = overlayActorUuids(live).filter(uuid => !game.actors?.get(uuid.slice(6))?.testUserPermission?.(account, "OBSERVER")).length;
+    const studioAccounts = studio ? [game.user, ...(this.api?.getStudioAccountChoices?.() ?? []).map(id => game.users?.get(id)).filter(Boolean)]
+      .map(user => ({ id: user.id, name: user.name, own: user.id === game.userId, selected: user.id === account?.id })) : [];
     return {
       ...context,
-      studio, studioHidden, studioName: game.user?.name ?? "",
+      studio, studioHidden, studioName: account?.name ?? "", studioAccounts,
       moduleDownload: studio ? this.api?.getModuleDownload?.() ?? "" : "",
       draft: this._draft,
       overlays: state.overlays.map(overlay => ({
@@ -1431,6 +1435,13 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     const value = this.element.querySelector('[name="viewerUserId"]')?.value ?? "";
     await this.api.setViewerUserId(value);
     ui.notifications.info(t("Editor.ViewerSaved"));
+  }
+
+  /** The account a streaming player's OBS signs in with: their own or a free one. */
+  async _saveStudioAccount() {
+    const value = this.element.querySelector('[name="studioAccount"]')?.value ?? "";
+    await this.api.setStudioAccount(value);
+    ui.notifications.info(t("Editor.StudioAccountSaved"));
   }
 
   async _copyURL() {

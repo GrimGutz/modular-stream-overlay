@@ -159,14 +159,15 @@ Foundry keeps sign-ins only in server memory for at most 24 hours, so after Foun
 A player can run the stream instead of the GM, from their own PC and Foundry account. The GM only grants it.
 
 1. The GM opens **Player streams** (the button in the editor's OBS section, or **Game Settings → Modular Stream Overlay → Manage player streams**), checks **May stream** for the player and saves. Nothing else is needed from the GM, and no viewer account.
-2. The player clicks **Overlay editor** in their Settings sidebar. They get the whole toolkit for their own stream: overlays, widget designs, fragments, imports, **Active on stream**, live controls and **Discord players**. Everything is saved under their account (their *studio*) and shows only on their stream. The world's library stays the GM's.
-3. On their PC the player runs the [OBS connector](#obs-connector-optional) with this Foundry's address and their own account, and sets the OBS Browser Source URL to the connector's address. Without the connector they add a Browser source with the stream address, choose **Interact** and sign in as themselves. The same account may stay signed in to the game at the same time.
+2. The player clicks **Overlay editor** in their Settings sidebar. They get the whole toolkit for their own stream: overlays, widget designs, fragments, imports, **Active on stream**, live controls, **Discord players**, **Character colors** and character profiles. Everything is saved under their account (their *studio*) and shows only on their stream; colors and profiles follow the world's until the player saves their own. The world's library stays the GM's.
+3. Under **Stream account** in the editor's OBS section the player chooses the account their OBS signs in with, the way the GM chooses the viewer account: their own (the default) or a free one, such as a separate account the GM made for their stream, so what the player sees privately stays off stream. Accounts of GMs, the main viewer, other streaming players and accounts another studio uses are not offered. The stream shows characters with that account's permissions.
+4. On their PC the player runs the [OBS connector](#obs-connector-optional) with this Foundry's address and the stream account, and sets the OBS Browser Source URL to the connector's address. Without the connector they add a Browser source with the stream address, choose **Interact** and sign in with the stream account. The same account may stay signed in to the game at the same time.
 
 What a player's stream shows and receives:
-- **Characters:** only those the player's account may observe. The editor counts characters on air the account can't see, and the GM's **Player streams** window names them; give the player Observer access to show them.
+- **Characters:** only those the stream account may observe. The editor counts characters on air the account can't see, and the GM's **Player streams** window names them along with each stream's account; give that account Observer access to show them.
 - **Live controls:** only from that player's own game client. The GM's live controls go to the main viewer.
 - **Discord voice glow:** the connector on the player's PC, with their own Discord setup and their studio's **Discord players**.
-- **World settings stay the GM's:** character fields, providers, profiles and colors. Uploading images needs Foundry's **Upload Files** permission for the player's role (Assistant GM by default); without it, use images already on the server.
+- **World settings stay the GM's:** character fields, data providers, the main viewer and who may stream. Uploading images needs Foundry's **Upload Files** permission for the player's role (Assistant GM by default); without it, use images already on the server.
 
 When the GM unchecks the player, their stream shows a notice and the editor closes. Their studio stays saved for the next time.
 

@@ -50,3 +50,8 @@ export function viewerAccessMessage(user, viewerUserId, streamers = []) {
   if (!isViewerAllowed(user, viewerUserId)) return "Overlay output requires the selected viewer account or a player the GM allowed to stream. Use OBS Interact to log in through Foundry's Join page.";
   return "";
 }
+
+/** A streaming player's own page when their stream signs in with another account they chose. */
+export function studioAccountMessage(name) {
+  return `This stream signs in to Foundry as ${name || "another account"}. Sign OBS in with that account, or choose your own account under Stream account in the overlay editor.`;
+}
