@@ -62,14 +62,17 @@ function commandOptions(input = { kind: "play" }) {
 
 /**
  * Validate ephemeral GM controls independently of their delivery transport.
- * There is no durable command history, retry queue, or Actor payload.
+ * There is no durable command history, retry queue, or Actor payload. `canControl` decides who
+ * may send and be obeyed: GMs for the main viewer, a streaming player for their own stream, whose
+ * `getViewer` is then that player's own account.
  */
 export class AnimationCommands {
   constructor({ getState, getUser = () => globalThis.game?.user, getViewer = () => null, getRenderer = () => null,
-    isReceiver = () => false, send, now = () => Date.now(), createId = () => globalThis.crypto.randomUUID() } = {}) {
+    isReceiver = () => false, canControl = user => Boolean(user?.isGM), send, now = () => Date.now(), createId = () => globalThis.crypto.randomUUID() } = {}) {
     if (typeof getState !== "function") throw new TypeError("Animation commands require a saved-state reader.");
     this.getState = getState;
     this.getUser = getUser;
+    this.canControl = canControl;
     this.getViewer = getViewer;
     this.getRenderer = getRenderer;
     this.isReceiver = isReceiver;
@@ -98,7 +101,7 @@ export class AnimationCommands {
   }
 
   async publish(layerId, input = { kind: "play" }) {
-    if (!this.getUser()?.isGM) throw new Error("Only a Game Master can control stream animations.");
+    if (!this.canControl(this.getUser())) throw new Error("Only a Game Master can control stream animations.");
     identifier(layerId, "Animation target ID");
     const options = commandOptions(input);
     const state = validateState(this.getState());
@@ -121,7 +124,7 @@ export class AnimationCommands {
   /** `user` must come from Foundry's authenticated transport, never command data. */
   async receive(input, { user } = {}) {
     const reject = reason => ({ accepted: false, reason });
-    if (!user?.isGM) return reject("Only an authenticated Game Master can control stream animations.");
+    if (!this.canControl(user)) return reject("Only an authenticated Game Master can control stream animations.");
     const viewer = this.getViewer();
     if (!this.isReceiver() || !isViewerAllowed(viewer, viewer?.id) || !isViewerAllowed(this.getUser(), viewer.id)) {
       return reject("This client is not the configured overlay receiver.");

@@ -25,7 +25,7 @@
     </div>{{/unless}}
     {{#unless widgetMode}}<button type="button" data-action="manageWidgets"><span data-i18n="Template.WidgetManager">{{msoT "Template.WidgetManager"}}</span></button>{{/unless}}
     {{#unless widgetMode}}<button type="button" data-action="liveControls"><i class="fa-solid fa-play" aria-hidden="true"></i> <span data-i18n="Template.LiveControls">{{msoT "Template.LiveControls"}}</span></button>{{/unless}}
-    <button type="button" data-action="characterColors"><i class="fa-solid fa-palette" aria-hidden="true"></i> <span data-i18n="Template.CharacterColors">{{msoT "Template.CharacterColors"}}</span></button>
+    {{#unless studio}}<button type="button" data-action="characterColors"><i class="fa-solid fa-palette" aria-hidden="true"></i> <span data-i18n="Template.CharacterColors">{{msoT "Template.CharacterColors"}}</span></button>{{/unless}}
     {{#unless widgetMode}}<button type="button" data-action="installDemo">{{#if demoInstalled}}<span data-i18n="Template.OpenDemo">{{msoT "Template.OpenDemo"}}</span>{{else}}<span data-i18n="Template.InstallDemo">{{msoT "Template.InstallDemo"}}</span>{{/if}}</button>{{#if demoInstalled}}<button type="button" data-action="resetDemo" class="mso-danger"><span data-i18n="Template.ResetDemo">{{msoT "Template.ResetDemo"}}</span></button>{{/if}}{{/unless}}
   </aside>
 
@@ -117,11 +117,22 @@
     </section>{{/unless}}
 
     {{#unless widgetMode}}<section class="mso-obs mso-panel">
+      {{#if studio}}
+      <div class="mso-section-heading"><h3><span data-i18n="Template.StudioHeading">{{msoT "Template.StudioHeading"}}</span></h3><span class="mso-muted"><span data-i18n="Template.StudioBadge">{{msoT "Template.StudioBadge"}}</span></span></div>
+      <p class="mso-help"><span data-i18n="Template.StudioHelp">{{msoT "Template.StudioHelp"}}</span></p>
+      {{#if studioHidden}}<p class="mso-help mso-streams-status"><span data-i18n="Template.StudioHidden" data-i18n-param-count="{{studioHidden}}">{{msoT "Template.StudioHidden" count=studioHidden}}</span></p>{{/if}}
+      <ol class="mso-stream-steps">
+        <li><span data-i18n="Template.StudioConnector" data-i18n-param-name="{{studioName}}">{{msoT "Template.StudioConnector" name=studioName}}</span>{{#if moduleDownload}} <a href="{{moduleDownload}}" target="_blank" rel="noopener noreferrer"><span data-i18n="Template.StudioDownload">{{msoT "Template.StudioDownload"}}</span></a>{{/if}}</li>
+        <li><span data-i18n="Template.StudioDirect" data-i18n-param-name="{{studioName}}">{{msoT "Template.StudioDirect" name=studioName}}</span></li>
+      </ol>
+      {{else}}
       <div class="mso-section-heading"><h3><span data-i18n="Template.OBSBrowserSource">{{msoT "Template.OBSBrowserSource"}}</span></h3><span class="mso-muted"><span data-i18n="Template.DedicatedSession">{{msoT "Template.DedicatedSession"}}</span></span></div>
       <label class="mso-field"><span data-i18n="Template.ViewerAccount">{{msoT "Template.ViewerAccount"}}</span><div class="mso-input-row"><select name="viewerUserId"><option value="" data-i18n="Template.ChooseViewer">{{msoT "Template.ChooseViewer"}}</option>{{#each viewerUsers}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}} ({{role}})</option>{{/each}}</select><button type="button" data-action="saveViewer"><span data-i18n="Template.SaveViewer">{{msoT "Template.SaveViewer"}}</span></button></div></label>
       <p class="mso-help"><span data-i18n="Template.ViewerHelp">{{msoT "Template.ViewerHelp"}}</span></p>
+      <div class="mso-input-row"><button type="button" data-action="playerStreams"><i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i> <span data-i18n="Template.PlayerStreams">{{msoT "Template.PlayerStreams"}}</span></button></div>
+      {{/if}}
       <label class="mso-field"><span data-i18n="Template.BrowserURL">{{msoT "Template.BrowserURL"}}</span><div class="mso-input-row"><input name="obsURL" type="text" readonly value="{{obsURL}}" data-i18n-aria-label="Template.OBSBrowserURL" aria-label="{{msoT "Template.OBSBrowserURL"}}"><button type="button" data-action="copyURL" data-i18n-aria-label="Template.CopyBrowserURL" aria-label="{{msoT "Template.CopyBrowserURL"}}" data-i18n-title="Template.CopyURL" title="{{msoT "Template.CopyURL"}}"><i class="fa-solid fa-copy" aria-hidden="true"></i></button></div></label>
-      <p class="mso-help"><span data-i18n="Template.OBSHelpBefore">{{msoT "Template.OBSHelpBefore"}}</span> <strong><span data-i18n="Template.Interact">{{msoT "Template.Interact"}}</span></strong> <span data-i18n="Template.OBSHelpAfter">{{msoT "Template.OBSHelpAfter"}}</span></p>
+      {{#unless studio}}<p class="mso-help"><span data-i18n="Template.OBSHelpBefore">{{msoT "Template.OBSHelpBefore"}}</span> <strong><span data-i18n="Template.Interact">{{msoT "Template.Interact"}}</span></strong> <span data-i18n="Template.OBSHelpAfter">{{msoT "Template.OBSHelpAfter"}}</span></p>{{/unless}}
       {{#if joinURL}}<label class="mso-field"><span data-i18n="Template.SignInURL">{{msoT "Template.SignInURL"}}</span><input type="text" readonly value="{{joinURL}}" data-i18n-aria-label="Template.FoundrySignInURL" aria-label="{{msoT "Template.FoundrySignInURL"}}"></label>{{/if}}
     </section>{{/unless}}
   </main>

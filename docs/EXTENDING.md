@@ -52,6 +52,10 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 | `installCainPresets()` | GM-only, idempotent installation of Actor-free CAIN examples without activating output |
 | `getFieldMappings()`, `setFieldMappings(value)` | Validated explicit system-field mappings; mutation is GM-only |
 | `getViewerUserId()`, `setViewerUserId(id)` | Read/set the selected viewer account (any role); mutation is GM-only; empty string disables |
+| `getStreamers()`, `setStreamers(ids)` | Read/set the players allowed to stream: a list of user IDs. Mutation is GM-only; each ID must be an existing non-GM account. A listed player's library is their studio (user-scoped settings `studioState`, `studioWidgetPresets`, `studioFragments`, `studioVoiceRoster`); `store`, `widgetPresets` and the editor read and write it on that player's clients, and their `/stream?mso=1` shows its active overlay with their own permissions. |
+| `inStudio()`, `canEditLibrary()` | Whether this client works in a streaming player's studio, and whether this user may change the library here (a GM, or that player) |
+| `openPlayerStreams()` | Open the GM's Player streams window |
+| `getModuleDownload()` | The installed module's download address (its archive carries the OBS connector), or an empty string |
 | `getOBSUrl()`, `getJoinUrl()` | Origin and route-prefix-aware URLs without credentials |
 
 Registration IDs accept printable ASCII letters/digits and `-`, `_`, `.`, `:` (maximum 96 characters, starting with a letter/digit). Namespace your IDs to avoid collisions. Duplicate registrations throw instead of replacing another extension silently.

@@ -6,8 +6,10 @@ let services = {};
 let panel;
 
 export function configureLiveControls(configuration) { services = { ...services, ...configuration }; }
+// GMs control the main stream; a player the GM allowed to stream controls their own.
+const mayControl = () => services.mayControl ? services.mayControl() === true : Boolean(game.user?.isGM);
 export async function openLiveControls() {
-  if (!game.user?.isGM) throw new Error(t("Live.GMOnly"));
+  if (!mayControl()) throw new Error(t("Live.GMOnly"));
   panel ??= new LiveControls();
   await panel.render({ force: true });
   return panel;
@@ -25,9 +27,9 @@ export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
   static PARTS = { controls: { template: `modules/${MODULE_ID}/templates/live-controls.hbs` } };
   constructor(options = {}) { super(options); this._busy = false; }
   get controls() { return services.liveControls ?? game.modules.get(MODULE_ID)?.api?.liveControls; }
-  _canRender(options) { return game.user?.isGM ? super._canRender(options) : false; }
+  _canRender(options) { return mayControl() ? super._canRender(options) : false; }
   async _prepareContext(options) {
-    if (!game.user?.isGM) throw new Error(t("Live.GMOnly"));
+    if (!mayControl()) throw new Error(t("Live.GMOnly"));
     const state = await this.controls.getState();
     return {
       ...await super._prepareContext(options),
@@ -56,7 +58,7 @@ export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
     });
   }
   async _command(command, layerId, ruleId) {
-    if (!game.user?.isGM) throw new Error(t("Live.GMOnly"));
+    if (!mayControl()) throw new Error(t("Live.GMOnly"));
     if (command === "show" || command === "hide") return this.controls.setVisibility(layerId, command === "show");
     if (command === "play") return this.controls.play(layerId, ruleId ? { ruleId } : {});
     if (command === "reset") return this.controls.reset(layerId);
@@ -69,7 +71,7 @@ export class LiveControls extends HandlebarsApplicationMixin(ApplicationV2) {
     this.element?.querySelectorAll("button, select").forEach(control => { control.disabled = true; });
     let failure;
     try {
-      if (!game.user?.isGM) throw new Error(t("Live.GMOnly"));
+      if (!mayControl()) throw new Error(t("Live.GMOnly"));
       await operation();
     }
     catch (error) { failure = error; }

@@ -15,7 +15,7 @@ Requirements: Foundry VTT 14. Node.js 22 or later only for the optional OBS conn
 
 ## Кратко по-русски
 
-Модуль для Foundry VTT 14: оверлеи для стрима собираются в визуальном редакторе прямо в Foundry и выводятся в OBS прозрачным источником «Браузер». Карточки персонажей берут живые данные из мира (встроены CAIN, D&D5e, PF2e и Cyberpunk RED), листают персонажей и страницы, анимируются при изменениях и подсвечиваются, когда игрок говорит в Discord. Интерфейс на русском и английском (настройка модуля **Язык интерфейса**). Демо-карточка описана в [руководстве по демо](docs/DEMO_GUIDE_RU.md), персонажи CAIN — в [CAIN.md](docs/CAIN.md).
+Модуль для Foundry VTT 14: оверлеи для стрима собираются в визуальном редакторе прямо в Foundry и выводятся в OBS прозрачным источником «Браузер». Карточки персонажей берут живые данные из мира (встроены CAIN, D&D5e, PF2e и Cyberpunk RED), листают персонажей и страницы, анимируются при изменениях и подсвечиваются, когда игрок говорит в Discord. Стримить может и игрок вместо ведущего: ведущий только ставит разрешение в **Стримах игроков**, а игрок сам собирает оверлеи в своей студии, выбирает, что в эфире, управляет им вживую и подключает свой OBS через коннектор под своим аккаунтом. Интерфейс на русском и английском (настройка модуля **Язык интерфейса**). Демо-карточка описана в [руководстве по демо](docs/DEMO_GUIDE_RU.md), персонажи CAIN — в [CAIN.md](docs/CAIN.md).
 
 ## Installation
 
@@ -154,12 +154,28 @@ This module uses Foundry's existing authenticated **`/stream`** view and public 
 
 Foundry keeps sign-ins only in server memory for at most 24 hours, so after Foundry restarts OBS shows the sign-in page again; sign in once more, or use the connector below. Changing the viewer's password also signs it out. Never put a password or GM session token into the URL.
 
+### Player streams
+
+A player can run the stream instead of the GM, from their own PC and Foundry account. The GM only grants it.
+
+1. The GM opens **Player streams** (the button in the editor's OBS section, or **Game Settings → Modular Stream Overlay → Manage player streams**), checks **May stream** for the player and saves. Nothing else is needed from the GM, and no viewer account.
+2. The player clicks **Overlay editor** in their Settings sidebar. They get the whole toolkit for their own stream: overlays, widget designs, fragments, imports, **Active on stream**, live controls and **Discord players**. Everything is saved under their account (their *studio*) and shows only on their stream. The world's library stays the GM's.
+3. On their PC the player runs the [OBS connector](#obs-connector-optional) with this Foundry's address and their own account, and sets the OBS Browser Source URL to the connector's address. Without the connector they add a Browser source with the stream address, choose **Interact** and sign in as themselves. The same account may stay signed in to the game at the same time.
+
+What a player's stream shows and receives:
+- **Characters:** only those the player's account may observe. The editor counts characters on air the account can't see, and the GM's **Player streams** window names them; give the player Observer access to show them.
+- **Live controls:** only from that player's own game client. The GM's live controls go to the main viewer.
+- **Discord voice glow:** the connector on the player's PC, with their own Discord setup and their studio's **Discord players**.
+- **World settings stay the GM's:** character fields, providers, profiles and colors. Uploading images needs Foundry's **Upload Files** permission for the player's role (Assistant GM by default); without it, use images already on the server.
+
+When the GM unchecks the player, their stream shows a notice and the editor closes. Their studio stays saved for the next time.
+
 ### OBS connector (optional)
 
 `tools/obs-connector.mjs` runs on the streaming PC and signs OBS in automatically, including after Foundry or the world restarts. OBS keeps one URL and never needs Interact.
 
-1. Install Node.js 22 or later. Double-click `tools/obs-connector.bat` in the module folder, or run `node tools/obs-connector.mjs setup` once.
-2. Enter the Foundry address (`http://localhost:30000`), the viewer account's name exactly as Foundry lists it, its password and a port (default `30001`). Settings are saved to `%APPDATA%\modular-stream-overlay\obs-connector.json`, outside Foundry's Data folder.
+1. Install Node.js 22 or later. Double-click `tools/obs-connector.bat` in the module folder, or run `node tools/obs-connector.mjs setup` once. A player streaming from their own PC takes the module archive from the release page (the editor links it) and runs the connector from its `tools` folder.
+2. Enter the Foundry address (`http://localhost:30000`, or the address the players use), the stream's account name exactly as Foundry lists it (the viewer account, or a streaming player's own account), its password and a port (default `30001`). Settings are saved to `%APPDATA%\modular-stream-overlay\obs-connector.json`, outside Foundry's Data folder.
 3. Set the OBS Browser Source URL to `http://localhost:30001/` and keep the connector window open while streaming. To start it with Windows, put a shortcut to `obs-connector.bat` in the Startup folder (`Win+R` → `shell:startup`).
 
 Until Foundry is running, a world is launched and sign-in succeeds, the connector serves a transparent page that checks again every 5 seconds, so nothing appears on stream. When the connection drops, the overlay page reloads itself once the connector answers. The connector window reports what it is waiting for, such as no world launched, an unknown account name or a wrong password; it never prints the password.

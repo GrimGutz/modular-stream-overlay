@@ -2,14 +2,19 @@ import { MODULE_ID, SCHEMA_VERSION, BUILTIN_PRESETS, clone, createOverlay, creat
 
 export const SETTINGS_KEY = "state";
 
-/** Register once during Foundry's init hook; Foundry broadcasts world-setting changes. */
-export function registerSettings(onChange = () => {}) {
+/**
+ * Register once during Foundry's init hook; Foundry broadcasts world-setting changes. A streaming
+ * player's studio registers the same configuration under another key with `scope: "user"`; only
+ * that player's own changes are reported.
+ */
+export function registerSettings(onChange = () => {}, { key = SETTINGS_KEY, scope = "world" } = {}) {
   if (!globalThis.game?.settings?.register) throw new Error("Foundry settings are unavailable.");
   if (typeof onChange !== "function") throw new TypeError("Settings onChange must be a function.");
-  globalThis.game.settings.register(MODULE_ID, SETTINGS_KEY, {
-    name: "Stream overlay configuration", scope: "world", config: false, type: Object,
-    default: createState(), restricted: true,
-    onChange: value => {
+  globalThis.game.settings.register(MODULE_ID, key, {
+    name: "Stream overlay configuration", scope, config: false, type: Object,
+    default: createState(), restricted: scope === "world",
+    onChange: (value, _options, userId) => {
+      if (scope === "user" && userId !== globalThis.game?.userId) return;
       let state;
       try { state = validateState(value); }
       catch (error) { onChange(null, error); return; }
@@ -26,19 +31,25 @@ export class OverlayConflictError extends Error {
   }
 }
 
-/** The settings/user injection points also permit isolated tests without a Foundry runtime. */
+/**
+ * The settings/user injection points also permit isolated tests without a Foundry runtime.
+ * `canEdit` decides who may write: GMs, and a streaming player whose settings are their studio.
+ */
 export class OverlayStore {
   #settings;
   #getUser;
   #onChange;
+  #canEdit;
   #pending = Promise.resolve();
 
-  constructor({ settings = globalThis.game?.settings, getUser = () => globalThis.game?.user, onChange = () => {} } = {}) {
+  constructor({ settings = globalThis.game?.settings, getUser = () => globalThis.game?.user, onChange = () => {},
+    canEdit = user => Boolean(user?.isGM) } = {}) {
     if (!settings?.get || !settings?.set) throw new Error("Foundry settings are unavailable.");
-    if (typeof getUser !== "function" || typeof onChange !== "function") throw new TypeError("Store callbacks must be functions.");
+    if (typeof getUser !== "function" || typeof onChange !== "function" || typeof canEdit !== "function") throw new TypeError("Store callbacks must be functions.");
     this.#settings = settings;
     this.#getUser = getUser;
     this.#onChange = onChange;
+    this.#canEdit = canEdit;
   }
 
   getState() {
@@ -47,7 +58,7 @@ export class OverlayStore {
   }
 
   #assertGM() {
-    if (!this.#getUser()?.isGM) throw new Error("Only a Game Master can change stream overlays.");
+    if (!this.#canEdit(this.#getUser())) throw new Error("Only a Game Master can change stream overlays.");
   }
 
   #mutate(operation, { expectedRevision } = {}) {

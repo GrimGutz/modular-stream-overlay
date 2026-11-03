@@ -9,7 +9,9 @@ function fixture() {
   // A native stream needs neither a User.query listener nor permission to query users.
   const viewer = { id: "viewer", role: 1, isGM: false, active: true, hasPermission: () => false };
   const outsider = { id: "outsider", role: 1, isGM: false, active: true };
-  const users = new Map([gm, viewer, outsider].map(user => [user.id, user]));
+  // A player the GM allowed to stream: their game tab and their OBS page are the same account.
+  const streamer = { id: "streamer", role: 1, isGM: false, active: true };
+  const users = new Map([gm, viewer, outsider, streamer].map(user => [user.id, user]));
   const command = extra => ({ id: `command-${++sequence}`, overlayId: "overlay-1", layerId: "layer-1", kind: "play",
     createdAt: now, expiresAt: now + 10000, ...extra });
   const clock = {
@@ -26,7 +28,7 @@ function fixture() {
       now = until;
     }
   };
-  function client(user, { receiver = false, receive = async (payload, context) => { played.push({ payload, context }); return { accepted: true }; } } = {}) {
+  function client(user, { receiver = false, target = viewer, canControl, receive = async (payload, context) => { played.push({ payload, context }); return { accepted: true }; } } = {}) {
     const listeners = new Map();
     const socket = {
       connected: true,
@@ -44,15 +46,15 @@ function fixture() {
         }
       }
     };
-    const transport = new StreamCommandTransport({ getUser: () => user, getViewer: () => viewer,
-      getUserById: id => users.get(id), isReceiver: () => receiver, receive, socket, ...clock });
+    const transport = new StreamCommandTransport({ getUser: () => user, getViewer: () => target,
+      getUserById: id => users.get(id), isReceiver: () => receiver, receive, socket, ...clock, ...(canControl ? { canControl } : {}) });
     const value = { transport, socket, listeners, user, setReceiver: value => { receiver = value; },
       deliver(payload, senderId) { for (const handler of listeners.get(SOCKET_NAME) ?? []) handler(payload, senderId); },
       disconnect() { socket.connected = false; for (const handler of listeners.get("disconnect") ?? []) handler(); },
       shutdown() { for (const handler of listeners.get("shutdown") ?? []) handler(); } };
     clients.push(value); transport.start(); return value;
   }
-  return { gm, viewer, outsider, users, command, client, clock, timers, packets, played };
+  return { gm, viewer, outsider, streamer, users, command, client, clock, timers, packets, played };
 }
 
 async function flush() { for (let index = 0; index < 5; index++) await Promise.resolve(); }
@@ -223,4 +225,22 @@ test("receiver shutdown during asynchronous processing cannot emit a late acknow
   stream.deliver({ type: "command", viewerId: f.viewer.id, command: f.command() }, f.gm.id);
   stream.transport.stop(); finish({ accepted: true }); await flush();
   assert.equal(f.packets.length, 0); assert.equal(stream.transport.inFlight.size, 0);
+});
+
+test("a streaming player's game tab controls their own stream page, which ignores GMs and other players", async () => {
+  const f = fixture();
+  const own = user => user?.id === f.streamer.id;
+  const tab = f.client(f.streamer, { target: f.streamer, canControl: own });
+  const stream = f.client(f.streamer, { receiver: true, target: f.streamer, canControl: own });
+  const command = f.command();
+  assert.deepEqual(await tab.transport.send(command), { accepted: true });
+  assert.deepEqual(f.packets[0].options, { recipients: [f.streamer.id] });
+  assert.equal(f.played.length, 1, "The sending tab gets its own command back but is not a receiver");
+  assert.equal(f.played[0].context.user, f.streamer);
+  assert.equal(tab.transport.pending.size, 0); assert.equal(stream.transport.pending.size, 0);
+  stream.deliver({ type: "command", viewerId: f.streamer.id, command: f.command() }, f.gm.id);
+  stream.deliver({ type: "command", viewerId: f.streamer.id, command: f.command() }, f.outsider.id);
+  await flush();
+  assert.equal(f.played.length, 1, "Only the player's own sessions are obeyed");
+  await assert.rejects(f.client(f.outsider, { target: f.streamer, canControl: own }).transport.send(f.command()), /Only a Game Master/);
 });

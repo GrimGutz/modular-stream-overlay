@@ -46,13 +46,17 @@ function resultReason(value, fallback) {
  * Native /stream accepts module socket events but does not listen for incoming User.query.
  * Foundry's module socket server supplies the authenticated sender as the second listener
  * argument. Never trust an identity claimed in a payload, and never accept a missing sender.
+ * `canControl` admits GMs by default; a streaming player controls their own stream, so sender
+ * and viewer are then the same account (Foundry delivers to every socket of that account).
  */
 export class StreamCommandTransport {
   constructor({ getUser = () => globalThis.game?.user, getViewer = () => null,
     getUserById = id => globalThis.game?.users?.get(id), isReceiver = () => false, receive,
+    canControl = user => Boolean(user?.isGM),
     socket, now = () => Date.now(), setTimer = (callback, delay) => setTimeout(callback, delay),
     clearTimer = timer => clearTimeout(timer), timeout = 6000 } = {}) {
     if (typeof receive !== "function") throw new TypeError("The stream transport requires a command receiver.");
+    this.canControl = canControl;
     this.getUser = getUser;
     this.getViewer = getViewer;
     this.getUserById = getUserById;
@@ -105,7 +109,7 @@ export class StreamCommandTransport {
 
   send(input) {
     const user = this.getUser(), viewer = this.getViewer();
-    if (!user?.isGM) return Promise.reject(new Error("Only a Game Master can control stream animations."));
+    if (!this.canControl(user)) return Promise.reject(new Error("Only a Game Master can control stream animations."));
     if (!isViewerAllowed(viewer, viewer?.id)) return Promise.reject(new Error("Configure an overlay viewer account before using live animation controls."));
     if (!viewer.active) return Promise.reject(new Error(`The overlay viewer is offline. ${OPEN_SOURCE}`));
     if (!this.started || this.socket?.connected === false) return Promise.reject(new Error(`The Foundry stream connection is unavailable. ${OPEN_SOURCE}`));
@@ -137,7 +141,7 @@ export class StreamCommandTransport {
 
   _ack(input, senderId) {
     const user = this.getUser(), viewer = this.getViewer();
-    if (!user?.isGM || !isViewerAllowed(viewer, viewer?.id) || senderId !== viewer.id
+    if (!this.canControl(user) || !isViewerAllowed(viewer, viewer?.id) || senderId !== viewer.id
       || !isViewerAllowed(this.getUserById(senderId), viewer.id)
       || !plain(input, new Set(["type", "gmId", "id", "accepted", "reason"]))
       || input.gmId !== user.id || !identifier(input.id) || typeof input.accepted !== "boolean"
@@ -159,7 +163,7 @@ export class StreamCommandTransport {
     if (!this.isReceiver() || !isViewerAllowed(viewer, viewer?.id) || !isViewerAllowed(localUser, viewer.id)
       || !plain(payload, new Set(["type", "viewerId", "command"])) || payload.type !== "command" || payload.viewerId !== viewer.id) return;
     const gm = this.getUserById(senderId);
-    if (!gm?.isGM || gm.id !== senderId) return;
+    if (!gm || gm.id !== senderId || !this.canControl(gm)) return;
     let command;
     try { command = copyCommand(payload.command); } catch { return; }
     const currentTime = this.now();

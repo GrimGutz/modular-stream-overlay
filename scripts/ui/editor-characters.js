@@ -160,7 +160,9 @@ export const CharacterPanels = Base => class extends Base {
       this._actorStatusUnsubscribe = this.characterData.subscribe?.(reference, updateStatus);
     }
     const actions = document.createElement("div"); actions.className = "mso-image-actions";
-    for (const [label, operation] of [...(!demoMode ? [[L("Editor.ChangeCharacter"), () => this._assignActor()], [L("Editor.ClearCharacter"), () => this._assignActor("")], [L("Editor.CharacterProfiles"), () => this._editCharacterProfiles(layer)]] : []), [L("Editor.EditDesign"), () => this._openWidgetPreset(layer.presetId)]]) {
+    for (const [label, operation] of [...(!demoMode ? [[L("Editor.ChangeCharacter"), () => this._assignActor()], [L("Editor.ClearCharacter"), () => this._assignActor("")],
+      // Character profiles are world settings; a streaming player uses the GM's.
+      ...(this._inStudio?.() ? [] : [[L("Editor.CharacterProfiles"), () => this._editCharacterProfiles(layer)]])] : []), [L("Editor.EditDesign"), () => this._openWidgetPreset(layer.presetId)]]) {
       const button = document.createElement("button"); button.type = "button"; writeText(button, label); button.disabled = this._uploading || label.key === "Editor.EditDesign" && !preset; button.addEventListener("click", () => { void this._draftOperation(operation); }); actions.append(button);
     }
     host.append(actions);

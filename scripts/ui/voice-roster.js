@@ -12,16 +12,19 @@ let services = {};
 let app = null;
 
 export function configureVoiceRoster(configuration) { services = { ...services, ...configuration }; }
+// GMs keep the world's Discord players; a player the GM allowed to stream keeps their studio's.
+const mayEdit = () => services.mayEdit ? services.mayEdit() === true : Boolean(game.user?.isGM);
+const settings = () => services.settings ?? game.settings;
 
 export async function openVoiceRoster() {
-  if (!game.user?.isGM) throw new Error(t("Voice.GMOnly"));
+  if (!mayEdit()) throw new Error(t("Voice.GMOnly"));
   app ??= new VoiceRosterEditor();
   await app.render({ force: true });
   return app;
 }
 
 function savedRoster() {
-  try { return validateVoiceRoster(game.settings.get(MODULE_ID, VOICE_ROSTER_SETTING) ?? {}); }
+  try { return validateVoiceRoster(settings().get(MODULE_ID, VOICE_ROSTER_SETTING) ?? {}); }
   catch { return validateVoiceRoster({}); }
 }
 
@@ -48,7 +51,7 @@ export class VoiceRosterEditor extends ApplicationV2 {
   }
 
   get title() { return t("Voice.Title"); }
-  _canRender(options) { return game.user?.isGM ? super._canRender(options) : false; }
+  _canRender(options) { return mayEdit() ? super._canRender(options) : false; }
 
   async _renderHTML() {
     this._draft ??= structuredClone(savedRoster());
@@ -206,7 +209,7 @@ export class VoiceRosterEditor extends ApplicationV2 {
     catch (error) { ui.notifications.error(errorText(error)); return; }
     this._saving = true;
     try {
-      await game.settings.set(MODULE_ID, VOICE_ROSTER_SETTING, roster);
+      await settings().set(MODULE_ID, VOICE_ROSTER_SETTING, roster);
       this._draft = structuredClone(roster);
       ui.notifications.info(t("Voice.Saved"));
     } catch (error) { ui.notifications.error(errorText(error)); }

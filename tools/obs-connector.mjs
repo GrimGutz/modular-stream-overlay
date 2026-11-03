@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * Optional OBS connector. Runs on the streaming PC, signs in to Foundry as the overlay
- * viewer account and forwards the stream page to OBS, so the Browser Source keeps one
- * URL and needs no manual sign-in after Foundry or the world restarts.
+ * Optional OBS connector. Runs on the streaming PC, signs in to Foundry with the stream's
+ * account (the GM's overlay viewer account, or a player's own account when the GM allowed
+ * that player to stream) and forwards the stream page to OBS, so the Browser Source keeps
+ * one URL and needs no manual sign-in after Foundry or the world restarts.
  *
  *   node tools/obs-connector.mjs setup   # once: Foundry address, account name, password
  *   node tools/obs-connector.mjs         # then keep it running while streaming
  *
- * Anything that reaches it acts as the viewer account, so it listens on 127.0.0.1 only,
+ * Anything that reaches it acts as that account, so it listens on 127.0.0.1 only,
  * accepts only its own Host and Origin, forwards GET/HEAD requests and the socket, and
  * refuses Foundry's other pages (game, setup, join, …). The password stays in a local
  * file outside Foundry's Data folder and is never printed or sent anywhere but Foundry.
@@ -44,7 +45,7 @@ export function validateConfig(input) {
   const url = new URL(input.foundryUrl ?? "http://localhost:30000");
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new TypeError("Use a plain http(s) Foundry address, such as http://localhost:30000.");
   const userName = typeof input.userName === "string" ? input.userName.trim() : "";
-  if (!userName) throw new TypeError("Enter the name of the overlay viewer account.");
+  if (!userName) throw new TypeError("Enter the name of the Foundry account the stream signs in with.");
   if (typeof (input.password ?? "") !== "string") throw new TypeError("The password must be text.");
   const port = input.port ?? 30001;
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new TypeError("Choose a connector port between 1024 and 65535.");
@@ -288,7 +289,8 @@ async function setup(file) {
   try { current = JSON.parse(await readFile(file, "utf8")); } catch { /* First setup. */ }
   console.log("Modular Stream Overlay — OBS connector setup. Leave a line empty to keep the value in [brackets].");
   const foundryUrl = await ask(`Foundry address [${current.foundryUrl ?? "http://localhost:30000"}]: `, { fallback: current.foundryUrl ?? "http://localhost:30000" });
-  const userName = await ask(`Overlay viewer account name${current.userName ? ` [${current.userName}]` : ""}: `, { fallback: current.userName ?? "" });
+  // The GM's overlay viewer account, or the player's own account when the GM allowed them to stream.
+  const userName = await ask(`Foundry account to stream with (the overlay viewer, or your own player account)${current.userName ? ` [${current.userName}]` : ""}: `, { fallback: current.userName ?? "" });
   const password = await ask(`Password for that account${current.password !== undefined ? " [keep current]" : ""} (not shown): `, { hidden: true, fallback: current.password ?? "" });
   const port = Number(await ask(`Connector port [${current.port ?? 30001}]: `, { fallback: String(current.port ?? 30001) }));
   const config = validateConfig({ foundryUrl, userName, password, port });

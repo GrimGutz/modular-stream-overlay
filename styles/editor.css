@@ -259,3 +259,8 @@
 .mso-colors-add { display: flex; gap: 6px; }
 .mso-colors-add input { flex: 1 1 auto; }
 .mso-colors-add button { flex: 0 0 auto; width: auto; }
+/* Player streams: one row per account; a streaming player's setup steps in the editor. */
+.mso-streams-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, .12); }
+.mso-streams-row .mso-checkbox-field { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.mso-streams-status { grid-column: 1 / -1; margin: 0; }
+.mso-stream-steps { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; }

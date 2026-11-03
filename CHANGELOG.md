@@ -5,6 +5,7 @@
 - **PF2e adapter** (8.6.x, Foundry 14): 34 fields for characters and NPCs — HP, AC, level, perception, saves, attribute modifiers, dying/wounded/doomed, active conditions, hero and focus points, shield, experience, class, ancestry and heritage. Character colors suggest a color per class.
 - **Cyberpunk RED adapter** (0.92.x): 29 fields for characters and mooks — HP, wound state, death save, humanity, the ten stats, armor SP, role, reputation and eurobucks. Character colors suggest a color per role. Cyberpunk RED has no Foundry 14 release yet, so it can run once that release is checked and added.
 - Health, AC, level and attribute modifier fields share their IDs across D&D5e, PF2e and Cyberpunk RED, so one design reads several systems.
+- **Player streams:** a player can run the stream instead of the GM. The GM only checks **May stream** for them. The player then opens the overlay editor from their Settings sidebar with their own studio, saved under their account: overlays, widget designs, fragments, imports, the overlay on stream, live controls and Discord players. Their OBS connector signs in with their own account. Their stream shows characters with their own account's access, and the GM sees which ones it can't observe.
 - The overlay-builder Claude Code skill builds overlays from a description (source repository only).
 
 ## 0.8.0

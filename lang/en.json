@@ -372,11 +372,19 @@
       "VoicePresent": "Everyone in channel",
       "VoiceSpeaking": "Everyone speaking",
       "VoiceLive": "Live from Discord",
-      "CharacterColors": "Character colors"
+      "CharacterColors": "Character colors",
+      "PlayerStreams": "Player streams…",
+      "StudioHeading": "Your stream",
+      "StudioBadge": "Your own studio",
+      "StudioHelp": "The GM allowed you to stream. Overlays, widget designs, fragments and Discord players you make here are saved under your account and show only on your stream; the world's library stays the GM's. Characters are read with your account's access.",
+      "StudioHidden": "Characters on your live overlay hidden from your account: {count}. They stay empty until the GM gives you Observer access.",
+      "StudioConnector": "Recommended: run the OBS connector on your PC (tools/obs-connector.bat in the module archive, needs Node.js). In its setup enter this Foundry's address, the account “{name}” and its password, then add a Browser source in OBS with the address it prints. It signs in by itself and reconnects after restarts.",
+      "StudioDownload": "Download the module archive",
+      "StudioDirect": "Without the connector: add a Browser source with the address below, choose Interact and sign in to Foundry as “{name}”."
     },
     "Editor": {
       "Title": "Modular Stream Overlay",
-      "GMOnly": "Only a Game Master can configure stream overlays.",
+      "GMOnly": "Only a Game Master, or a player the Game Master allowed to stream, can configure stream overlays.",
       "Fit": "Fit",
       "CanvasNumber": "Enter a whole number from 64 to 7680.",
       "NowLive": "The saved active overlay is now live.",
@@ -387,7 +395,7 @@
       "DemoNotReady": "Demo installation is not ready. Reopen the editor after the world loads.",
       "DemoMissing": "The installed demo could not be found. Reopen the overlay editor.",
       "DemoOpened": "Demo opened. Choose Active on stream to display its saved configuration in OBS.",
-      "TestGMOnly": "Only a Game Master can test overlay animations.",
+      "TestGMOnly": "Only a Game Master, or a player the Game Master allowed to stream, can test overlay animations.",
       "WaitEditor": "Wait for the current editor operation to finish.",
       "ChooseWidget": "Choose an existing character widget.",
       "DemoOnly": "Simulation is available only for DEMO DATA. Real Actor values are never changed.",
@@ -809,6 +817,11 @@
         "Name": "Character colors",
         "Label": "Character colors",
         "Hint": "Colors of characters on overlays: per character, per value of a field (such as a CAIN blasphemy or a class), or the game system's."
+      },
+      "Streams": {
+        "Name": "Player streams",
+        "Label": "Manage player streams",
+        "Hint": "Choose which players may stream on their own: they get the overlay editor with their own studio, live controls and the OBS connector."
       }
     },
     "Components": {
@@ -1123,7 +1136,12 @@
       "AccentRulesMap": "Character color rules must map values to colors.",
       "AccentRulesLimit": "Character color rules hold at most 200 values.",
       "AccentRulesColor": "Character colors must be hexadecimal colors such as #9966ff.",
-      "AccentRulesUnique": "Each value may have only one character color."
+      "AccentRulesUnique": "Each value may have only one character color.",
+      "StreamsLimit": "At most {count} players can stream.",
+      "StreamsUserIds": "Player streams must use Foundry user IDs.",
+      "StreamsGMOnly": "Only a GM can choose who streams.",
+      "StreamsUsers": "Choose existing player accounts for player streams.",
+      "StreamsList": "Player streams must be a list of user IDs."
     },
     "ValidationLabel": {
       "ActiveOverlayID": "Active overlay ID",
@@ -1644,12 +1662,12 @@
     },
     "Live": {
       "Title": "Stream Live Controls",
-      "GMOnly": "Only a Game Master can control the live stream.",
+      "GMOnly": "Only a Game Master, or a player the Game Master allowed to stream, can control the live stream.",
       "ChooseCommand": "Choose an available live command.",
       "UpdateFailed": "The live stream could not be updated."
     },
     "Authoring": {
-      "GMOnly": "Import overlay bundles as a GM in Foundry.",
+      "GMOnly": "Import overlay bundles as a GM, or as a player the GM allowed to stream.",
       "ImportTitle": "Install generated overlay bundle",
       "Install": "Install",
       "ImportSummary": "Add {overlays} overlays and {presets} widget presets. Existing IDs are rejected. The active overlay stays unchanged. If installation is interrupted, some new records may already have been added.",
@@ -1666,7 +1684,7 @@
     },
     "Voice": {
       "Title": "Discord players",
-      "GMOnly": "Only a GM can edit the Discord players.",
+      "GMOnly": "Only a GM, or a player the GM allowed to stream, can edit the Discord players.",
       "Help": "Link Discord accounts to characters and glow colors for voice layers. Layers set to follow \"the character's player\" use these links; free slots skip everyone listed here.",
       "LiveHeading": "In the voice channel now",
       "LiveUnavailable": "No voice information yet. Start the OBS connector on this PC with Discord voice set up (node tools/obs-connector.mjs discord-setup, then the connector as usual). The connector's address is in the module settings.",
@@ -1716,6 +1734,30 @@
       "HexHint": "Use a color such as #9966ff.",
       "Save": "Save",
       "Saved": "Character colors saved."
+    },
+    "Streams": {
+      "Title": "Player streams",
+      "GMOnly": "Only a GM can choose who streams.",
+      "Help": "Players checked here stream on their own, with their own Foundry account. From their Settings sidebar they open the overlay editor with their own studio: overlays, widget designs, fragments and Discord players saved under their account. They choose what is on stream, control it live and run the OBS connector on their PC; you only allow it. The main stream keeps using the viewer account, and a player's stream shows only characters their account may observe.",
+      "MainViewer": "Main stream: {name}",
+      "NoMainViewer": "Main stream: no viewer account selected yet.",
+      "NoPlayers": "This world has no player accounts yet.",
+      "Online": "online",
+      "Offline": "offline",
+      "MayStream": "May stream",
+      "NoCharacters": "This overlay shows no world characters.",
+      "AllVisible": "Sees every character in this overlay.",
+      "Hidden": "Can't see: {names}. Give this player Observer access to these characters to show them.",
+      "UnknownCharacter": "a deleted character",
+      "Address": "Stream address for OBS",
+      "AddressHelp": "The address is the same for everyone: in OBS each streamer signs in with their own account, or runs the OBS connector with it.",
+      "Copy": "Copy",
+      "Copied": "Stream address copied.",
+      "Save": "Save player streams",
+      "Saved": "Player streams saved.",
+      "StudioEmpty": "Nothing saved yet: the player builds overlays in the editor from their Settings sidebar.",
+      "StudioLive": "Studio: {count} overlays, on stream: {name}.",
+      "StudioIdle": "Studio: {count} overlays, nothing on stream yet."
     }
   }
 }

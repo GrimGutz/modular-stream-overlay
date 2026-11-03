@@ -198,8 +198,11 @@ export function existingBundleRecords(source, api = globalThis.game?.modules?.ge
  * `updateExisting` explicitly replaces widget designs that share an ID with the bundle and keeps
  * same-ID overlays untouched, so their layers, text and Actor assignments survive a design update.
  */
+/** GMs install into the world library; a player the GM allowed to stream, into their own studio. */
+function mayInstall(api) { return Boolean(globalThis.game?.user?.isGM) || api?.canEditLibrary?.() === true; }
+
 export async function installOverlayBundle(source, { api = globalThis.game?.modules?.get(MODULE_ID)?.api, actors = {}, dryRun = false, updateExisting = false } = {}) {
-  if (!globalThis.game?.user?.isGM) throw new Error("Install overlay bundles as a GM in Foundry.");
+  if (!mayInstall(api)) throw new Error("Install overlay bundles as a GM in Foundry.");
   if (typeof dryRun !== "boolean") fail("dryRun must be true or false.");
   if (typeof updateExisting !== "boolean") fail("updateExisting must be true or false.");
   if (api?.schemaVersion !== SCHEMA_VERSION || !api.store?.saveOverlay || !api.widgetPresets?.save) throw new Error("The compatible overlay module API is not ready.");
@@ -256,7 +259,7 @@ export async function installOverlayBundle(source, { api = globalThis.game?.modu
 
 /** Entry point for the generated GM Script Macro. Cancel never writes settings. */
 export async function importOverlayBundle({ bundle: source, actors = {}, api = globalThis.game?.modules?.get(MODULE_ID)?.api } = {}) {
-  if (!globalThis.game?.user?.isGM) throw new Error(t("Authoring.GMOnly"));
+  if (!mayInstall(api)) throw new Error(t("Authoring.GMOnly"));
   const bundle = validateOverlayBundle(source), content = document.createElement("div");
   // A newer version of an installed bundle updates its designs; nothing is replaced without this dialog.
   const existing = existingBundleRecords(bundle, api);

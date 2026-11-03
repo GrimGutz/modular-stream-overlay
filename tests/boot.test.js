@@ -20,7 +20,8 @@ class Element {
   animate(frames, options) { const entry = { frames, options, cancelled: false, cancel() { this.cancelled = true; }, finished: Promise.resolve() }; this.animations.push(entry); return entry; }
 }
 
-async function boot({ stream = true, characters = false, configureOverlay = () => {} } = {}) {
+// `studio` boots as a player the GM allowed to stream: their overlay lives in their own studio.
+async function boot({ stream = true, characters = false, configureOverlay = () => {}, studio = false } = {}) {
   const listeners = new Map();
   function add(name, fn, once) { const values = listeners.get(name) ?? []; values.push({ fn, once }); listeners.set(name, values); }
   globalThis.Hooks = {
@@ -39,9 +40,10 @@ async function boot({ stream = true, characters = false, configureOverlay = () =
   if (characters) overlay.layers = actors.map((actor, index) => ({ id: `card-${index}`, type: "character-widget",
     presetId: "widget-basic-character-card", actorUuid: actor.uuid, x: index * 450, width: 400, height: 180 }));
   configureOverlay(overlay);
-  values.set("state", { schemaVersion: 1, revision: 1, activeOverlayId: overlay.id, overlays: [overlay], presets: [] });
-  values.set("viewerUserId", "viewer");
-  const player = { id: "viewer", role: 1, isGM: false };
+  values.set(studio ? "studioState" : "state", { schemaVersion: 1, revision: 1, activeOverlayId: overlay.id, overlays: [overlay], presets: [] });
+  values.set("viewerUserId", studio ? "" : "viewer");
+  const player = { id: studio ? "PlayerAccount001" : "viewer", role: 1, isGM: false };
+  if (studio) values.set("streamers", [player.id]);
   const socket = new EventEmitter();
   const state = { reloads: 0, errors: [] };
   globalThis.game = {
@@ -52,7 +54,8 @@ async function boot({ stream = true, characters = false, configureOverlay = () =
       register(_id, key, config) { settings.set(key, config); if (!values.has(key)) values.set(key, config.default); },
       registerMenu(_id, key, config) { menus.set(key, config); },
       get(_id, key) { return values.get(key); },
-      async set(_id, key, value) { values.set(key, value); settings.get(key)?.onChange?.(value); return value; }
+      // Foundry reports the user who made the change; studio settings react only to their own player.
+      async set(_id, key, value) { values.set(key, value); settings.get(key)?.onChange?.(value, {}, game.userId); return value; }
     }
   };
   globalThis.ui = { notifications: { error: value => state.errors.push(value), info() {}, warn() {} } };
@@ -387,4 +390,58 @@ test("CAIN examples are opt-in, GM-only and leave real Actor assignments and act
   assert.deepEqual(f.actors.map(actor => actor.system), actors);
   assert.equal((await f.api.installCainPresets()).created, false);
   f.api.characterData.stop();
+});
+
+test("a player the GM allowed to stream shows and controls their own studio on their stream page", async () => {
+  const f = await boot({ studio: true, characters: true, configureOverlay(overlay) {
+    Object.assign(overlay.layers[0], { animationOverrides: true, triggers: [
+      { id: "salute", event: "manual", action: { type: "play-animation", animation: { type: "bounce", duration: 350 } } }] });
+  } });
+  assert.equal(f.output.children[0].children[0].src, "/prefix/assets/original.webp", "No viewer account is needed");
+  assert.equal(f.values.get("state").overlays.length, 0, "The world's library stays empty");
+  const card = f.output.children[0].children.find(element => element.dataset.instanceId === "card-0");
+  const now = Date.now();
+  const command = id => ({ id, overlayId: f.overlay.id, layerId: "card-0", kind: "manual", ruleId: "salute", createdAt: now, expiresAt: now + 10000 });
+  const gm = { id: "gm", isGM: true, role: 4 };
+  assert.equal((await deliverCommand(f, command("from-gm"), gm)).accepted, false, "The GM does not run a player's stream");
+  assert.equal((await deliverCommand(f, command("from-other"), { id: "PlayerAccount002", isGM: false, role: 1 })).accepted, false);
+  assert.equal((await deliverCommand(f, command("own"), f.player)).accepted, true);
+  assert.equal(card.animations.length, 1);
+  // The player saves in the editor (their other session); the stream follows.
+  const saved = structuredClone(f.values.get("studioState"));
+  saved.revision++; saved.overlays[0].background.src = "assets/changed.webp";
+  await game.settings.set("modular-stream-overlay", "studioState", saved);
+  await setImmediate();
+  assert.equal(f.output.children[0].children[0].src, "/prefix/assets/changed.webp");
+  // The GM revokes streaming: the page shows the access notice instead of the studio.
+  await game.settings.set("modular-stream-overlay", "streamers", []);
+  await setImmediate();
+  assert.match(f.output.children.find(child => child.className === "mso-message")?.textContent ?? "", /disabled/);
+  f.socket.emit("disconnect");
+});
+
+test("a streaming player's game client edits their studio and sends live commands to their own stream", async t => {
+  t.mock.method(globalThis, "fetch", async () => { throw new Error("No OBS connector in tests"); });
+  const f = await boot({ stream: false, studio: true, characters: true });
+  assert.equal(f.api.inStudio(), true); assert.equal(f.api.canEditLibrary(), true);
+  f.player.active = true;
+  let packet, recipients;
+  const accept = (payload, options) => {
+    if (payload.type !== "command") return;
+    packet = payload; recipients = options.recipients;
+    f.socket.emit(SOCKET_NAME, { type: "ack", gmId: f.player.id, id: payload.command.id, accepted: true }, f.player.id);
+  };
+  f.socket.on(SOCKET_NAME, accept);
+  assert.deepEqual(await f.api.liveControls.play("card-0"), { accepted: true });
+  assert.deepEqual(recipients, [f.player.id]); assert.equal(packet.viewerId, f.player.id);
+  await f.api.liveControls.setVisibility("card-0", false);
+  assert.equal(f.values.get("studioState").overlays[0].layers[0].visible, false);
+  assert.equal(f.values.get("state").overlays.length, 0, "Nothing reaches the world's library");
+  await assert.rejects(f.api.setStreamers([]), /Only a GM/);
+  // Revoked: the player's library is the world's again, read-only.
+  await game.settings.set("modular-stream-overlay", "streamers", []);
+  assert.equal(f.api.inStudio(), false); assert.equal(f.api.canEditLibrary(), false);
+  await assert.rejects(f.api.store.setActive(null), /Only a Game Master/);
+  await assert.rejects(f.api.liveControls.play("card-0"), /Only a Game Master/);
+  f.socket.off(SOCKET_NAME, accept); f.windowListeners.get("pagehide")();
 });

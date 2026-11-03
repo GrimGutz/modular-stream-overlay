@@ -74,13 +74,15 @@ export function validateWidgetPresetState(input) {
   return result;
 }
 
-export function registerWidgetSettings(onChange = () => {}) {
+/** A streaming player's studio registers its own designs with `scope: "user"`, as registerSettings does. */
+export function registerWidgetSettings(onChange = () => {}, { key = WIDGET_SETTINGS_KEY, scope = "world" } = {}) {
   if (!globalThis.game?.settings?.register) throw new Error("Foundry settings are unavailable.");
   if (typeof onChange !== "function") throw new TypeError("Widget settings onChange must be a function.");
-  game.settings.register(MODULE_ID, WIDGET_SETTINGS_KEY, {
-    name: "Character widget presets", scope: "world", config: false, type: Object,
-    default: createWidgetPresetState(), restricted: true,
-    onChange: value => {
+  game.settings.register(MODULE_ID, key, {
+    name: "Character widget presets", scope, config: false, type: Object,
+    default: createWidgetPresetState(), restricted: scope === "world",
+    onChange: (value, _options, userId) => {
+      if (scope === "user" && userId !== globalThis.game?.userId) return;
       let state;
       try { state = validateWidgetPresetState(value); }
       catch (error) { onChange(null, error); return; }
@@ -101,14 +103,17 @@ export class WidgetPresetStore {
   #settings;
   #getUser;
   #onChange;
+  #canEdit;
   #pending = Promise.resolve();
 
-  constructor({ settings = globalThis.game?.settings, getUser = () => globalThis.game?.user, onChange = () => {} } = {}) {
+  constructor({ settings = globalThis.game?.settings, getUser = () => globalThis.game?.user, onChange = () => {},
+    canEdit = user => Boolean(user?.isGM) } = {}) {
     if (!settings?.get || !settings?.set) throw new Error("Foundry settings are unavailable.");
-    if (typeof getUser !== "function" || typeof onChange !== "function") throw new TypeError("Widget store callbacks must be functions.");
+    if (typeof getUser !== "function" || typeof onChange !== "function" || typeof canEdit !== "function") throw new TypeError("Widget store callbacks must be functions.");
     this.#settings = settings;
     this.#getUser = getUser;
     this.#onChange = onChange;
+    this.#canEdit = canEdit;
   }
 
   getState() { return validateWidgetPresetState(this.#settings.get(MODULE_ID, WIDGET_SETTINGS_KEY) ?? createWidgetPresetState()); }
@@ -116,7 +121,7 @@ export class WidgetPresetStore {
 
   #mutate(operation, { expectedRevision } = {}) {
     const write = this.#pending.then(async () => {
-      if (!this.#getUser()?.isGM) throw new Error("Only a Game Master can change character widget presets.");
+      if (!this.#canEdit(this.#getUser())) throw new Error("Only a Game Master can change character widget presets.");
       const state = this.getState();
       if (expectedRevision !== undefined) {
         if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new TypeError("Expected revision must be a non-negative safe integer.");

@@ -356,8 +356,10 @@ export class WidgetPresetManager extends HandlebarsApplicationMixin(ApplicationV
   constructor(options) { super(options); this._previews = []; this._busy = false; }
   get api() { return game.modules.get(MODULE_ID)?.api; }
   get store() { return services.widgetPresets ?? this.api?.widgetPresets; }
-  _canRender(options) { return game.user?.isGM ? super._canRender(options) : false; }
-  async _prepareContext(options) { return { ...await super._prepareContext(options), presets: this.store.list() }; }
+  // GMs design for the world; a player the GM allowed to stream designs for their own studio.
+  _canRender(options) { return (services.mayEdit ? services.mayEdit() === true : game.user?.isGM) ? super._canRender(options) : false; }
+  // Character fields and providers are world settings: a streaming player uses the GM's.
+  async _prepareContext(options) { return { ...await super._prepareContext(options), presets: this.store.list(), studio: services.inStudio?.() === true }; }
   async refresh() { if (this.rendered && !this._busy) await this.render({ force: true }); }
   _destroyPreviews() { this._previews.forEach(preview => preview.destroy()); this._previews = []; }
   async _onRender(context, options) {

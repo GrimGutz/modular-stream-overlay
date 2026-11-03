@@ -42,8 +42,8 @@ export function createBackgroundUploadId(cryptoSource = globalThis.crypto) {
   return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
 }
 
-function assertPermission(user) {
-  if (!user?.isGM) throw new Error("Only a Game Master can upload overlay backgrounds.");
+function assertPermission(user, allowed) {
+  if (!allowed(user)) throw new Error("Only a Game Master can upload overlay backgrounds.");
   if (typeof user.can !== "function" || !user.can("FILES_UPLOAD")) {
     throw new Error("Your Foundry account needs file upload permission (FILES_UPLOAD) to upload a background.");
   }
@@ -149,17 +149,19 @@ function uniqueFilename(extension, files, makeId) {
  * Upload one validated local image to this module's persistent storage. Requires
  * module.json persistentStorage:true. Returns a managed relative path; never saves
  * overlay settings or changes the caller's draft. UUID names and a directory
- * preflight avoid existing files; Foundry does not expose an atomic no-overwrite API.
+ * preflight avoid existing files; Foundry does not expose an atomic no-overwrite API. `allowed`
+ * also admits a streaming player; Foundry's FILES_UPLOAD permission is required either way.
  */
 export async function uploadBackground(file, {
   user = globalThis.game?.user,
+  allowed = account => Boolean(account?.isGM),
   picker = globalThis.foundry?.applications?.apps?.FilePicker?.implementation,
   createImageBitmap = globalThis.createImageBitmap,
   FileClass = globalThis.File,
   makeId = createBackgroundUploadId,
   timeoutMs = DEFAULT_BACKGROUND_UPLOAD_TIMEOUT_MS
 } = {}) {
-  assertPermission(user);
+  assertPermission(user, allowed);
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new TypeError("The upload request timeout must be a positive duration in milliseconds.");
   const extension = await validateImage(file, FileClass, createImageBitmap);
   if (!picker || ["browse", "createDirectory", "uploadPersistent"].some(name => typeof picker[name] !== "function")) {
@@ -170,7 +172,7 @@ export async function uploadBackground(file, {
   let uploadFile;
   try { uploadFile = new FileClass([file], filename, { type: FORMATS[extension] }); }
   catch (cause) { throw new Error("The browser could not prepare the background image for upload.", { cause }); }
-  assertPermission(user);
+  assertPermission(user, allowed);
   let response;
   try { response = await withTimeout(() => picker.uploadPersistent(MODULE_ID, "", uploadFile, {}, { notify: false }), "uploading the background image", timeoutMs); }
   catch (cause) {

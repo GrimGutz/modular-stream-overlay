@@ -8,6 +8,7 @@ import { loadFoundryFonts } from "../integration/fonts.js";
 import { createOverlay, validateAssetPath, validateLayer, validateOverlay } from "../core/schema.js";
 import { VersionStore } from "../core/saved-versions.js";
 import { listFragments, saveFragment, deleteFragment } from "../core/fragments.js";
+import { overlayActorUuids } from "../core/streamers.js";
 import { rescaleOverlay, rescaleTransform } from "../core/rescale.js";
 import { overlayToWidgetPreset } from "../core/widget-presets.js";
 import { OverlayRenderer } from "../render/renderer.js";
@@ -104,7 +105,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     actions: Object.fromEntries([
       "editOverlay", "createOverlay", "renameOverlay", "deleteOverlay", "saveOverlay", "reloadOverlay",
       "uploadBackground", "browseBackground", "removeBackground", "savePreset", "loadPreset", "renamePreset", "duplicatePreset",
-      "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "characterColors", "installDemo", "resetDemo",
+      "deletePreset", "saveViewer", "copyURL", "addImage", "addText", "selectTool", "addWidget", "manageWidgets", "liveControls", "characterColors", "playerStreams", "installDemo", "resetDemo",
       "toggleCanvasFullscreen", "showVersions", "rescaleCanvas", "exportFile", "importFile"
     ].map(action => [action, OverlayEditor.onAction]))
   };
@@ -178,8 +179,12 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     return sortedFields(this.characterData?.fieldDefinitions?.({ dataSource, actorType }) ?? []);
   }
 
+  /** GMs edit the world library; a player the GM allowed to stream edits their own studio. */
+  _mayEdit() { return services.mayEdit ? services.mayEdit() === true : Boolean(game.user?.isGM); }
+  _inStudio() { return services.inStudio?.() === true; }
+
   _canRender(options) {
-    if (!game.user?.isGM) {
+    if (!this._mayEdit()) {
       ui.notifications.warn(t("Editor.GMOnly"));
       return false;
     }
@@ -401,6 +406,8 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   /** Call after persistent settings change. Never silently replace an edited draft. */
   async refresh({ external = true } = {}) {
     if (!this.rendered || this._busy || this._uploading) return;
+    // A player whose streaming the GM revoked has no library left to edit.
+    if (!this._mayEdit()) { await this.close(); return; }
     const state = this.store.getState();
     const selected = state.overlays.find(overlay => overlay.id === this._draft?.id);
     if (this._dirty && external && state.revision !== this._loadedRevision) this._conflict = true;
@@ -437,8 +444,14 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     if (!presets.some(preset => preset.id === this._selectedPresetId)) this._selectedPresetId = presets[0]?.id;
     const selectedPreset = presets.find(preset => preset.id === this._selectedPresetId);
     const viewerId = this.api?.getViewerUserId?.() ?? "";
+    const studio = this._inStudio();
+    // Characters on the studio's live overlay that the player's own account cannot observe stay empty on stream.
+    const live = studio ? state.overlays.find(overlay => overlay.id === state.activeOverlayId) : null;
+    const studioHidden = overlayActorUuids(live).filter(uuid => !game.actors?.get(uuid.slice(6))?.testUserPermission?.(game.user, "OBSERVER")).length;
     return {
       ...context,
+      studio, studioHidden, studioName: game.user?.name ?? "",
+      moduleDownload: studio ? this.api?.getModuleDownload?.() ?? "" : "",
       draft: this._draft,
       overlays: state.overlays.map(overlay => ({
         id: overlay.id, name: overlay.name,
@@ -681,6 +694,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   async _manageWidgets() { return services.openWidgetManager?.(); }
   async _openWidgetPreset(id) { return services.openWidgetPreset?.(id); }
   async _liveControls() { return (services.openLiveControls ?? this.api?.openLiveControls)?.(); }
+  async _playerStreams() { return (services.openPlayerStreams ?? this.api?.openPlayerStreams)?.(); }
   async _characterColors() { return (services.openCharacterColors ?? this.api?.openCharacterColors)?.(); }
 
   async _installDemo({ reset = false } = {}) {
@@ -716,7 +730,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   }
 
   async _runAnimationTest(layerId, command, target = "preview") {
-    if (!game.user?.isGM) throw new Error(t("Editor.TestGMOnly"));
+    if (!this._mayEdit()) throw new Error(t("Editor.TestGMOnly"));
     if (this._uploading || this._busy) throw new Error(t("Editor.WaitEditor"));
     const layer = this._draft?.layers.find(entry => entry.id === layerId && entry.type === "character-widget");
     if (!layer) throw new Error(t("Editor.ChooseWidget"));
@@ -1114,7 +1128,10 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   }
 
   _versions() { return services.versions ?? (defaultVersions ??= new VersionStore()); }
-  _versionKey(id = this._draft?.id) { return `${game.world?.id ?? "world"}/${this.widgetMode ? "design" : "overlay"}/${id}`; }
+  _versionKey(id = this._draft?.id) {
+    const studio = this._inStudio() ? `studio-${game.userId}/` : "";
+    return `${game.world?.id ?? "world"}/${studio}${this.widgetMode ? "design" : "overlay"}/${id}`;
+  }
   /** The saved form of the document being edited, as the editor loads it. */
   _savedDocument() { return this.store.getState().overlays.find(overlay => overlay.id === this._draft?.id) ?? null; }
 
@@ -1478,7 +1495,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     setText(store, "Editor.SaveFragment"); setAttr(store, "title", "Editor.SaveFragmentHelp");
     store.addEventListener("click", () => { void this._draftOperation(() => this._saveFragment()); });
     host.append(store);
-    const fragments = listFragments();
+    const fragments = listFragments(services.settings);
     if (!fragments.length) { const help = document.createElement("p"); help.className = "mso-help"; setText(help, "Editor.NoFragments"); host.append(help); }
     for (const fragment of fragments) {
       const row = document.createElement("div"); row.className = "mso-fragment-row";
@@ -1510,7 +1527,7 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
   }
 
   _exportFragment(id) {
-    const fragment = listFragments().find(entry => entry.id === id);
+    const fragment = listFragments(services.settings).find(entry => entry.id === id);
     if (!fragment) return;
     downloadJson(exportFragment(fragment, this.widgetPresets?.list?.() ?? [], worldActors()), exportFilename(fragment.name, "fragment"));
   }
@@ -1519,23 +1536,23 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     const layers = this._selectedLayers();
     if (!layers.length) { ui.notifications.info(t("Editor.SelectForFragment")); return; }
     const groups = new Set(layers.map(layer => layer.groupId));
-    const suggested = groups.size === 1 && layers[0].groupName ? layers[0].groupName : t("Editor.FragmentName", { index: listFragments().length + 1 });
+    const suggested = groups.size === 1 && layers[0].groupName ? layers[0].groupName : t("Editor.FragmentName", { index: listFragments(services.settings).length + 1 });
     const name = await this._name(L("Editor.SaveFragment"), suggested);
     if (!name) return;
-    await saveFragment(name, layers);
+    await saveFragment(name, layers, services.settings);
     ui.notifications.info(t("Editor.FragmentSaved", { name }));
   }
 
   async _insertFragment(id) {
-    const fragment = listFragments().find(entry => entry.id === id);
+    const fragment = listFragments(services.settings).find(entry => entry.id === id);
     if (!fragment) return;
     await this._historyStep(() => this._insertLayersData(clone(fragment.layers)));
   }
 
   async _deleteFragment(id) {
-    const fragment = listFragments().find(entry => entry.id === id);
+    const fragment = listFragments(services.settings).find(entry => entry.id === id);
     if (!fragment || !await this._confirm(L("Editor.DeleteFragment"), L("Editor.DeleteFragmentPrompt", { name: fragment.name }), L("Editor.DeleteFragment"))) return;
-    await deleteFragment(id);
+    await deleteFragment(id, services.settings);
   }
 
   /**
@@ -1649,11 +1666,11 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       saved.push(this.widgetMode ? await write({ expectedRevision: overlayStore.getState().revision }) : await this._sideMutation(write));
     }
     if (data.kind === "fragment") {
-      await saveFragment(data.name, plan.layers);
+      await saveFragment(data.name, plan.layers, services.settings);
       ui.notifications.info(t("Editor.FragmentImported", { name: data.name }));
     } else ui.notifications.info(t("Editor.Imported", { overlays: plan.overlays.length, designs: plan.widgetPresets.length }));
-    // A fresh world shows nothing on stream until it has a viewer account and an active overlay.
-    if (!this.api?.getViewerUserId?.()) ui.notifications.warn(t("Editor.ImportNoViewer"), { permanent: true });
+    // A fresh world shows nothing on stream until it has a viewer account and an active overlay; a studio streams as its player.
+    if (!this._inStudio() && !this.api?.getViewerUserId?.()) ui.notifications.warn(t("Editor.ImportNoViewer"), { permanent: true });
     else if (saved.length && !overlayStore.getState().activeOverlayId) ui.notifications.info(t("Editor.ImportNotActive", { name: saved[0].name }));
     if (plan.droppedActorUuids.length) {
       const names = plan.droppedActorUuids.map(uuid => source.actorNames?.[uuid] || uuid).join(", ");

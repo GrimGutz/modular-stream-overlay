@@ -1,3 +1,5 @@
+import { isPlayerStreamer } from "../core/streamers.js";
+
 /** Keep authentication in Foundry; these helpers never put credentials into a URL. */
 export function isOverlayRequest(location) {
   return /\/stream\/?$/.test(location.pathname) && new URLSearchParams(location.search).get("mso") === "1";
@@ -41,8 +43,10 @@ export function watchForConnector({ url, reload, fetch = globalThis.fetch, inter
   return stop;
 }
 
-export function viewerAccessMessage(user, viewerUserId) {
+/** Players the GM allowed to stream render their own studio; everyone else needs the viewer account. */
+export function viewerAccessMessage(user, viewerUserId, streamers = []) {
+  if (isPlayerStreamer(user, streamers, viewerUserId)) return "";
   if (!viewerUserId) return "Overlay output is disabled. A GM must select a viewer account in the overlay editor.";
-  if (!isViewerAllowed(user, viewerUserId)) return "Overlay output requires the selected viewer account. Use OBS Interact to log in through Foundry's Join page.";
+  if (!isViewerAllowed(user, viewerUserId)) return "Overlay output requires the selected viewer account or a player the GM allowed to stream. Use OBS Interact to log in through Foundry's Join page.";
   return "";
 }
