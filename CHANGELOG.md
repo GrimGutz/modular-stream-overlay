@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
 
 - **PF2e adapter** (8.6.x, Foundry 14): 34 fields for characters and NPCs — HP, AC, level, perception, saves, attribute modifiers, dying/wounded/doomed, active conditions, hero and focus points, shield, experience, class, ancestry and heritage. Character colors suggest a color per class.
 - **Cyberpunk RED adapter** (0.92.x): 29 fields for characters and mooks — HP, wound state, death save, humanity, the ten stats, armor SP, role, reputation and eurobucks. Character colors suggest a color per role. Cyberpunk RED has no Foundry 14 release yet, so it can run once that release is checked and added.

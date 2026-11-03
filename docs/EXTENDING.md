@@ -1,6 +1,6 @@
 # Extension interfaces
 
-These APIs describe **v0.8.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](DEMO_GUIDE_RU.md) describes the editable demonstration in Russian.
+These APIs describe **v0.9.0**, overlay schema **6**, and widget preset schema **4**. Existing widget and adapter registrations remain supported. Register during the module's init event so an extension works in both the regular game and native stream view. `/stream` does not fire Foundry's regular `ready` hook. [CAROUSEL.md](CAROUSEL.md) gives practical character/page editing, unified scheduling, and acceptance guidance. [DEMO_GUIDE.md](DEMO_GUIDE_RU.md) describes the editable demonstration in Russian.
 
 ```js
 Hooks.once("modularStreamOverlayInit", api => {
@@ -32,7 +32,7 @@ Declare a Foundry manifest relationship requiring `modular-stream-overlay` when 
 
 | Member | Contract |
 | --- | --- |
-| `version`, `schemaVersion` | API version `0.8.0`, overlay schema version `6` |
+| `version`, `schemaVersion` | API version `0.9.0`, overlay schema version `6` |
 | `registerWidget(definition)` | Registers a unique widget; returns a frozen registration |
 | `registerAdapter(definition)` | Registers a unique system adapter |
 | `widgets`, `adapters` | Registries with `get(id)` and `list()` |
