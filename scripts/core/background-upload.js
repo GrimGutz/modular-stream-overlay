@@ -173,6 +173,57 @@ export async function uploadBackground(file, {
   try { uploadFile = new FileClass([file], filename, { type: FORMATS[extension] }); }
   catch (cause) { throw new Error("The browser could not prepare the background image for upload.", { cause }); }
   assertPermission(user, allowed);
+  return send(picker, uploadFile, filename, timeoutMs);
+}
+
+const IMPORTED_FORMATS = Object.freeze({ ...FORMATS, gif: "image/gif" });
+
+/** A short fingerprint of a file's bytes: two 32-bit hashes and the length. Not a security check. */
+export function fingerprint(bytes) {
+  let first = 0x811c9dc5, second = 0x9747b28c;
+  for (const byte of bytes) { first = Math.imul(first ^ byte, 0x01000193); second = Math.imul(second ^ byte, 0x5bd1e995); }
+  const hex = value => (value >>> 0).toString(16).padStart(8, "0");
+  return `${hex(first)}${hex(second)}-${bytes.length.toString(36)}`;
+}
+
+/** A name from the bytes, so the same image imported again finds its file. */
+const contentName = bytes => `image-${fingerprint(bytes)}`;
+
+/**
+ * Put the bytes of an image from an imported file into this module's storage and return its
+ * managed path. The caller checked the bytes' type. The name comes from the bytes: the same
+ * image imported again reuses its file, and another file with that name is never overwritten.
+ * `readFile(path)` returns the bytes Foundry serves at a path, or null.
+ */
+export async function storeImportedImage(bytes, extension, {
+  user = globalThis.game?.user,
+  allowed = account => Boolean(account?.isGM),
+  picker = globalThis.foundry?.applications?.apps?.FilePicker?.implementation,
+  readFile = async () => null,
+  FileClass = globalThis.File,
+  makeId = createBackgroundUploadId,
+  timeoutMs = DEFAULT_BACKGROUND_UPLOAD_TIMEOUT_MS
+} = {}) {
+  assertPermission(user, allowed);
+  if (!Object.hasOwn(IMPORTED_FORMATS, extension) || !(bytes instanceof Uint8Array) || !bytes.length || bytes.length > MAX_BACKGROUND_UPLOAD_BYTES) {
+    throw new TypeError("Imported images must be PNG, JPEG, WebP or GIF files of at most 25 MiB.");
+  }
+  if (!picker || ["browse", "createDirectory", "uploadPersistent"].some(name => typeof picker[name] !== "function")) {
+    throw new Error("Foundry's persistent file upload API is unavailable. Reload Foundry and try again.");
+  }
+  const files = await ensureStorage(picker, timeoutMs);
+  let filename = `${contentName(bytes)}.${extension}`;
+  if (existingFilenames(files).has(filename)) {
+    const path = `${BACKGROUND_STORAGE_PATH}/${filename}`;
+    const current = await Promise.resolve().then(() => readFile(path)).catch(() => null);
+    if (current && current.length === bytes.length && current.every((value, index) => value === bytes[index])) return path;
+    filename = uniqueFilename(extension, files, makeId);
+  }
+  if (typeof FileClass !== "function") throw new Error("This browser cannot prepare image files for upload. Use a supported Foundry browser.");
+  return send(picker, new FileClass([bytes], filename, { type: IMPORTED_FORMATS[extension] }), filename, timeoutMs);
+}
+
+async function send(picker, uploadFile, filename, timeoutMs) {
   let response;
   try { response = await withTimeout(() => picker.uploadPersistent(MODULE_ID, "", uploadFile, {}, { notify: false }), "uploading the background image", timeoutMs); }
   catch (cause) {

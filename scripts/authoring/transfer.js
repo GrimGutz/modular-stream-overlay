@@ -4,13 +4,15 @@
  * carries the widget designs they need. Both carry the names of the characters their widgets
  * show, so the receiving world can match its own. Importing never overwrites: records whose ID
  * exists get a new one, and Actor assignments the receiving world lacks are matched or dropped.
- * Image files are referenced by path and are not included.
+ * Files may also carry the images they show (transfer-assets.js).
  */
 import { MODULE_ID, SCHEMA_VERSION, WIDGET_PRESET_SCHEMA_VERSION, clone, validateLayer, validateOverlay, validateWidgetPreset } from "../core/schema.js";
 import { validateActorNames, validateOverlayBundle, unresolvedActorSlots } from "./bundle.js";
+import { validateAssets } from "./transfer-assets.js";
 
 export const FRAGMENT_FORMAT = "mso-layer-fragment";
-const MAX_FILE = 16 * 1024 * 1024;
+// Up to 100 MiB of images in base64 and the records around them.
+const MAX_FILE = 160 * 1024 * 1024;
 
 const newId = prefix => `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`}`;
 const designsUsedBy = (layers, presets) => {
@@ -52,9 +54,9 @@ export function exportFragment(fragment, library = [], actors = []) {
     ...(Object.keys(actorNames).length ? { actorNames } : {}) };
 }
 
-/** Read a chosen file: { kind: "bundle", bundle } or { kind: "fragment", name, layers, widgetPresets }. */
+/** Read a chosen file: { kind: "bundle", bundle } or { kind: "fragment", name, layers, widgetPresets, actorNames, assets }. */
 export function readTransferFile(text) {
-  if (typeof text !== "string" || text.length > MAX_FILE) throw new TypeError("Choose a Modular Stream Overlay file of at most 16 MiB.");
+  if (typeof text !== "string" || text.length > MAX_FILE) throw new TypeError("Choose a Modular Stream Overlay file of at most 160 MiB.");
   let data;
   try { data = JSON.parse(text); }
   catch { throw new TypeError("This file is not a Modular Stream Overlay export."); }
@@ -63,7 +65,7 @@ export function readTransferFile(text) {
     if (!Array.isArray(data.layers) || !data.layers.length || data.layers.length > 100) throw new TypeError("A fragment holds 1–100 layers.");
     return { kind: "fragment", name: String(data.name ?? "").trim().slice(0, 80) || "Fragment", layers: data.layers.map(layer => validateLayer(layer)),
       widgetPresets: (Array.isArray(data.widgetPresets) ? data.widgetPresets : []).slice(0, 100).map(preset => validateWidgetPreset(preset)),
-      actorNames: validateActorNames(data.actorNames) ?? {} };
+      actorNames: validateActorNames(data.actorNames) ?? {}, assets: validateAssets(data.assets) };
   }
   throw new TypeError("This file is not a Modular Stream Overlay export.");
 }

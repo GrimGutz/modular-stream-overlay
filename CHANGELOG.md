@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Exports carry their images:** overlay, widget design and fragment files now include the images they show (backgrounds, image and portrait layers, masks), so an overlay moves to another server whole. PNG, JPEG, WebP and GIF go in as they are; an SVG goes in as a PNG at the largest size it is shown, because an SVG from someone else's file could run scripts on the server. Importing keeps an image the server already has at the same path (or the SVG the PNG came from) and stores the others in this module's storage, pointing the imported records at them; the same image imported again reuses its file. Video stays a path, and both sides name the files they could not carry or find. Files from earlier versions import as before.
+
 ## 0.9.0
 
 - **PF2e adapter** (8.6.x, Foundry 14): 34 fields for characters and NPCs — HP, AC, level, perception, saves, attribute modifiers, dying/wounded/doomed, active conditions, hero and focus points, shield, experience, class, ancestry and heritage. Character colors suggest a color per class.

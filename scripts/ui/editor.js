@@ -13,6 +13,7 @@ import { rescaleOverlay, rescaleTransform } from "../core/rescale.js";
 import { overlayToWidgetPreset } from "../core/widget-presets.js";
 import { OverlayRenderer } from "../render/renderer.js";
 import { exportBundle, exportFragment, exportFilename, readTransferFile, needsActorChoices, planImport, missingActors } from "../authoring/transfer.js";
+import { assetPaths, assetSizes, browserAssetIO, collectAssets, installAssets, relinkAssets } from "../authoring/transfer-assets.js";
 import { importOverlayBundle } from "../authoring/bundle.js";
 import { createLayer, createWidgetInstance, duplicateLayer, deleteLayer, pasteLayers, reorderLayer, reorderInGroup, stepLayer,
   moveLayers, groupLayers, layerOrder, dissolveSmallGroups } from "../core/layers.js";
@@ -1526,10 +1527,33 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     } catch { /* A thumbnail is decoration; the fragment still inserts. */ }
   }
 
-  _exportFragment(id) {
+  async _exportFragment(id) {
     const fragment = listFragments(services.settings).find(entry => entry.id === id);
     if (!fragment) return;
-    downloadJson(exportFragment(fragment, this.widgetPresets?.list?.() ?? [], worldActors()), exportFilename(fragment.name, "fragment"));
+    const file = exportFragment(fragment, this.widgetPresets?.list?.() ?? [], worldActors());
+    const images = await this._embedImages(file, { layers: file.layers, widgetPresets: file.widgetPresets });
+    downloadJson(file, exportFilename(fragment.name, "fragment"));
+    this._reportExport(fragment.name, images);
+  }
+
+  /** Reading and storing images as this user; tests replace it. */
+  _assetIO() { return services.assetIO ?? browserAssetIO({ allowed: () => this._mayEdit() }); }
+
+  /** Put the images these records show into the file, SVGs as PNGs at their largest size; the rest stay paths. */
+  async _embedImages(file, records) {
+    const sizes = assetSizes(records);
+    if (!sizes.size) return { count: 0, skipped: [] };
+    const { assets, skipped } = await collectAssets([...sizes.keys()], this._assetIO(), sizes);
+    if (assets.length) file.assets = assets;
+    return { count: assets.length, skipped };
+  }
+
+  _reportExport(name, { count, skipped }) {
+    ui.notifications.info(count ? t("Editor.ExportedImages", { name, count }) : t("Editor.Exported", { name }));
+    for (const [reason, key] of [["missing", "Editor.ExportImagesMissing"], ["format", "Editor.ExportImagesFormat"], ["size", "Editor.ExportImagesSize"]]) {
+      const paths = skipped.filter(entry => entry.reason === reason).map(entry => entry.path);
+      if (paths.length) ui.notifications.warn(t(key, { paths: paths.join(", ") }), { permanent: true });
+    }
   }
 
   async _saveFragment() {
@@ -1615,15 +1639,16 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
     this._pruneSelection(this._allLayers());
   }
 
-  /** Save this overlay (with the widget designs it uses) or this widget design as a file. */
-  _exportFile() {
+  /** Save this overlay (with the widget designs it uses) or this widget design as a file, with the images they show. */
+  async _exportFile() {
     if (!this._draft) return;
-    const library = this.widgetPresets?.list?.() ?? [];
+    const library = this.widgetPresets?.list?.() ?? [], name = this._draft.name;
     const bundle = this.widgetMode
-      ? exportBundle({ widgetPresets: [overlayToWidgetPreset(this._draft, { id: this._draft.id, name: this._draft.name })] })
+      ? exportBundle({ widgetPresets: [overlayToWidgetPreset(this._draft, { id: this._draft.id, name })] })
       : exportBundle({ overlays: [this._draft], library, actors: worldActors() });
-    downloadJson(bundle, exportFilename(this._draft.name, this.widgetMode ? "widget" : "overlay"));
-    ui.notifications.info(t("Editor.Exported", { name: this._draft.name }));
+    const images = await this._embedImages(bundle, bundle);
+    downloadJson(bundle, exportFilename(name, this.widgetMode ? "widget" : "overlay"));
+    this._reportExport(name, images);
   }
 
   _chooseImportFile() {
@@ -1652,8 +1677,11 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       actorMap = await this._chooseImportActors(missing, actors);
       if (!actorMap) return;
     }
-    const plan = await planImport(source, { overlayIds: overlayStore?.getState?.().overlays.map(overlay => overlay.id) ?? [], presets: library,
-      actorExists: async uuid => present.has(uuid), actorMap });
+    // The file's images go into this module's storage unless this server has them already. Relinking
+    // before planning lets a design imported here before count as identical again.
+    const images = await installAssets((data.kind === "bundle" ? data.bundle.assets : data.assets) ?? [], assetPaths(source), this._assetIO());
+    const plan = await planImport({ ...source, ...relinkAssets(source, images.paths) }, { overlayIds: overlayStore?.getState?.().overlays.map(overlay => overlay.id) ?? [],
+      presets: library, actorExists: async uuid => present.has(uuid), actorMap });
     // Widget designs come first, so imported widgets find them.
     for (const preset of plan.widgetPresets) {
       const write = options => this.widgetPresets.save(preset, options);
@@ -1669,6 +1697,10 @@ export class OverlayEditor extends CharacterPanels(LayerInspector(LayerList(Hand
       await saveFragment(data.name, plan.layers, services.settings);
       ui.notifications.info(t("Editor.FragmentImported", { name: data.name }));
     } else ui.notifications.info(t("Editor.Imported", { overlays: plan.overlays.length, designs: plan.widgetPresets.length }));
+    if (images.stored || images.kept) ui.notifications.info(t("Editor.ImportedImages", { stored: images.stored, kept: images.kept }));
+    for (const [paths, key] of [[images.blocked, "Editor.ImportImagesBlocked"], [images.failed, "Editor.ImportImagesFailed"], [images.missing, "Editor.ImportImagesMissing"]]) {
+      if (paths.length) ui.notifications.warn(t(key, { paths: paths.join(", ") }), { permanent: true });
+    }
     // A fresh world shows nothing on stream until it has a viewer account and an active overlay; a studio streams as its player.
     if (!this._inStudio() && !this.api?.getViewerUserId?.()) ui.notifications.warn(t("Editor.ImportNoViewer"), { permanent: true });
     else if (saved.length && !overlayStore.getState().activeOverlayId) ui.notifications.info(t("Editor.ImportNotActive", { name: saved[0].name }));

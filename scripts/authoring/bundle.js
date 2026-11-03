@@ -4,6 +4,7 @@ import { MODULE_ID, SCHEMA_VERSION, WIDGET_PRESET_SCHEMA_VERSION, WIDGET_DEFINIT
 import { createLayer } from "../core/layers.js";
 import { createWidgetPreset, validateWidgetPresetState } from "../core/widget-presets.js";
 import { t, errorText, localizeDOM, setText, setAttr } from "../ui/i18n.js";
+import { assetPaths, browserAssetIO, installAssets, relinkAssets, validateAssets } from "./transfer-assets.js";
 
 const TYPES = new Set(["color", "image", "text", "character-widget", ...WIDGET_DEFINITIONS.map(item => item.type)]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/;
@@ -175,8 +176,10 @@ export function validateOverlayBundle(source) {
   });
   unique(actorBindings.map(binding => `${binding.overlayId}/${binding.layerId}`), "Actor binding targets");
   const actorNames = validateActorNames(input.actorNames);
+  const assets = validateAssets(input.assets);
   const result = { format: input.format, version: 1, moduleId: MODULE_ID, overlaySchemaVersion: SCHEMA_VERSION,
-    widgetPresetSchemaVersion: WIDGET_PRESET_SCHEMA_VERSION, actorSlots, widgetPresets, overlays, actorBindings, ...(actorNames ? { actorNames } : {}) };
+    widgetPresetSchemaVersion: WIDGET_PRESET_SCHEMA_VERSION, actorSlots, widgetPresets, overlays, actorBindings, ...(actorNames ? { actorNames } : {}),
+    ...(input.assets !== undefined ? { assets } : {}) };
   known(input, result, "Bundle");
   return result;
 }
@@ -201,7 +204,8 @@ export function existingBundleRecords(source, api = globalThis.game?.modules?.ge
 /** GMs install into the world library; a player the GM allowed to stream, into their own studio. */
 function mayInstall(api) { return Boolean(globalThis.game?.user?.isGM) || api?.canEditLibrary?.() === true; }
 
-export async function installOverlayBundle(source, { api = globalThis.game?.modules?.get(MODULE_ID)?.api, actors = {}, dryRun = false, updateExisting = false } = {}) {
+export async function installOverlayBundle(source, { api = globalThis.game?.modules?.get(MODULE_ID)?.api, actors = {}, dryRun = false, updateExisting = false,
+  assetIO = null } = {}) {
   if (!mayInstall(api)) throw new Error("Install overlay bundles as a GM in Foundry.");
   if (typeof dryRun !== "boolean") fail("dryRun must be true or false.");
   if (typeof updateExisting !== "boolean") fail("updateExisting must be true or false.");
@@ -247,6 +251,12 @@ export async function installOverlayBundle(source, { api = globalThis.game?.modu
   const summary = { overlayIds: bundle.overlays.map(item => item.id), widgetPresetIds: bundle.widgetPresets.map(item => item.id),
     replacedWidgetPresetIds: replacedPresetIds, keptOverlayIds, actorSlotsResolved: needed, activeOverlayId: state.activeOverlayId, dryRun };
   if (dryRun) return summary;
+  if (bundle.assets?.length) {
+    // The bundle's images go into this module's storage unless this server has them already.
+    const images = await installAssets(bundle.assets, assetPaths(bundle), assetIO ?? browserAssetIO({ allowed: () => mayInstall(api) }));
+    ({ overlays: bundle.overlays, widgetPresets: bundle.widgetPresets } = relinkAssets(bundle, images.paths));
+    summary.images = { stored: images.stored, kept: images.kept, blocked: images.blocked, failed: images.failed, missing: images.missing };
+  }
   let presetRevision = presets.revision, overlayRevision = state.revision, added = 0;
   try {
     for (const preset of bundle.widgetPresets) { await api.widgetPresets.save(preset, { expectedRevision: presetRevision++ }); added++; }

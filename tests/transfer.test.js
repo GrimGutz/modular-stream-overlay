@@ -140,7 +140,7 @@ test("export saves a file; import adds overlays, designs and fragments without r
   presets.list.push(preset);
   const overlay = overlayWithWidget(preset);
   editor._loadDraft(overlay, 1);
-  editor._exportFile();
+  await editor._exportFile();
   assert.equal(downloads[0].name, "Dossier.overlay.json"); assert.equal(downloads[0].type, "application/json");
   editor._loadDraft(state.overlays[0], 1);
   // This world has other characters too, so the import asks; leaving the missing one unassigned.
@@ -163,7 +163,7 @@ test("importing into a world that has the characters under other IDs asks which 
   presets.list.push(preset);
   game.actors.contents.push({ uuid: "Actor.missing", name: "Klepto" });
   editor._loadDraft(overlayWithWidget(preset), 1);
-  editor._exportFile();
+  await editor._exportFile();
   // The other world: Known kept its ID, Klepto exists as a new Actor with the same name.
   game.actors.contents = [{ uuid: "Actor.known", name: "Known" }, { uuid: "Actor.copy", name: "Klepto" }, { uuid: "Actor.other", name: "Other" }];
   let asked = null;
@@ -182,4 +182,66 @@ test("importing into a world that has the characters under other IDs asks which 
   await editor._importFile({ text: async () => downloads.at(-1).text });
   assert.equal(state.overlays.length, before, "Cancelling the choice imports nothing");
   delete foundry.applications.api.DialogV2.input;
+});
+
+test("an overlay moves to another server with its images, an SVG as a PNG; on its own server nothing is copied", async () => {
+  const { editor, state, downloads, notes } = editorFixture();
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  const DRAWN = new Uint8Array([...PNG, 7, 7]), SVG = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const overlay = createOverlay("Scene");
+  overlay.background.src = "worlds/old/paper.svg";
+  overlay.layers.push(Object.assign(createLayer("image", overlay.canvas), { id: "logo", src: "worlds/old/logo.png" }),
+    Object.assign(createLayer("image", overlay.canvas), { id: "clip", src: "worlds/old/clip.webm" }));
+  const source = new Map([["worlds/old/paper.svg", SVG], ["worlds/old/logo.png", PNG], ["worlds/old/clip.webm", new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])]]);
+  const boxes = [];
+  const sourceIO = { readFile: async path => source.get(path) ?? null, exists: async path => source.has(path),
+    rasterize: async (_bytes, box) => { boxes.push(box); return DRAWN; }, canStore: true, store: async () => assert.fail("Nothing is copied on its own server") };
+  configureEditor({ assetIO: sourceIO });
+  editor._loadDraft(overlay, 1);
+  await editor._exportFile();
+  const file = JSON.parse(downloads.at(-1).text);
+  assert.deepEqual(file.assets.map(asset => [asset.path, asset.type, Boolean(asset.original)]), [["worlds/old/paper.svg", "image/png", true], ["worlds/old/logo.png", "image/png", false]]);
+  assert.deepEqual(boxes, [{ width: 1920, height: 1080 }], "The SVG is drawn at the canvas it covers");
+  assert(notes.some(note => /Scene saved to a file with 2 images/.test(note)));
+  assert(notes.some(note => /not images the export can carry/.test(note) && note.includes("worlds/old/clip.webm")));
+  // Back into the same server: every image is already there.
+  editor._loadDraft(state.overlays[0], 1);
+  await editor._importFile({ text: async () => downloads.at(-1).text });
+  assert.deepEqual([state.overlays.at(-1).background.src, state.overlays.at(-1).layers.find(layer => layer.id === "logo").src], ["worlds/old/paper.svg", "worlds/old/logo.png"]);
+  assert(notes.some(note => /0 saved to this module's storage, 2 already on this server/.test(note)));
+  // Another server, where none of the files exist.
+  const stored = [];
+  configureEditor({ assetIO: { readFile: async () => null, exists: async () => false, canStore: true,
+    store: async (bytes, extension) => { stored.push(bytes); return `modules/modular-stream-overlay/storage/image-${stored.length}.${extension}`; } } });
+  editor._loadDraft(state.overlays[0], 1);
+  await editor._importFile({ text: async () => downloads.at(-1).text });
+  const imported = state.overlays.at(-1);
+  assert.equal(imported.background.src, "modules/modular-stream-overlay/storage/image-1.png");
+  assert.equal(imported.layers.find(layer => layer.id === "logo").src, "modules/modular-stream-overlay/storage/image-2.png");
+  assert.equal(imported.layers.find(layer => layer.id === "clip").src, "worlds/old/clip.webm");
+  assert.deepEqual(stored, [DRAWN, PNG]);
+  assert(notes.some(note => /2 saved to this module's storage, 0 already/.test(note)));
+  assert(notes.some(note => note.includes("neither in the file nor on this server: worlds/old/clip.webm")));
+  configureEditor({ assetIO: undefined });
+});
+
+test("importing the same file with images twice on another server reuses the design it brought the first time", async () => {
+  const { editor, state, presets, downloads } = editorFixture();
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  const preset = design();
+  preset.layers.push(Object.assign(createLayer("image", preset.canvas), { id: "frame", src: "worlds/old/frame.png" }));
+  presets.list.push(preset);
+  configureEditor({ assetIO: { readFile: async path => path === "worlds/old/frame.png" ? PNG : null } });
+  editor._loadDraft(overlayWithWidget(preset, ["Actor.known"]), 1);
+  await editor._exportFile();
+  presets.list.length = 0;
+  configureEditor({ assetIO: { readFile: async path => path.startsWith("modules/") ? PNG : null, exists: async () => false, canStore: true,
+    store: async (_bytes, extension) => `modules/modular-stream-overlay/storage/image-frame.${extension}` } });
+  for (let round = 0; round < 2; round++) {
+    editor._loadDraft(state.overlays[0], 1);
+    await editor._importFile({ text: async () => downloads.at(-1).text });
+  }
+  assert.equal(presets.list.length, 1, "The second import finds the design identical");
+  assert.equal(presets.list[0].layers.find(layer => layer.id === "frame").src, "modules/modular-stream-overlay/storage/image-frame.png");
+  configureEditor({ assetIO: undefined });
 });

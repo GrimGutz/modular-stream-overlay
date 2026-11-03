@@ -362,7 +362,7 @@
       "Versions": "Versions",
       "SearchLayers": "Search layers",
       "ExportFile": "Export",
-      "ExportFileHelp": "Save this overlay with the widget designs it uses (or this widget design) as a file, to move it to another world or GM. Images are referenced by path, not included.",
+      "ExportFileHelp": "Save this overlay with the widget designs it uses (or this widget design) as a file, to move it to another world, GM or server. The images it shows go into the file; an SVG goes in as a PNG at the size it is shown.",
       "ImportFile": "Import from file",
       "ImportFileHelp": "Add an exported overlay, widget design or fragment. Nothing is replaced: taken IDs get new ones.",
       "RescaleCanvas": "Resize with content…",
@@ -777,7 +777,15 @@
       "ImportActorFrom": "Instead of {name}",
       "ImportActorSkip": "— leave unassigned —",
       "ImportNoViewer": "This world has no overlay viewer account yet, so OBS shows only a notice. Choose the account OBS signs in with (for example OBS) under Viewer account and choose Save viewer.",
-      "ImportNotActive": "{name} was imported. Choose it as the active overlay to show it on stream."
+      "ImportNotActive": "{name} was imported. Choose it as the active overlay to show it on stream.",
+      "ExportedImages": "{name} saved to a file with {count} images.",
+      "ExportImagesMissing": "These images were not found on this server, so the file keeps only their paths: {paths}.",
+      "ExportImagesFormat": "These files are not images the export can carry (for example video), so the file keeps only their paths; copy them along when moving to another server: {paths}.",
+      "ExportImagesSize": "These images did not fit (at most 25 MiB each and 100 MiB together), so the file keeps only their paths: {paths}.",
+      "ImportedImages": "Images from the file: {stored} saved to this module's storage, {kept} already on this server.",
+      "ImportImagesBlocked": "Your Foundry account may not upload files, so these images from the file were not saved and keep their old paths: {paths}. Ask the GM for the Upload Files permission and import again.",
+      "ImportImagesFailed": "These images could not be uploaded and keep their old paths: {paths}.",
+      "ImportImagesMissing": "These images are neither in the file nor on this server: {paths}. Put them on the server or choose other images."
     },
     "Settings": {
       "LanguageHint": "Choose the language of this module's configuration interface on this client. Auto follows Foundry; unsupported languages use English. Stream content is unchanged.",
@@ -1141,7 +1149,18 @@
       "StreamsUserIds": "Player streams must use Foundry user IDs.",
       "StreamsGMOnly": "Only a GM can choose who streams.",
       "StreamsUsers": "Choose existing player accounts for player streams.",
-      "StreamsList": "Player streams must be a list of user IDs."
+      "StreamsList": "Player streams must be a list of user IDs.",
+      "TransferTooLarge": "Choose a Modular Stream Overlay file of at most 160 MiB.",
+      "TransferNotExport": "This file is not a Modular Stream Overlay export.",
+      "TransferFragmentLayers": "A fragment holds 1–100 layers.",
+      "AssetsLimit": "A file carries at most {count} images.",
+      "AssetEntry": "Each image in the file needs a path, a type and its data.",
+      "AssetPath": "Each image in the file needs its own path.",
+      "AssetType": "Images in the file must be PNG, JPEG, WebP or GIF.",
+      "AssetDamaged": "An image in the file is damaged.",
+      "AssetSize": "Each image in the file must be at most 25 MiB.",
+      "AssetsSize": "The images in a file must be at most 100 MiB together.",
+      "ImportedImageFormat": "Imported images must be PNG, JPEG, WebP or GIF files of at most 25 MiB."
     },
     "ValidationLabel": {
       "ActiveOverlayID": "Active overlay ID",
