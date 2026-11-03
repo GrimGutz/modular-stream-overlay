@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0
 
 - **Player streams get the GM's tools:** a streaming player chooses the account their OBS signs in with, like the GM's viewer account: their own or a free account (no GM, main viewer or other streamer), so what they see privately stays off stream. That account's stream page shows the player's studio read-only and obeys only that player's live controls. Studios also get their own **Character colors** and character profiles, which follow the world's until the player saves their own. The GM's Player streams window shows each stream's account. Character fields, providers, the main viewer and who may stream stay the GM's.
 - **Exports carry their images:** overlay, widget design and fragment files now include the images they show (backgrounds, image and portrait layers, masks), so an overlay moves to another server whole. PNG, JPEG, WebP and GIF go in as they are; an SVG goes in as a PNG at the largest size it is shown, because an SVG from someone else's file could run scripts on the server. Importing keeps an image the server already has at the same path (or the SVG the PNG came from) and stores the others in this module's storage, pointing the imported records at them; the same image imported again reuses its file. Video stays a path, and both sides name the files they could not carry or find. Files from earlier versions import as before.
